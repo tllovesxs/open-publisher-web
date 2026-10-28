@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { Check, Copy, ImagePlus, LoaderCircle, Pencil, Rocket, Save, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -292,17 +293,27 @@ export default function MediaPage() {
             style={{ flex: 2, minWidth: 180 }}
             value={search}
           />
-          <select aria-label="素材来源" className="creation-select" onChange={(event) => setOrigin(event.target.value as "" | "upload" | "generated")} value={origin}>
-            <option value="">全部来源</option>
-            <option value="upload">上传</option>
-            <option value="generated">AI 生成</option>
-          </select>
-          <select aria-label="排序" className="creation-select" onChange={(event) => setSort(event.target.value)} value={sort}>
-            <option value="created_desc">最新优先</option>
-            <option value="created_asc">最早优先</option>
-            <option value="name_asc">名称 A-Z</option>
-            <option value="name_desc">名称 Z-A</option>
-          </select>
+          <ToolbarSelect
+            label="素材来源"
+            onChange={(value) => setOrigin(value)}
+            options={[
+              { id: "", label: "全部来源" },
+              { id: "upload", label: "上传" },
+              { id: "generated", label: "AI 生成" },
+            ]}
+            value={origin}
+          />
+          <ToolbarSelect
+            label="排序"
+            onChange={(value) => setSort(value)}
+            options={[
+              { id: "created_desc", label: "最新优先" },
+              { id: "created_asc", label: "最早优先" },
+              { id: "name_asc", label: "名称 A-Z" },
+              { id: "name_desc", label: "名称 Z-A" },
+            ]}
+            value={sort}
+          />
           <button
             className="button button--quiet"
             disabled={!selectedIds.length || deleting}

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { ToolbarSelect } from "../ui/ToolbarSelect";
 import { Eye, LoaderCircle, Pencil, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
@@ -408,15 +409,13 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                 background: "var(--surface-muted, #f5f5f5)", borderRadius: 8,
               }}>
                 <small style={{ color: "var(--muted, #888)", flexShrink: 0, fontSize: 11 }}>生图模型</small>
-                <select
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  style={{ background: "var(--surface, #fff)", border: "1px solid var(--border, #ddd)", borderRadius: 6, flex: 1, fontSize: 12, minWidth: 0, padding: "5px 8px" }}
+                <ToolbarSelect
+                  className="toolbar-select--fill"
+                  label="生图模型"
+                  onChange={(value) => setSelectedModel(value)}
+                  options={imageModels.map((m) => ({ id: m.id, label: m.name }))}
                   value={selectedModel}
-                >
-                  {imageModels.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
+                />
                 <button
                   className="button button--quiet"
                   onClick={() => window.open("http://localhost:5174", "_blank")}
@@ -511,15 +510,13 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                       <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
                         <div style={{ alignItems: "center", display: "flex", gap: 6 }}>
                           <small className="muted" style={{ flexShrink: 0 }}>风格</small>
-                          <select
-                            onChange={(e) => updateStyle(placement.id, e.target.value)}
-                            style={{ flex: 1, minWidth: 0, fontSize: 12, padding: "4px 6px" }}
+                          <ToolbarSelect
+                            className="toolbar-select--fill"
+                            label="风格"
+                            onChange={(value) => updateStyle(placement.id, value)}
+                            options={STYLE_PRESETS.map((s) => ({ id: s.id, label: s.label }))}
                             value={styleSelections[placement.id] ?? "default"}
-                          >
-                            {STYLE_PRESETS.map((s) => (
-                              <option key={s.id} value={s.id}>{s.label}</option>
-                            ))}
-                          </select>
+                          />
                           <button
                             aria-label={isEditing ? "收起提示词" : "编辑提示词"}
                             className="button button--quiet"

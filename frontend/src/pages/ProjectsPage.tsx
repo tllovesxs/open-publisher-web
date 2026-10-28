@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { useNavigate } from "react-router-dom";
 import {
   Check,
@@ -464,18 +465,18 @@ export default function ProjectsPage() {
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor="p-tone">语气</label>
-                  <select
-                    className="creation-select"
-                    id="p-tone"
-                    onChange={(e) => setDraft({ ...draft, tone: e.target.value })}
+                  <label>语气</label>
+                  <ToolbarSelect
+                    label="语气"
+                    onChange={(value) => setDraft({ ...draft, tone: value })}
+                    options={[
+                      { id: "professional", label: "专业" },
+                      { id: "casual", label: "轻松" },
+                      { id: "founder", label: "创始人口吻" },
+                      { id: "technical", label: "技术向" },
+                    ]}
                     value={draft.tone}
-                  >
-                    <option value="professional">专业</option>
-                    <option value="casual">轻松</option>
-                    <option value="founder">创始人口吻</option>
-                    <option value="technical">技术向</option>
-                  </select>
+                  />
                 </div>
                 <div className="field">
                   <div className="field__head">

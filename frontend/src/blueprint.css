@@ -9962,3 +9962,47 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
   font-size: 10px;
   text-align: center;
 }
+
+/* ===== 全局自定义下拉补充：填充宽度 / 向上弹出 / 大尺寸（设置页） ===== */
+
+.toolbar-select--fill {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.toolbar-select--fill .toolbar-select__trigger {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.toolbar-select--up .toolbar-select__menu {
+  bottom: calc(100% + 6px);
+  top: auto;
+}
+
+.toolbar-select__trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-select__menu {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.article-ai-modify__selects .toolbar-select {
+  min-width: 0;
+}
+
+.article-ai-modify__selects .toolbar-select__trigger {
+  width: 100%;
+}
+
+.toolbar-select--lg .toolbar-select__trigger {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}

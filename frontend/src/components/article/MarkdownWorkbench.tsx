@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { usePersistentState } from "../../lib/usePersistentState";
+import { ToolbarSelect } from "../ui/ToolbarSelect";
 import { MarkdownPreview } from "./MarkdownPreview";
 import type { MarkdownSpan } from "./articleMarkdown";
 import { extractArticleFigures } from "./ArticleImagePane";
@@ -62,6 +63,13 @@ const editorModes: Array<{ id: EditorMode; label: string }> = [
   { id: "edit", label: "仅编辑" },
   { id: "split", label: "编辑与预览" },
   { id: "preview", label: "仅预览" },
+];
+
+const previewPlatforms: Array<{ id: PreviewPlatform; label: string }> = [
+  { id: "general", label: "通用 Markdown" },
+  { id: "twitter", label: "Twitter / X" },
+  { id: "xiaohongshu", label: "小红书" },
+  { id: "wechat", label: "公众号" },
 ];
 
 type ScrollablePane = HTMLTextAreaElement | HTMLDivElement;
@@ -505,16 +513,13 @@ export function MarkdownWorkbench({
         </div>
         <div className="editor-toolbar__right">
           <div aria-label="编辑器布局" className="mode-switch">
-            <select
-              aria-label="编辑器布局"
-              className="mode-switch__select"
-              onChange={(event) => onEditorModeChange(event.target.value as EditorMode)}
+            <ToolbarSelect
+              align="right"
+              label="编辑器布局"
+              onChange={(value) => onEditorModeChange(value)}
+              options={editorModes}
               value={editorMode}
-            >
-              {editorModes.map(({ id, label }) => (
-                <option key={id} value={id}>{label}</option>
-              ))}
-            </select>
+            />
           </div>
         </div>
       </div>
@@ -615,17 +620,12 @@ export function MarkdownWorkbench({
           >
             <div className="preview-pane__meta">
               <span>实时预览</span>
-              <select
-                aria-label="平台预览"
-                className="mode-switch__select"
-                onChange={(event) => onPreviewPlatformChange?.(event.target.value as PreviewPlatform)}
+              <ToolbarSelect
+                label="平台预览"
+                onChange={(value) => onPreviewPlatformChange?.(value)}
+                options={previewPlatforms}
                 value={previewPlatform}
-              >
-                <option value="general">通用 Markdown</option>
-                <option value="twitter">Twitter / X</option>
-                <option value="xiaohongshu">小红书</option>
-                <option value="wechat">公众号</option>
-              </select>
+              />
             </div>
             <div style={{ margin: "0 auto", maxWidth: previewPlatform === "twitter" ? 560 : previewPlatform === "wechat" ? 680 : "none" }}>
               <MarkdownPreview markdown={markdown} />

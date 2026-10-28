@@ -2,6 +2,7 @@ import { Bot, ImagePlus, LoaderCircle, PencilLine, Send, X } from "lucide-react"
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { usePersistentState } from "../../lib/usePersistentState";
 import { api } from "../../api/client";
+import { ToolbarSelect } from "../ui/ToolbarSelect";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
@@ -206,22 +207,31 @@ export function AiModifyPane({
 
       <footer className="article-ai-modify__composer">
         <div className="article-ai-modify__selects">
-          <select
-            aria-label="修改范围"
+          <ToolbarSelect
+            className="toolbar-select--fill"
             disabled={Boolean(selection?.text.trim())}
+            direction="up"
+            label="修改范围"
             onChange={() => undefined}
+            options={[
+              { id: "whole", label: "整篇文章" },
+              { id: "selection", label: "选中内容" },
+            ]}
             value={selection?.text.trim() ? "selection" : "whole"}
-          >
-            <option value="whole">整篇文章</option>
-            <option value="selection">选中内容</option>
-          </select>
-          <select aria-label="写作模型" onChange={(event) => setProfileId(event.target.value)} value={profileId}>
-            {profiles.length > 0 ? profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name} · {profile.modelId}{profile.keyConfigured ? "" : "（缺少密钥）"}
-              </option>
-            )) : <option value="">未配置模型</option>}
-          </select>
+          />
+          <ToolbarSelect
+            className="toolbar-select--fill"
+            direction="up"
+            label="写作模型"
+            onChange={(value) => setProfileId(value)}
+            options={profiles.length > 0
+              ? profiles.map((profile) => ({
+                  id: profile.id,
+                  label: `${profile.name} · ${profile.modelId}${profile.keyConfigured ? "" : "（缺少密钥）"}`,
+                }))
+              : [{ id: "", label: "未配置模型" }]}
+            value={profileId}
+          />
         </div>
         <textarea
           aria-label="AI 修改要求"
@@ -618,20 +628,20 @@ export function AssistantDrawer({
             <small>选中正文片段可精准改写 · 全文对话可整体调整</small>
           </span>
         </button>
-        <select
-          aria-label="助手模型"
+        <ToolbarSelect
           className="article-assistant-window__model-select"
           disabled={profiles.length === 0}
-          onChange={(event) => setActiveProfileId(event.target.value)}
+          label="助手模型"
+          onChange={(value) => setActiveProfileId(value)}
+          options={[
+            { id: "", label: "默认" },
+            ...profiles.map((profile) => ({
+              id: profile.id,
+              label: `${profile.name}${profile.keyConfigured ? "" : "（无密钥）"}`,
+            })),
+          ]}
           value={activeProfileId || ""}
-        >
-          <option value="">默认</option>
-          {profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name}{profile.keyConfigured ? "" : "（无密钥）"}
-            </option>
-          ))}
-        </select>
+        />
         {onClose && (
           <button aria-label="关闭编辑助手" className="icon-button" onClick={onClose} type="button">
             <X size={14} />

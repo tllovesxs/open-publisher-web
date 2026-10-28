@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Bell, ChevronDown, Database, KeyRound, Layout, Save, Settings2, User } from "lucide-react";
+import { Bell, Database, KeyRound, Layout, Save, Settings2, User } from "lucide-react";
+import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { useThemeSetting, type ThemeSetting } from "../lib/theme";
+import { useThemeSetting } from "../lib/theme";
 import { ARTICLE_WORKFLOW_NODES } from "../workflow/articleNodes";
 
 interface Capabilities { contextWindow: number; maxTokens: number; vision: boolean; reasoning: boolean }
@@ -107,29 +108,16 @@ export default function SettingsPage() {
                 选择你的写作引擎；密钥由管理员统一配置
               </p>
             </div>
-            <div style={{ position: "relative" }}>
-              <select
-                onChange={e => setPrefs({...prefs, profileId: e.target.value || null})}
-                style={{
-                  appearance: "none", background: "var(--surface-muted, #f5f5f5)",
-                  border: "1px solid var(--border, #ddd)", borderRadius: 8,
-                  fontSize: 14, padding: "10px 36px 10px 12px", width: "100%",
-                }}
-                value={prefs.profileId ?? ""}
-              >
-                <option value="">平台默认</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} · {p.modelId}</option>
-                ))}
-              </select>
-              <ChevronDown
-                size={16}
-                style={{
-                  color: "var(--muted, #888)", pointerEvents: "none",
-                  position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                }}
-              />
-            </div>
+            <ToolbarSelect
+              className="toolbar-select--fill toolbar-select--lg"
+              label="默认写作模型"
+              onChange={(value) => setPrefs({ ...prefs, profileId: value || null })}
+              options={[
+                { id: "", label: "平台默认" },
+                ...profiles.map((p) => ({ id: p.id, label: `${p.name} · ${p.modelId}` })),
+              ]}
+              value={prefs.profileId ?? ""}
+            />
             {selectedProfile && (
               <div style={{
                 alignItems: "center", background: "var(--surface-muted, #f5f5f5)",
@@ -337,26 +325,28 @@ export default function SettingsPage() {
             <label style={{ alignItems: "center", color: "var(--ink)", display: "flex", fontSize: 13, fontWeight: 500, gap: 4 }}>
               <Bell size={13} /> 联网检索
             </label>
-            <select
-              onChange={e => setPrefs({...prefs, webSearchMode: e.target.value as "auto" | "off"})}
-              style={{ borderRadius: 6, border: "1px solid var(--border, #ddd)", fontSize: 13, padding: "6px 8px" }}
+            <ToolbarSelect
+              label="联网检索"
+              onChange={(value) => setPrefs({ ...prefs, webSearchMode: value })}
+              options={[
+                { id: "auto", label: "自动" },
+                { id: "off", label: "关闭" },
+              ]}
               value={prefs.webSearchMode}
-            >
-              <option value="auto">自动</option>
-              <option value="off">关闭</option>
-            </select>
+            />
           </div>
           <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
             <label style={{ color: "var(--ink)", fontSize: 13, fontWeight: 500 }}>外观</label>
-            <select
-              onChange={e => setSetting(e.target.value as ThemeSetting)}
-              style={{ borderRadius: 6, border: "1px solid var(--border, #ddd)", fontSize: 13, padding: "6px 8px" }}
+            <ToolbarSelect
+              label="外观"
+              onChange={(value) => setSetting(value)}
+              options={[
+                { id: "system", label: "跟随系统" },
+                { id: "light", label: "浅色" },
+                { id: "dark", label: "深色" },
+              ]}
               value={setting}
-            >
-              <option value="system">跟随系统</option>
-              <option value="light">浅色</option>
-              <option value="dark">深色</option>
-            </select>
+            />
           </div>
           <button
             className="button button--primary"
