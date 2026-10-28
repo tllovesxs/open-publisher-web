@@ -25,6 +25,7 @@ from collections.abc import Iterator
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.agents.llm_client import LLMClient
+from app.core.config import get_settings
 from app.services.article_store import ArticleConflictError, ArticleStore
 from app.services.run_journal import TERMINAL_STATUSES, RunJournal
 
@@ -729,8 +730,34 @@ class WriterService:
         self._node_started(run_id, "research")
         parts: list[str] = []
         references = str(creation.get("references") or "").strip()
+        rag_stats: dict = {}
         if references:
-            parts.append("用户参考资料：\n" + references[:20000])
+            rag_used = False
+            if get_settings().rag_enabled:
+                try:
+                    # RAG 升级：参考资料先分块索引，再混合检索（向量+BM25+RRF+重排），
+                    # 命中片段带 [n] 来源编号注入上下文；失败时降级为原文注入。
+                    from app.services.rag_service import get_rag_service
+
+                    rag = get_rag_service()
+                    run_index = f"run-{run_id}"
+                    ingest_info = rag.ingest(run_index, "用户参考资料", references)
+                    query = " ".join(
+                        [prompt.strip()[:150], str(creation.get("title") or "")[:80]],
+                    ).strip() or references[:80]
+                    search_result = rag.search([run_index], query)
+                    if search_result["hits"]:
+                        parts.append(rag.build_context(search_result["hits"]))
+                        rag_stats = {
+                            "indexedChunks": ingest_info["chunks"],
+                            "hits": len(search_result["hits"]),
+                            "rerankUsed": search_result["rerankUsed"],
+                        }
+                        rag_used = True
+                except Exception:  # noqa: BLE001 - RAG 失败优雅降级为原文注入
+                    rag_stats = {}
+            if not rag_used:
+                parts.append("用户参考资料：\n" + references[:20000])
         assets = creation.get("imageAssets") or []
         if assets:
             parts.append(
@@ -748,7 +775,10 @@ class WriterService:
             except Exception:  # noqa: BLE001 - 检索失败不阻断创作
                 parts.append("（联网检索暂时不可用，依据已有资料写作。）")
         research = "\n\n".join(parts) or "（无额外资料，依据创作要求与常识写作。）"
-        self._node_completed(run_id, "research", {"chars": len(research)})
+        payload = {"chars": len(research)}
+        if rag_stats:
+            payload["rag"] = rag_stats
+        self._node_completed(run_id, "research", payload)
         return research
 
     def _stage_outline(
