@@ -7,7 +7,7 @@ JWTStrategy。
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 
 from fastapi_users import exceptions, schemas
@@ -135,7 +135,14 @@ async def admin_login(
 
 
 @router.get("/me")
-def me(user: AppUser = Depends(get_current_user)):
+def me(request: Request, response: Response, user: AppUser = Depends(get_current_user)):
+    # Bearer 登录态访问时同步刷新 HttpOnly Cookie：
+    # <img src="/api/media/.../raw"> 无法携带 Authorization 头，只能依赖 Cookie。
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        if token:
+            _set_auth_cookie(response, token)
     return _user_out(user)
 
 
