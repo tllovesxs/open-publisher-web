@@ -108,13 +108,16 @@ export function ArticleImagePane({
   canInsert = true,
   style,
 }: ArticleImagePaneProps) {
-  // asset:// 是正文里的紧凑素材引用；侧栏与预览一样先解析成站内原始图地址。
-  const resolvedMarkdown = useMemo(() => resolveAssetReferences(markdown), [markdown]);
+  // asset:// 是正文里的紧凑素材引用；缩略图展示时再解析成站内原始图地址。
+  // figure span 必须基于"原文"计算：resolveAssetReferences 会改写字符长度，
+  // 若用解析后的文本取 span，移动/删除时偏移会错位。
   const figures = useMemo(
-    () => extractArticleFigures(resolvedMarkdown).filter(
-      (figure) => figure.kind === "mermaid" || isEmbeddableImageSrc(figure.src),
-    ),
-    [resolvedMarkdown],
+    () => extractArticleFigures(markdown)
+      .map((figure) => figure.kind === "image"
+        ? { ...figure, src: resolveAssetReferences(`](${figure.src})`).slice(2, -1) }
+        : figure)
+      .filter((figure) => figure.kind === "mermaid" || isEmbeddableImageSrc(figure.src)),
+    [markdown],
   );
   const [uploads, setUploads] = useState<ImageInsertion[]>([]);
   const [isDropping, setIsDropping] = useState(false);
@@ -128,7 +131,7 @@ export function ArticleImagePane({
 
   useEffect(() => {
     setFailedFigureKeys(new Set());
-  }, [resolvedMarkdown]);
+  }, [markdown]);
 
   const markFailedFigure = (figure: ArticleFigure) => {
     if (figure.kind !== "image") return;

@@ -1005,6 +1005,9 @@ export default function ArticlesPage() {
                     onFigureDrop={(figure, line) =>
                       handleMarkdownChange(moveMarkdownSpanToLine(draft, figure.span, line))
                     }
+                    onInsertAtLine={(snippet, line) =>
+                      handleMarkdownChange(insertMarkdownAtLine(draft, snippet, line))
+                    }
                   />
                 </div>
                 {aiPanelOpen && (

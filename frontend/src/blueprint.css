@@ -9468,3 +9468,18 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
 .article-editor__workbench .markdown-preview li {
   margin: 0;
 }
+
+/* 预览区拖放（配图移动 / 素材插入）与块级行号标注 */
+.preview-pane.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+.markdown-preview__block {
+  position: relative;
+}
+
+/* 原「h1 + p」首段规则在块级包裹后依然生效 */
+.article-editor__workbench .markdown-preview__block:has(> h1) + .markdown-preview__block > p:first-child {
+  margin-top: 0;
+}

@@ -12,6 +12,8 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { usePersistentState } from "../../lib/usePersistentState";
 import { MarkdownPreview } from "./MarkdownPreview";
 import type { MarkdownSpan } from "./articleMarkdown";
+import { extractArticleFigures } from "./ArticleImagePane";
+import { resolveAssetReferences } from "./MarkdownPreview";
 
 /**
  * Web 版 MarkdownWorkbench（蓝本 MarkdownWorkbench 的完整迁移，团队自有）：
@@ -53,6 +55,7 @@ interface MarkdownWorkbenchProps {
   onPreviewPlatformChange?: (platform: PreviewPlatform) => void;
   onRequestSelectionRewrite?: (selection: MarkdownSelection) => void;
   onFigureDrop?: (figure: { kind: "image" | "mermaid"; span: MarkdownSpan }, line: number) => void;
+  onInsertAtLine?: (snippet: string, line: number) => void;
 }
 
 const editorModes: Array<{ id: EditorMode; label: string }> = [
@@ -86,7 +89,6 @@ function caretOffsetFromPoint(textarea: HTMLTextAreaElement, clientX: number, cl
     mirror.style.overflow = "hidden";
     mirror.style.opacity = "0";
     mirror.style.zIndex = "2147483000";
-    mirror.style.pointerEvents = "none";
     mirror.textContent = textarea.value;
     document.body.appendChild(mirror);
     mirror.scrollTop = textarea.scrollTop;
@@ -168,6 +170,7 @@ export function MarkdownWorkbench({
   onPreviewPlatformChange,
   onRequestSelectionRewrite,
   onFigureDrop,
+  onInsertAtLine,
 }: MarkdownWorkbenchProps) {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -182,6 +185,7 @@ export function MarkdownWorkbench({
   });
   const [isDroppingImage, setIsDroppingImage] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
+  const [previewDropActive, setPreviewDropActive] = useState(false);
   const [imageDropError, setImageDropError] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState<MarkdownSelection | null>(null);
   const [selectionActionPosition, setSelectionActionPosition] = useState<SelectionActionPosition | null>(null);
@@ -302,6 +306,70 @@ export function MarkdownWorkbench({
       return;
     }
     void importFiles(Array.from(event.dataTransfer.files));
+  };
+
+  // 预览区拖放：用真实 DOM 的 caret 命中 + data-md-line 标注把落点映射回源 Markdown 行。
+  const previewLineFromPoint = (event: React.DragEvent<HTMLElement>): number | null => {
+    const pane = previewRef.current;
+    if (!pane) return null;
+    const doc = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    };
+    let node: Node | null = null;
+    if (doc.caretPositionFromPoint) {
+      node = doc.caretPositionFromPoint(event.clientX, event.clientY)?.offsetNode ?? null;
+    } else if (doc.caretRangeFromPoint) {
+      node = doc.caretRangeFromPoint(event.clientX, event.clientY)?.startContainer ?? null;
+    }
+    const element = node instanceof Element ? node : node?.parentElement ?? null;
+    const block = element?.closest<HTMLElement>("[data-md-line]");
+    if (!block) return null;
+    const startLine = Number(block.dataset.mdLine);
+    const endLine = Number(block.dataset.mdEnd);
+    if (!Number.isFinite(startLine)) return null;
+    const rect = block.getBoundingClientRect();
+    return event.clientY > rect.top + rect.height / 2 ? endLine + 1 : startLine;
+  };
+
+  const handlePreviewDragStart = (event: React.DragEvent<HTMLElement>) => {
+    // 预览里的图片可直接拖动换位置：按 src 匹配回源 Markdown 中的 figure span。
+    const target = event.target as HTMLElement;
+    if (!(target instanceof HTMLImageElement)) return;
+    const src = target.getAttribute("src") ?? "";
+    const figures = extractArticleFigures(markdown)
+      .map((item) => item.kind === "image"
+        ? { ...item, src: resolveAssetReferences(`](${item.src})`).slice(2, -1) }
+        : item);
+    const figure = figures.find((item) => item.kind === "image" && (item.src === src || src.endsWith(item.src) || item.src.endsWith(src)));
+    if (!figure) return;
+    event.dataTransfer.setData(
+      "application/x-opw-figure",
+      JSON.stringify({ kind: figure.kind, span: figure.span }),
+    );
+    event.dataTransfer.effectAllowed = "move";
+  };
+
+  const handlePreviewDrop = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setPreviewDropActive(false);
+    const figurePayload = event.dataTransfer.getData("application/x-opw-figure");
+    if (figurePayload && onFigureDrop) {
+      try {
+        const parsed = JSON.parse(figurePayload) as { kind: "image" | "mermaid"; span: MarkdownSpan };
+        const fallbackLine = Number((event.target as HTMLElement).closest?.("[data-md-line]")?.getAttribute("data-md-line"));
+        const line = previewLineFromPoint(event) ?? (Number.isFinite(fallbackLine) && fallbackLine > 0 ? fallbackLine : null);
+        if (line !== null) onFigureDrop(parsed, line);
+      } catch {
+        // 载荷异常时忽略
+      }
+      return;
+    }
+    const mediaMarkdown = event.dataTransfer.getData("text/x-media-markdown");
+    if (mediaMarkdown && onInsertAtLine) {
+      const line = previewLineFromPoint(event);
+      if (line !== null) onInsertAtLine(mediaMarkdown, line);
+    }
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -526,7 +594,22 @@ export function MarkdownWorkbench({
         )}
         {editorMode !== "edit" && (
           <div
-            className="preview-pane"
+            className={`preview-pane${previewDropActive ? " is-drop-target" : ""}`}
+            onDragEnter={(event) => {
+              if (
+                event.dataTransfer.types.includes("application/x-opw-figure")
+                || event.dataTransfer.types.includes("text/x-media-markdown")
+              ) {
+                event.preventDefault();
+                setPreviewDropActive(true);
+              }
+            }}
+            onDragLeave={(event) => {
+              if (event.currentTarget === event.target) setPreviewDropActive(false);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handlePreviewDrop}
+            onDragStart={handlePreviewDragStart}
             onScroll={(event) => syncEditorToPreviewScroll(event.currentTarget)}
             ref={previewRef}
           >

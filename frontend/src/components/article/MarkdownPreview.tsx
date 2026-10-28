@@ -36,6 +36,25 @@ export function renderMarkdownHtml(markdown: string): string {
   return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
 }
 
+/** 按顶层块渲染并标注源 Markdown 行号（data-md-line / data-md-end）。
+ * 行号基于 resolveAssetReferences 之后的文本计算；替换不引入换行，行号与原文一致。
+ * 预览拖放（配图移动 / 素材插入）依赖这些标注把落点映射回源行。 */
+export function renderMarkdownBlockHtml(markdown: string): string {
+  const resolved = resolveAssetReferences(markdown);
+  const tokens = marked.lexer(resolved);
+  const parts: string[] = [];
+  let rawOffset = 0;
+  for (const token of tokens) {
+    rawOffset += token.raw.length;
+    if (token.type === "space") continue;
+    const startLine = resolved.slice(0, rawOffset - token.raw.length).split("\n").length;
+    const endLine = startLine + token.raw.split("\n").length - 1;
+    const tokenHtml = DOMPurify.sanitize(marked.parse(token.raw, { async: false }) as string, SANITIZE_CONFIG);
+    parts.push(`<div class="markdown-preview__block" data-md-line="${startLine}" data-md-end="${endLine}">${tokenHtml}</div>`);
+  }
+  return parts.join("");
+}
+
 let mermaidQueue: Promise<void> = Promise.resolve();
 
 export async function renderMermaidSvg(id: string, source: string): Promise<string> {
@@ -67,7 +86,7 @@ export function MarkdownPreview({ markdown, maxHeight }: { markdown: string; max
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    container.innerHTML = renderMarkdownHtml(markdown);
+    container.innerHTML = renderMarkdownBlockHtml(markdown);
 
     // 拦截不安全的图片地址（DOMPurify 已过滤协议，这里再兜底一次）
     container.querySelectorAll("img").forEach((img) => {
