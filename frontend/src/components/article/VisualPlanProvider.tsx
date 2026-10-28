@@ -350,7 +350,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
           <section
             aria-label="确认配图方案"
             aria-modal="true"
-            className="creation-picker__dialog"
+            className="creation-picker__dialog visual-plan-dialog"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             style={{ maxWidth: 600, width: "min(600px, 100%)" }}
@@ -378,6 +378,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                 ✕
               </button>
             </header>
+            <div className="visual-plan-dialog__body">
             {busy && (
               <div style={{
                 alignItems: "center", display: "flex", gap: 10, marginTop: 4, padding: "12px 14px",
@@ -441,19 +442,15 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
               alignItems: "center", display: "flex", gap: 8, marginTop: 10, padding: "8px 10px",
               background: "var(--surface-muted, #f5f5f5)", borderRadius: 8,
             }}>
-              <small style={{ color: "var(--muted, #888)", flexShrink: 0, fontSize: 11 }}>配图数量</small>
-              <div style={{ display: "flex", gap: 4 }}>
+              <small className="visual-count__label">配图数量</small>
+              <div aria-label="配图数量" className="visual-count__segment" role="group">
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                   <button
-                    key={n}
+                    aria-pressed={n === targetCount}
+                    className={`visual-count__btn${n === targetCount ? " is-active" : ""}`}
                     disabled={busy}
+                    key={n}
                     onClick={() => void replan(n)}
-                    style={{
-                      alignItems: "center", background: n === targetCount ? "var(--accent, #5b8def)" : "var(--surface, #fff)",
-                      border: `1px solid ${n === targetCount ? "var(--accent, #5b8def)" : "var(--border, #ddd)"}`,
-                      borderRadius: 6, color: n === targetCount ? "#fff" : "var(--ink)", cursor: "pointer",
-                      display: "grid", fontSize: 12, fontWeight: 600, height: 28, placeItems: "center", width: 28,
-                    }}
                     type="button"
                   >
                     {n}
@@ -581,6 +578,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                 );
               })}
             </ol>
+            </div>
             <footer style={{ borderTop: "1px solid var(--border, #eee)", display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14, paddingTop: 14 }}>
               <button className="button button--quiet" disabled={busy} onClick={job ? closePlan : undefined} style={{ padding: "8px 18px" }} type="button">
                 取消
