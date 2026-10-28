@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, LoaderCircle, Monitor, Send, XCircle } from "lucide-react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { resolveAssetReferences } from "./MarkdownPreview";
 
 interface SyncAccount {
   type: string;
@@ -62,9 +63,9 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
   const [chromeVisible, setChromeVisible] = useState(true);
   const shellRef = useRef<HTMLDivElement>(null);
 
-  // 纯净正文：Markdown → 净化 HTML，并把站内相对图片地址补全成绝对地址
+  // 纯净正文：先解析 asset:// 素材引用（与编辑器预览同链路），再净化 HTML，并把站内相对图片地址补全成绝对地址
   const articleHtml = useMemo(() => {
-    const html = DOMPurify.sanitize(marked.parse(markdown, { async: false }) as string);
+    const html = DOMPurify.sanitize(marked.parse(resolveAssetReferences(markdown), { async: false }) as string);
     const box = document.createElement("div");
     box.innerHTML = html;
     box.querySelectorAll("img").forEach((img) => {
