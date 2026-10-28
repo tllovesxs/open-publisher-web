@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Eye, LoaderCircle, Pencil, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 
 interface VisualPlanPlacement {
@@ -75,6 +76,7 @@ interface VisualPlanContextValue {
   ) => void;
   togglePlacement: (placementId: string) => void;
   closePlan: () => void;
+  minimizePlan: () => void;
   confirmApply: () => Promise<void>;
   consumeCompleted: () => void;
 }
@@ -114,6 +116,9 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
   const [imageModels, setImageModels] = useState<ImageModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [targetCount, setTargetCount] = useState(2);
+  const [dismissed, setDismissed] = useState(false);
+  const [materialMatchThreshold, setMaterialMatchThreshold] = useState(30);
+  const navigate = useNavigate();
 
   // 加载可选生图模型列表
   useEffect(() => {
@@ -131,12 +136,14 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     setExcludedIds([]);
+    setDismissed(false);
     try {
       const res = await api.post<VisualPlanSummary>(
         `/articles/${articleId}/visual-plan`,
         {
           targetCount: options.targetCount ?? targetCount,
           assetIds: options.assetIds ?? [],
+          materialMatchThreshold,
         },
       );
       if (res.data.placements.length === 0) {
@@ -225,7 +232,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
     try {
       const res = await api.post<VisualPlanSummary>(
         `/articles/${job.articleId}/visual-plan`,
-        { targetCount: count, assetIds: [] },
+        { targetCount: count, assetIds: [], materialMatchThreshold },
       );
       if (res.data.placements.length === 0) {
         setError("视觉规划认为本文不需要配图。");
@@ -244,6 +251,18 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
     setJob(null);
     setExcludedIds([]);
     setError(null);
+    setDismissed(false);
+  };
+
+  // 后台模式：收起弹窗但保留任务，状态由右下角浮条承接。
+  const minimizePlan = () => setDismissed(true);
+
+  const resumeVisualPlan = () => {
+    if (!busy && !job && completed) {
+      navigate("/articles");
+      return;
+    }
+    setDismissed(false);
   };
 
   const confirmApply = async () => {
@@ -318,12 +337,13 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
         setPlanForArticle,
         togglePlacement,
         closePlan,
+        minimizePlan,
         confirmApply,
         consumeCompleted,
       }}
     >
       {children}
-      {(job || (busy && !job)) && (
+      {(job || busy || error) && !dismissed && (
         <div className="studio-modal" role="presentation">
           <div className="studio-modal__scrim" />
           <section
@@ -344,14 +364,14 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                 </div>
                 <div>
                   <span style={{ color: "var(--accent, #5b8def)", fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>智能配图</span>
-                  <h2 style={{ fontSize: 17, margin: 0 }}>{job ? `确认配图方案（${job.plan.placements.length} 张）` : "正在规划配图"}</h2>
+                  <h2 style={{ fontSize: 17, margin: 0 }}>{job ? `确认配图方案（${job.plan.placements.length} 张）` : busy ? "正在规划配图" : "智能配图"}</h2>
                 </div>
               </div>
               <button
-                aria-label="关闭配图方案"
+                aria-label="配图任务转后台"
                 className="icon-button"
-                disabled={busy}
-                onClick={closePlan}
+                onClick={minimizePlan}
+                title="最小化到后台，稍后从右下角状态条恢复"
                 type="button"
               >
                 ✕
@@ -442,6 +462,22 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                 ))}
               </div>
             </div>
+            <label className="creation-threshold" style={{ marginTop: 12 }}>
+              <span>
+                素材匹配阈值 <strong>{materialMatchThreshold}%</strong>
+              </span>
+              <input
+                aria-label="素材匹配阈值"
+                disabled={busy}
+                max={100}
+                min={0}
+                onChange={(event) => setMaterialMatchThreshold(Number(event.target.value))}
+                step={5}
+                type="range"
+                value={materialMatchThreshold}
+              />
+              <small>达到此匹配度时优先使用素材库图片；未达到阈值的位置将调用生图模型生成新图。</small>
+            </label>
             <ol style={{ display: "grid", gap: 10, marginTop: 12 }}>
               {job?.plan.placements.map((placement) => {
                 const isExcluded = excludedIds.includes(placement.id);
@@ -554,17 +590,33 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
               </button>
               <button
                 className="button button--primary"
-                disabled={busy}
+                disabled={busy || !job}
                 onClick={() => void confirmApply()}
                 style={{ alignItems: "center", background: "linear-gradient(135deg, var(--accent, #5b8def), color-mix(in srgb, var(--accent, #5b8def) 70%, #9b59b6))", border: "none", display: "flex", gap: 6, padding: "8px 18px" }}
                 type="button"
               >
                 {busy ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
-                {job ? "确认并插入配图" : "规划中…"}
+                {busy ? (job ? "生成中…" : "规划中…") : "确认并插入配图"}
               </button>
             </footer>
           </section>
         </div>
+      )}
+      {dismissed && (busy || job || completed || error) && (
+        <button className="visual-plan-chip" onClick={resumeVisualPlan} type="button">
+          {busy && <LoaderCircle className="spin" size={14} />}
+          <span>
+            {busy
+              ? job
+                ? "智能配图 · 正在生成配图…"
+                : "智能配图 · 正在规划配图…"
+              : job
+                ? "配图方案已就绪 · 点击继续"
+                : completed
+                  ? `配图完成：已插入 ${completed.insertedCount} 张 · 点击查看`
+                  : "配图任务失败 · 点击查看"}
+          </span>
+        </button>
       )}
     </VisualPlanContext.Provider>
   );
