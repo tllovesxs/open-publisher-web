@@ -27,10 +27,25 @@ function escapeHtml(value: string): string {
 export function resolveAssetReferences(markdown: string): string {
   return markdown.replace(
     /\]\(asset:\/\/([A-Za-z0-9][A-Za-z0-9:_-]{0,255})\)/g,
-    (_match, assetId: string) => `](/api/media/${encodeURIComponent(assetId)}/raw)`,
+    (_match, assetId: string) =>
+      `](${withMediaAccessToken(`/api/media/${encodeURIComponent(assetId)}/raw`)})`,
   );
 }
 
+/** 站内素材图附带当前登录 token：
+ * <img> 无法携带 Authorization 头；Cookie 缺失（旧登录态/跨端口）时兜底。 */
+export function withMediaAccessToken(src: string): string {
+  if (!src.startsWith("/api/media/")) return src;
+  try {
+    const url = new URL(src, window.location.origin);
+    if (url.searchParams.has("access_token")) return src;
+  } catch {
+    return src;
+  }
+  const token = window.localStorage.getItem("opw_access_token");
+  if (!token) return src;
+  return `${src}${src.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`;
+}
 export function renderMarkdownHtml(markdown: string): string {
   const raw = marked.parse(resolveAssetReferences(markdown), { async: false }) as string;
   return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
@@ -94,6 +109,10 @@ export function MarkdownPreview({ markdown, maxHeight }: { markdown: string; max
       if (!isSafeImageSrc(src)) {
         img.remove();
         return;
+      }
+      const tokened = withMediaAccessToken(src);
+      if (tokened !== src) {
+        img.setAttribute("src", tokened);
       }
       img.loading = "lazy";
       // 加载失败（如历史生成图的临时链接过期）时展示占位，而不是裂图图标。
