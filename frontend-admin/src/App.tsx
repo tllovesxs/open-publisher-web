@@ -68,7 +68,6 @@ const VIEWS = [
   { view: "image", title: "生图模型", desc: "文章配图使用的图像生成模型。" },
   { view: "embedding", title: "Embedding 模型", desc: "RAG 资料向量化与检索使用的嵌入模型。" },
   { view: "rerank", title: "Rerank 模型", desc: "检索结果重排序服务（bge-reranker 兼容）。" },
-  { view: "wechat", title: "微信发布", desc: "微信公众号草稿发布凭据。" },
   { view: "security", title: "密钥安全", desc: "密钥的存储与使用约定。" },
 ] as const;
 
@@ -89,9 +88,6 @@ function AiConfigPage() {
   const [imageKeyInput, setImageKeyInput] = useState("");
   const [profileKeyInputs, setProfileKeyInputs] = useState<Record<string, string>>({});
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
-  const [wechat, setWechat] = useState<{configured: boolean; appId: string; keyHint: string; keyVersion: number} | null>(null);
-  const [wechatForm, setWechatForm] = useState({appId: "", appSecret: ""});
-  const [showWechatForm, setShowWechatForm] = useState(false);
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);
   const [rag, setRag] = useState<RagConfig | null>(null);
   const [ragForm, setRagForm] = useState({ embeddingBaseUrl: "", embeddingModel: "", rerankBaseUrl: "", rerankTimeoutSeconds: 3 });
@@ -104,17 +100,15 @@ function AiConfigPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [statusRes, profilesRes, imageRes, wechatRes, ragRes] = await Promise.all([
+      const [statusRes, profilesRes, imageRes, ragRes] = await Promise.all([
         api.get<ModelStatus>("/settings/model"),
         api.get<{ profiles: ProfileOut[] }>("/settings/profiles"),
         api.get<ImageStatus>("/settings/image"),
-        api.get<{configured: boolean; appId: string; keyHint: string; keyVersion: number}>("/settings/wechat"),
         api.get<RagConfig>("/settings/rag"),
       ]);
       setStatus(statusRes.data);
       setProfiles(profilesRes.data.profiles);
       setImage(imageRes.data);
-      setWechat(wechatRes.data);
       setRag(ragRes.data);
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -414,66 +408,6 @@ function AiConfigPage() {
       setBusyAction(null);
     }
   };
-  const saveWechat = async () => {
-    if (!wechatForm.appId.trim() || !wechatForm.appSecret.trim()) {
-      setError("微信公众号 AppID / AppSecret 必填。");
-      return;
-    }
-    setBusy(true);
-    setBusyAction("saveWechat");
-    setError(null);
-    try {
-      await api.put("/settings/wechat", wechatForm);
-      setWechatForm({appId: "", appSecret: ""});
-      setShowWechatForm(false);
-      await load();
-      setMessage("微信公众号凭据已加密入库。");
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "微信凭据保存失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const testWechat = async () => {
-    setBusy(true);
-    setBusyAction("testWechat");
-    setMessage(null);
-    setError(null);
-    try {
-      const res = await api.post<{ ok: boolean; appId?: string; errcode?: string; errmsg?: string }>("/settings/wechat/test", null, { timeout: 30000 });
-      if (res.data.ok) {
-        setMessage(`微信凭据有效：AppID ${res.data.appId}`);
-      } else {
-        setError(`微信 API 返回错误 [${res.data.errcode}]: ${res.data.errmsg}`);
-      }
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "微信连通测试失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const clearWechat = async () => {
-    setBusy(true);
-    setBusyAction("clearWechat");
-    setError(null);
-    try {
-      await api.delete("/settings/wechat");
-      await load();
-      setMessage("微信公众号凭据已删除。");
-    } catch {
-      setError("微信凭据删除失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
   const openEmbeddingForm = () => {
     if (rag) {
       setRagForm((current) => ({
@@ -553,20 +487,7 @@ function AiConfigPage() {
         </div>
         <nav className="admin-nav" aria-label="模型列表">
           <span className="nav-title">模型列表</span>
-          {VIEWS.filter((v) => v.view !== "wechat" && v.view !== "security").map((item) => (
-            <button
-              className={activeView === item.view ? "nav-link active" : "nav-link"}
-              key={item.view}
-              onClick={() => setActiveView(item.view)}
-              type="button"
-            >
-              {item.title}
-            </button>
-          ))}
-        </nav>
-        <nav className="admin-nav admin-nav-secondary" aria-label="系统管理">
-          <span className="nav-title">系统管理</span>
-          {VIEWS.filter((v) => v.view === "wechat" || v.view === "security").map((item) => (
+          {VIEWS.map((item) => (
             <button
               className={activeView === item.view ? "nav-link active" : "nav-link"}
               key={item.view}
@@ -837,50 +758,6 @@ function AiConfigPage() {
                 <input onChange={(e) => setRagForm({ ...ragForm, rerankBaseUrl: e.target.value })} placeholder="Rerank 服务地址，例如 http://localhost:8080（TEI bge-reranker）" value={ragForm.rerankBaseUrl} />
                 <input min={1} onChange={(e) => setRagForm({ ...ragForm, rerankTimeoutSeconds: Number(e.target.value) || 3 })} placeholder="Rerank 超时秒数" type="number" value={ragForm.rerankTimeoutSeconds} />
                 <button className="primary" disabled={busy} type="submit">保存 Rerank 配置</button>
-              </form>
-            )}
-          </>
-        ) : (
-          <p className="muted">加载中...</p>
-        )}
-      </section>
-
-      <section className="admin-card" id="sec-wechat" hidden={activeView !== "wechat"}>
-        <div className="section-head">
-          <h2>微信公众号发布</h2>
-          <div>
-            <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
-            {wechat?.configured && <button className="primary" disabled={busy} onClick={() => void testWechat()} type="button">
-              {busyAction === "testWechat" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连通
-            </button>}
-          </div>
-        </div>
-        {wechat ? (
-          <>
-            <div className="config-grid">
-              <div><small>AppID</small><strong>{wechat.appId || "未配置"}</strong></div>
-              <div><small>AppSecret</small><strong>{wechat.configured ? `已配置（${wechat.keyHint}）` : "未配置"}</strong></div>
-              <div><small>发布模式</small><strong>草稿（需在微信后台手动发布）</strong></div>
-            </div>
-            <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">凭据经加密存入数据库；AppSecret 永不回显。</span>
-              <div>
-                <button className="quiet" onClick={() => setShowWechatForm(!showWechatForm)} type="button">
-                  {wechat.configured ? "更新凭据" : "配置凭据"}
-                </button>
-                {wechat.configured && <button className="danger" disabled={busy} onClick={() => void clearWechat()} type="button">删除凭据</button>}
-              </div>
-            </div>
-            {showWechatForm && (
-              <form
-                className="admin-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveWechat();
-                }}>
-                <input onChange={(e) => setWechatForm({ ...wechatForm, appId: e.target.value })} placeholder="微信公众号 AppID" required value={wechatForm.appId} />
-                <input autoComplete="new-password" onChange={(e) => setWechatForm({ ...wechatForm, appSecret: e.target.value })} placeholder="微信公众号 AppSecret（加密入库，不回显）" type="password" required value={wechatForm.appSecret} />
-                <button className="primary" disabled={busy} type="submit">保存微信凭据</button>
               </form>
             )}
           </>

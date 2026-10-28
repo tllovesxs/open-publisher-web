@@ -9,13 +9,12 @@ import { bridge } from "../lib/bridge";
 import {
   AssistantDrawer,
   AiModifyPane,
-  PublishDialog,
   RevisionHistoryDrawer,
 } from "../components/article/ArticleTools";
 import { SyncPublishDialog } from "../components/article/SyncPublishDialog";
+import { PublishNoticeDialog, publishNoticeMutedToday } from "../components/article/PublishNoticeDialog";
 import { MarkdownWorkbench, type ImageInsertion, type MarkdownSelection, type PreviewPlatform } from "../components/article/MarkdownWorkbench";
 import { ArticleImagePane, type ArticleFigure } from "../components/article/ArticleImagePane";
-import { InsertPositionDialog } from "../components/article/InsertPositionDialog";
 import { useVisualPlan, type VisualPlanSummary } from "../components/article/VisualPlanProvider";
 import ArticleRunTimeline from "../components/ArticleRunTimeline";
 import { articleNodeLabel } from "../workflow/articleNodes";
@@ -23,7 +22,7 @@ import { insertMarkdownAtLine, moveMarkdownSpanToLine, removeMarkdownSpan } from
 
 // 文章库：蓝本 ArticlesPage 的 Web 版核心闭环（团队自有代码）。
 // 本轮实现：列表 + 创作 run（SSE）+ 查看/编辑保存新版本；
-// MarkdownWorkbench / PublishDialog / Assistant 完整迁移见路线图。
+// MarkdownWorkbench / SyncPublishDialog / Assistant 完整迁移见路线图。
 
 interface ArticleState {
   articleId: string;
@@ -105,18 +104,16 @@ export default function ArticlesPage() {
   // 可拖拽面板宽度（本地持久化）：文章列表 / AI 修改栏 / 配图栏。
   const [browserWidth, setBrowserWidth] = usePersistentState("opw.article-browser-width", 248);
   const [aiPaneWidth, setAiPaneWidth] = usePersistentState("opw.ai-pane-width", 318);
-  const [figuresWidth, setFiguresWidth] = usePersistentState("opw.figures-width", 300);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const [viewMode, setViewMode] = useState<"edit" | "split" | "preview">("split");
+  const [viewMode, setViewMode] = useState<"edit" | "split" | "preview">("edit");
   const [previewPlatform, setPreviewPlatform] = useState<PreviewPlatform>("general");
-  const [imagePickerOpen, setImagePickerOpen] = useState(false);
-  const [publishOpen, setPublishOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [syncNoticeOpen, setSyncNoticeOpen] = useState(false);
+  // AI 侧边栏双 Tab：AI 修改 / 配图中心（配图并入侧边栏，不再独立成栏）。
+  const [aiPaneTab, setAiPaneTab] = useState<"assistant" | "figures">("assistant");
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // 素材库选图后的待插入片段：确认行号后写入正文对应行。
-  const [pickerSnippet, setPickerSnippet] = useState<string | null>(null);
   const [rewriteSelection, setRewriteSelection] = useState<MarkdownSelection | null>(null);
   const [lastAiSnapshot, setLastAiSnapshot] = useState<{
     label: string;
@@ -285,7 +282,7 @@ export default function ArticlesPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  // ?open=<articleId>：深链直接选中文章（发布计划/助手等入口的回跳能力）
+  // ?open=<articleId>：深链直接选中文章（同步发布/助手等入口的回跳能力）
   useEffect(() => {
     const openId = searchParams.get("open");
     if (!openId) return;
@@ -715,8 +712,15 @@ export default function ArticlesPage() {
                 </button>
                 <button
                   className="button button--quiet"
-                  aria-expanded={aiPanelOpen}
-                  onClick={() => setAiPanelOpen((v) => !v)}
+                  aria-expanded={aiPanelOpen && aiPaneTab === "assistant"}
+                  onClick={() => {
+                    if (aiPanelOpen && aiPaneTab === "assistant") {
+                      setAiPanelOpen(false);
+                    } else {
+                      setAiPanelOpen(true);
+                      setAiPaneTab("assistant");
+                    }
+                  }}
                   type="button"
                 >
                   <Pencil size={15} />
@@ -725,21 +729,18 @@ export default function ArticlesPage() {
                 <button
                   className="button button--quiet"
                   disabled={!selected.currentRevisionId}
-                  onClick={() => setPublishOpen(true)}
+                  onClick={() => {
+                    if (publishNoticeMutedToday()) {
+                      setSyncOpen(true);
+                    } else {
+                      setSyncNoticeOpen(true);
+                    }
+                  }}
+                  title="通过文章同步发布扩展，把全屏纯净稿同步为多平台草稿"
                   type="button"
                 >
                   <Upload size={15} />
-                  发布
-                </button>
-                <button
-                  className="button button--quiet"
-                  disabled={!selected.currentRevisionId}
-                  onClick={() => setSyncOpen(true)}
-                  title="通过文章同步助手扩展，把全屏纯净稿同步为多平台草稿"
-                  type="button"
-                >
-                  <Upload size={15} />
-                  同步助手
+                  同步发布
                 </button>
                 <button
                   className="button button--quiet"
@@ -753,11 +754,19 @@ export default function ArticlesPage() {
                 </button>
                 <button
                   className="button button--quiet"
-                  onClick={() => setImagePickerOpen(true)}
+                  aria-expanded={aiPanelOpen && aiPaneTab === "figures"}
+                  onClick={() => {
+                    if (aiPanelOpen && aiPaneTab === "figures") {
+                      setAiPanelOpen(false);
+                    } else {
+                      setAiPanelOpen(true);
+                      setAiPaneTab("figures");
+                    }
+                  }}
                   type="button"
                 >
                   <ImagePlus size={15} />
-                  插图
+                  配图
                 </button>
                 <button
                   className="button button--quiet"
@@ -993,6 +1002,9 @@ export default function ArticlesPage() {
                     }}
                     previewPlatform={previewPlatform}
                     onPreviewPlatformChange={setPreviewPlatform}
+                    onFigureDrop={(figure, line) =>
+                      handleMarkdownChange(moveMarkdownSpanToLine(draft, figure.span, line))
+                    }
                   />
                 </div>
                 {aiPanelOpen && (
@@ -1004,12 +1016,41 @@ export default function ArticlesPage() {
                       onPointerDown={(event) =>
                         beginWidthDrag(event, aiPaneWidth, (start, dx) => {
                           const ws = workspaceRef.current?.getBoundingClientRect().width ?? 1200;
-                          const max = Math.max(240, Math.min(560, ws - figuresWidth - (viewMode === "split" ? 450 : 330)));
+                          const max = Math.max(240, Math.min(560, ws - (viewMode === "split" ? 450 : 330)));
                           setAiPaneWidth(clampWidth(start - dx, 260, max));
                         })}
                       role="separator"
                     />
-                    <div className="article-editor__pane article-editor__pane--ai" ref={aiPaneRef} style={{ width: aiPaneWidth }}>
+                    <div className="article-editor__pane article-editor__pane--ai" ref={aiPaneRef} style={{ width: aiPaneWidth, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <div role="tablist" aria-label="侧边栏" style={{ display: "flex", gap: 6, padding: "10px 12px 0" }}>
+                        <button
+                          aria-selected={aiPaneTab === "assistant"}
+                          className={`button button--quiet${aiPaneTab === "assistant" ? "" : ""}`}
+                          onClick={() => setAiPaneTab("assistant")}
+                          role="tab"
+                          style={{
+                            borderBottom: aiPaneTab === "assistant" ? "2px solid var(--accent, #5b8def)" : "2px solid transparent",
+                            borderRadius: 0, fontWeight: aiPaneTab === "assistant" ? 600 : 400,
+                          }}
+                          type="button"
+                        >
+                          AI 修改
+                        </button>
+                        <button
+                          aria-selected={aiPaneTab === "figures"}
+                          className="button button--quiet"
+                          onClick={() => setAiPaneTab("figures")}
+                          role="tab"
+                          style={{
+                            borderBottom: aiPaneTab === "figures" ? "2px solid var(--accent, #5b8def)" : "2px solid transparent",
+                            borderRadius: 0, fontWeight: aiPaneTab === "figures" ? 600 : 400,
+                          }}
+                          type="button"
+                        >
+                          配图
+                        </button>
+                      </div>
+                      {aiPaneTab === "assistant" ? (
                       <AiModifyPane
                     articleId={selected.articleId}
                     key={selected.articleId}
@@ -1035,24 +1076,7 @@ export default function ArticlesPage() {
                     }}
                     selection={rewriteSelection}
                       />
-                    </div>
-                  </>
-                )}
-                {!aiPanelOpen && (
-                  <>
-                    <div
-                      aria-label="调节配图栏宽度"
-                      aria-orientation="vertical"
-                      className="pane-resizer"
-                      onPointerDown={(event) =>
-                        beginWidthDrag(event, figuresWidth, (start, dx) => {
-                          const ws = workspaceRef.current?.getBoundingClientRect().width ?? 1200;
-                          const max = Math.max(240, Math.min(560, ws - 330));
-                          setFiguresWidth(clampWidth(start - dx, 240, max));
-                        })}
-                      role="separator"
-                    />
-                    <div className="article-editor__pane article-editor__pane--figures" style={{ width: figuresWidth }}>
+                      ) : (
                       <ArticleImagePane
                         canInsert={viewMode !== "preview"}
                         markdown={draft}
@@ -1064,7 +1088,9 @@ export default function ArticlesPage() {
                         onMoveFigure={(figure: ArticleFigure, lineNumber: number) =>
                           handleMarkdownChange(moveMarkdownSpanToLine(draft, figure.span, lineNumber))
                         }
+                        style={{ flex: 1, minHeight: 0 }}
                       />
+                      )}
                     </div>
                   </>
                 )}
@@ -1114,19 +1140,24 @@ export default function ArticlesPage() {
           )}
         </div>
       </div>
-      {selected && publishOpen && (
-        <PublishDialog
-          markdown={draft}
-          onClose={() => setPublishOpen(false)}
-          revisionId={selected.currentRevisionId ?? ""}
-          title={selected.title}
-        />
-      )}
       {selected && syncOpen && (
         <SyncPublishDialog
           markdown={draft}
           onClose={() => setSyncOpen(false)}
           title={selected.title}
+        />
+      )}
+      {selected && syncNoticeOpen && (
+        <PublishNoticeDialog
+          onContinue={() => {
+            setSyncNoticeOpen(false);
+            setSyncOpen(true);
+          }}
+          onClose={() => setSyncNoticeOpen(false)}
+          onOpenTutorial={() => {
+            setSyncNoticeOpen(false);
+            navigate("/announcements");
+          }}
         />
       )}
       {selected && historyOpen && (
@@ -1142,94 +1173,7 @@ export default function ArticlesPage() {
           }}
         />
       )}
-      {selected && imagePickerOpen && (
-        <ImagePickerDialog
-          onClose={() => setImagePickerOpen(false)}
-          onInsert={(markdownSnippet) => {
-            setPickerSnippet(markdownSnippet);
-            setImagePickerOpen(false);
-          }}
-        />
-      )}
-      {pickerSnippet && (
-        <InsertPositionDialog
-          confirmLabel="插入"
-          defaultLine={1}
-          onClose={() => setPickerSnippet(null)}
-          onConfirm={(lineNumber) => {
-            handleMarkdownChange(insertMarkdownAtLine(draft, pickerSnippet, lineNumber));
-            setPickerSnippet(null);
-          }}
-          preview={pickerSnippet}
-          title="插入素材库图片"
-        />
-      )}
     </section>
   );
 }
 
-function ImagePickerDialog({
-  onClose,
-  onInsert,
-}: {
-  onClose: () => void;
-  onInsert: (snippet: string) => void;
-}) {
-  const [assets, setAssets] = useState<Array<{ id: string; name: string; source: string; alt: string }>>([]);
-  useEffect(() => {
-    api
-      .get<{ assets: Array<{ id: string; name: string; source: string; alt: string }> }>("/media")
-      .then((res) => setAssets(res.data.assets))
-      .catch(() => setAssets([]));
-  }, []);
-
-  return (
-    <div className="studio-modal" role="presentation">
-      <div className="studio-modal__scrim" onClick={onClose} />
-      <section
-        aria-label="插入图片"
-        aria-modal="true"
-        className="creation-picker__dialog"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        
-      >
-        <header>
-          <div>
-            <span className="page-kicker">插入图片</span>
-            <h2>从素材库选择</h2>
-          </div>
-          <button aria-label="关闭" className="icon-button" onClick={onClose} type="button">
-            ×
-          </button>
-        </header>
-        {assets.length === 0 ? (
-          <p className="muted">素材库为空，请先到「素材库」上传或生成图片。</p>
-        ) : (
-          <div className="creation-picker__media" style={{ maxHeight: 420 }}>
-            {assets.map((asset) => (
-              <button
-                aria-label={`插入 ${asset.name}`}
-                key={asset.id}
-                onClick={() =>
-                  onInsert(`![${asset.alt || asset.name}](/api/media/${asset.id}/raw)`)
-                }
-                type="button"
-              >
-                <img
-                  alt={asset.alt || asset.name}
-                  src={asset.source}
-                  loading="lazy"
-                />
-                <div style={{ minWidth: 0 }}>
-                  <strong>{asset.name}</strong>
-                  {asset.alt && <small>{asset.alt}</small>}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}

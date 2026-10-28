@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { usePersistentState } from "../../lib/usePersistentState";
 import { MarkdownPreview } from "./MarkdownPreview";
+import type { MarkdownSpan } from "./articleMarkdown";
 
 /**
  * Web 版 MarkdownWorkbench（蓝本 MarkdownWorkbench 的完整迁移，团队自有）：
@@ -51,6 +52,7 @@ interface MarkdownWorkbenchProps {
   previewPlatform?: PreviewPlatform;
   onPreviewPlatformChange?: (platform: PreviewPlatform) => void;
   onRequestSelectionRewrite?: (selection: MarkdownSelection) => void;
+  onFigureDrop?: (figure: { kind: "image" | "mermaid"; span: MarkdownSpan }, line: number) => void;
 }
 
 const editorModes: Array<{ id: EditorMode; label: string }> = [
@@ -61,6 +63,53 @@ const editorModes: Array<{ id: EditorMode; label: string }> = [
 
 type ScrollablePane = HTMLTextAreaElement | HTMLDivElement;
 
+// 落点光标定位：把一份同样式的镜像层盖在 textarea 上，用
+// caretPositionFromPoint / caretRangeFromPoint 命中字符偏移。
+// 技术思路来自开源 textarea-caret-position（MIT）一类的镜像测量实现。
+function caretOffsetFromPoint(textarea: HTMLTextAreaElement, clientX: number, clientY: number): number | null {
+  try {
+    const rect = textarea.getBoundingClientRect();
+    const mirror = document.createElement("div");
+    const source = window.getComputedStyle(textarea);
+    for (const prop of [
+      "boxSizing", "fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing",
+      "lineHeight", "padding", "border", "whiteSpace", "wordWrap", "overflowWrap", "tabSize",
+    ] as const) {
+      mirror.style[prop] = source[prop];
+    }
+    mirror.style.position = "fixed";
+    mirror.style.left = `${rect.left}px`;
+    mirror.style.top = `${rect.top}px`;
+    mirror.style.width = `${rect.width}px`;
+    mirror.style.height = `${rect.height}px`;
+    mirror.style.margin = "0";
+    mirror.style.overflow = "hidden";
+    mirror.style.opacity = "0";
+    mirror.style.zIndex = "2147483000";
+    mirror.style.pointerEvents = "none";
+    mirror.textContent = textarea.value;
+    document.body.appendChild(mirror);
+    mirror.scrollTop = textarea.scrollTop;
+    mirror.scrollLeft = textarea.scrollLeft;
+    let offset: number | null = null;
+    const doc = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    };
+    if (doc.caretPositionFromPoint) {
+      const pos = doc.caretPositionFromPoint(clientX, clientY);
+      if (pos?.offsetNode) offset = pos.offset;
+    } else if (doc.caretRangeFromPoint) {
+      const range = doc.caretRangeFromPoint(clientX, clientY);
+      if (range && mirror.contains(range.startContainer)) offset = range.startOffset;
+    }
+    mirror.remove();
+    if (offset === null || offset < 0 || offset > textarea.value.length) return null;
+    return offset;
+  } catch {
+    return null;
+  }
+}
 function syncScrollPosition(source: ScrollablePane, target: ScrollablePane): number | null {
   const sourceMaximum = Math.max(0, source.scrollHeight - source.clientHeight);
   const targetMaximum = Math.max(0, target.scrollHeight - target.clientHeight);
@@ -118,6 +167,7 @@ export function MarkdownWorkbench({
   previewPlatform = "general",
   onPreviewPlatformChange,
   onRequestSelectionRewrite,
+  onFigureDrop,
 }: MarkdownWorkbenchProps) {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -227,6 +277,23 @@ export function MarkdownWorkbench({
   const handleDrop = (event: React.DragEvent<HTMLTextAreaElement>) => {
     event.preventDefault();
     setIsDropTarget(false);
+    // 配图栏拖入：载荷带原文 span，编辑器按落点行调用 onFigureDrop 移动图片位置。
+    const figurePayload = event.dataTransfer.getData("application/x-opw-figure");
+    if (figurePayload && onFigureDrop) {
+      try {
+        const parsed = JSON.parse(figurePayload) as { kind: "image" | "mermaid"; span: MarkdownSpan };
+        const editor = editorRef.current;
+        const offset =
+          (editor ? caretOffsetFromPoint(editor, event.clientX, event.clientY) : null)
+          ?? editor?.selectionStart
+          ?? markdown.length;
+        const line = markdown.slice(0, offset).split("\n").length;
+        onFigureDrop(parsed, line);
+      } catch {
+        // 载荷异常时忽略，不影响正文
+      }
+      return;
+    }
     // 素材库拖入：优先插入媒体 Markdown（光标处），文件拖入走导入。
     const mediaMarkdown = event.dataTransfer.getData("text/x-media-markdown");
     if (mediaMarkdown) {
@@ -402,7 +469,7 @@ export function MarkdownWorkbench({
               className={isDropTarget ? "is-drop-target" : undefined}
               onChange={(event) => onMarkdownChange(event.target.value)}
               onDragEnter={(event) => {
-                if (event.dataTransfer.types.includes("Files")) {
+                if (event.dataTransfer.types.includes("Files") || event.dataTransfer.types.includes("application/x-opw-figure")) {
                   event.preventDefault();
                   setIsDropTarget(true);
                 }

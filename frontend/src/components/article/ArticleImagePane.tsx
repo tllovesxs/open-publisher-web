@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { BarChart3, ImageIcon, LoaderCircle, MoreHorizontal, Plus, ScissorsLineDashed } from "lucide-react";
 import { renderMermaidSvg, resolveAssetReferences } from "./MarkdownPreview";
 import { InsertPositionDialog } from "./InsertPositionDialog";
@@ -89,6 +89,7 @@ interface ArticleImagePaneProps {
   onMoveFigure: (figure: ArticleFigure, lineNumber: number) => void;
   onImageFileDrop?: (file: File) => Promise<ImageInsertion>;
   canInsert?: boolean;
+  style?: CSSProperties;
 }
 
 type LineDialog =
@@ -105,6 +106,7 @@ export function ArticleImagePane({
   onMoveFigure,
   onImageFileDrop,
   canInsert = true,
+  style,
 }: ArticleImagePaneProps) {
   // asset:// 是正文里的紧凑素材引用；侧栏与预览一样先解析成站内原始图地址。
   const resolvedMarkdown = useMemo(() => resolveAssetReferences(markdown), [markdown]);
@@ -185,6 +187,7 @@ export function ArticleImagePane({
     <aside
       aria-label="文章配图"
       className={`article-figures${isDropping ? " is-dropping" : ""}`}
+      style={style}
       onDragEnter={(event) => {
         if (event.dataTransfer.types.includes("Files")) {
           event.preventDefault();
@@ -239,7 +242,15 @@ export function ArticleImagePane({
                   {visibleFigures.map((figure, index) => (
                     <figure
                       className={`article-figures__item${menuFor === index ? " is-menu-open" : ""}`}
-                      key={`figure-${figure.span.start}`}
+                                            draggable
+                      onDragStart={(event) => {
+                        // 拖拽移动配图：载荷带原文位置，编辑器按落点行调用 onMoveFigure。
+                        event.dataTransfer.setData(
+                          "application/x-opw-figure",
+                          JSON.stringify({ kind: figure.kind, span: figure.span }),
+                        );
+                        event.dataTransfer.effectAllowed = "move";
+                      }}key={`figure-${figure.span.start}`}
                       onMouseLeave={() => setMenuFor((current) => (current === index ? null : current))}
                     >
                       {figure.kind === "image" ? (
