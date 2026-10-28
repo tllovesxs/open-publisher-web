@@ -12,6 +12,7 @@ import {
   PublishDialog,
   RevisionHistoryDrawer,
 } from "../components/article/ArticleTools";
+import { SyncPublishDialog } from "../components/article/SyncPublishDialog";
 import { MarkdownWorkbench, type ImageInsertion, type MarkdownSelection, type PreviewPlatform } from "../components/article/MarkdownWorkbench";
 import { ArticleImagePane, type ArticleFigure } from "../components/article/ArticleImagePane";
 import { InsertPositionDialog } from "../components/article/InsertPositionDialog";
@@ -111,6 +112,7 @@ export default function ArticlesPage() {
   const [previewPlatform, setPreviewPlatform] = useState<PreviewPlatform>("general");
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   // 素材库选图后的待插入片段：确认行号后写入正文对应行。
@@ -731,6 +733,16 @@ export default function ArticlesPage() {
                 </button>
                 <button
                   className="button button--quiet"
+                  disabled={!selected.currentRevisionId}
+                  onClick={() => setSyncOpen(true)}
+                  title="通过文章同步助手扩展，把全屏纯净稿同步为多平台草稿"
+                  type="button"
+                >
+                  <Upload size={15} />
+                  同步助手
+                </button>
+                <button
+                  className="button button--quiet"
                   onClick={() =>
                     setViewMode((m) => (m === "edit" ? "split" : m === "split" ? "preview" : "edit"))
                   }
@@ -1103,6 +1115,13 @@ export default function ArticlesPage() {
           markdown={draft}
           onClose={() => setPublishOpen(false)}
           revisionId={selected.currentRevisionId ?? ""}
+          title={selected.title}
+        />
+      )}
+      {selected && syncOpen && (
+        <SyncPublishDialog
+          markdown={draft}
+          onClose={() => setSyncOpen(false)}
           title={selected.title}
         />
       )}

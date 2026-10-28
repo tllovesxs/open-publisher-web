@@ -9312,3 +9312,44 @@ body.is-pane-dragging {
     height: min(480px, calc(100vh - 48px));
   }
 }
+
+/* 智能配图后台任务浮条：弹窗最小化后承接进度状态 */
+.visual-plan-chip {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  box-shadow: var(--shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.16));
+  cursor: pointer;
+}
+
+.visual-plan-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink, var(--accent));
+}
+
+/* 模板库列表项：显示边框（客户端反馈） */
+aside[aria-label="模板列表"] .article-list-item {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+aside[aria-label="模板列表"] .article-list-item:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+}
+
+aside[aria-label="模板列表"] .article-list-item.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
