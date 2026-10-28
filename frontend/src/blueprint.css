@@ -9352,6 +9352,8 @@ aside[aria-label="模板列表"] .article-list-item:hover {
 aside[aria-label="模板列表"] .article-list-item.is-active {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
 /* Article editor: continuous columns and matching source/preview typography. */
 .article-editor__workspace {
   gap: 0;
