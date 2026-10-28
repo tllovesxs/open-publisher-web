@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { useActiveRun } from "../lib/activeRunContext";
 import { usePersistentState } from "../lib/usePersistentState";
 import { api } from "../api/client";
+import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { bridge } from "../lib/bridge";
 import {
   AssistantDrawer,
@@ -106,7 +107,7 @@ export default function ArticlesPage() {
   const [aiPaneWidth, setAiPaneWidth] = usePersistentState("opw.ai-pane-width", 318);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
-  const [viewMode, setViewMode] = useState<"edit" | "split" | "preview">("edit");
+  const [viewMode, setViewMode] = useState<"edit" | "split" | "preview">("split"); // 文章页默认「编辑与预览」
   const [previewPlatform, setPreviewPlatform] = useState<PreviewPlatform>("general");
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncNoticeOpen, setSyncNoticeOpen] = useState(false);
@@ -883,33 +884,27 @@ export default function ArticlesPage() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div className="field">
-                  <label htmlFor="a-tone">文风</label>
-                  <select
-                    className="creation-select"
-                    id="a-tone"
-                    onChange={(e) => setTone(e.target.value)}
+                  <label>文风</label>
+                  <ToolbarSelect
+                    label="文风"
+                    onChange={(value) => setTone(value)}
+                    options={[
+                      { id: "", label: "默认（自然中文）" },
+                      { id: "产品推广", label: "产品推广" },
+                      { id: "技术解析", label: "技术解析" },
+                      { id: "真人感", label: "真人感增强" },
+                    ]}
                     value={tone}
-                  >
-                    <option value="">默认（自然中文）</option>
-                    <option value="产品推广">产品推广</option>
-                    <option value="技术解析">技术解析</option>
-                    <option value="真人感">真人感增强</option>
-                  </select>
+                  />
                 </div>
                 <div className="field">
-                  <label htmlFor="a-length">篇幅</label>
-                  <select
-                    className="creation-select"
-                    id="a-length"
-                    onChange={(e) => setLengthPreset(e.target.value)}
+                  <label>篇幅</label>
+                  <ToolbarSelect
+                    label="篇幅"
+                    onChange={(value) => setLengthPreset(value)}
+                    options={LENGTH_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
                     value={lengthPreset}
-                  >
-                    {LENGTH_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
               {lengthPreset === "custom" && (
@@ -1025,29 +1020,21 @@ export default function ArticlesPage() {
                       role="separator"
                     />
                     <div className="article-editor__pane article-editor__pane--ai" ref={aiPaneRef} style={{ width: aiPaneWidth, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                      <div role="tablist" aria-label="侧边栏" style={{ display: "flex", gap: 6, padding: "10px 12px 0" }}>
+                      <div aria-label="侧边栏" className="article-side-tabs" role="tablist">
                         <button
                           aria-selected={aiPaneTab === "assistant"}
-                          className={`button button--quiet${aiPaneTab === "assistant" ? "" : ""}`}
+                          className={`article-side-tabs__tab${aiPaneTab === "assistant" ? " is-active" : ""}`}
                           onClick={() => setAiPaneTab("assistant")}
                           role="tab"
-                          style={{
-                            borderBottom: aiPaneTab === "assistant" ? "2px solid var(--accent, #5b8def)" : "2px solid transparent",
-                            borderRadius: 0, fontWeight: aiPaneTab === "assistant" ? 600 : 400,
-                          }}
                           type="button"
                         >
                           AI 修改
                         </button>
                         <button
                           aria-selected={aiPaneTab === "figures"}
-                          className="button button--quiet"
+                          className={`article-side-tabs__tab${aiPaneTab === "figures" ? " is-active" : ""}`}
                           onClick={() => setAiPaneTab("figures")}
                           role="tab"
-                          style={{
-                            borderBottom: aiPaneTab === "figures" ? "2px solid var(--accent, #5b8def)" : "2px solid transparent",
-                            borderRadius: 0, fontWeight: aiPaneTab === "figures" ? 600 : 400,
-                          }}
                           type="button"
                         >
                           配图
