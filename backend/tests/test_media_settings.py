@@ -162,3 +162,97 @@ def test_image_test_without_key_returns_501(client, monkeypatch):
     )
     res = client.post("/api/settings/image/test")
     assert res.status_code == 501
+
+
+class _FakeVisionLLM:
+    def __init__(self):
+        self.calls = []
+
+    def complete_json(self, system, user, *, images=None, temperature=0.7):
+        self.calls.append({"images": images, "system": system})
+        return {
+            "alt": "产品界面截图",
+            "visualDescription": "深色后台仪表盘截图，左侧为导航栏，主区域是数据卡片。",
+            "usageHint": "产品功能介绍",
+            "tags": ["截图", "仪表盘", "后台"],
+        }
+
+
+def _create_upload(client, name="上传图"):
+    res = client.post("/api/media", json={
+        "name": name, "mime": "image/png",
+        "dataUrl": "data:image/png;base64,iVBORw0KGgo=",
+        "alt": "", "visualDescription": "", "usageHint": "", "tags": [],
+    })
+    assert res.status_code == 201
+    return res.json()
+
+
+def test_media_analyze_uses_vision_llm_and_backfills(client, monkeypatch):
+    """可行性验证：上传图片 → 视觉 LLM 分析 → 结构化字段回填。"""
+    from app.services import model_profile_service
+
+    asset = _create_upload(client)
+    fake_llm = _FakeVisionLLM()
+
+    monkeypatch.setattr(
+        model_profile_service, "resolve_llm_profile_config",
+        lambda db, *, profile_id=None, owner_user_id=None: {
+            "api_key": "sk-test", "base_url": "https://llm.example.com/v1",
+            "model": "vision-model", "timeout_seconds": 30,
+            "profileId": "mp-1", "profileName": "视觉档案",
+            "capabilities": {"vision": True},
+        },
+    )
+    import app.agents.llm_client as llm_client_mod
+    monkeypatch.setattr(llm_client_mod, "LLMClient", lambda config: fake_llm)
+
+    res = client.post(f"/api/media/{asset['id']}/analyze", json={})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["alt"] == "产品界面截图"
+    assert "深色后台仪表盘" in body["visualDescription"]
+    assert body["usageHint"] == "产品功能介绍"
+    assert body["tags"] == ["截图", "仪表盘", "后台"]
+    assert body["descriptionSource"] == "ai_analysis"
+    # 图片 data URL 确实传入了视觉模型
+    assert fake_llm.calls[0]["images"] == ["data:image/png;base64,iVBORw0KGgo="]
+
+
+def test_media_analyze_rejects_profile_without_vision(client, monkeypatch):
+    from app.services import model_profile_service
+
+    asset = _create_upload(client)
+    monkeypatch.setattr(
+        model_profile_service, "resolve_llm_profile_config",
+        lambda db, *, profile_id=None, owner_user_id=None: {
+            "api_key": "sk-test", "base_url": "", "model": "m",
+            "timeout_seconds": 30, "profileId": None, "profileName": None,
+            "capabilities": {},
+        },
+    )
+    res = client.post(f"/api/media/{asset['id']}/analyze", json={})
+    assert res.status_code == 400
+    assert "图片理解" in res.json()["detail"]
+
+
+def test_media_analyze_rejects_non_image_asset(client, monkeypatch):
+    from app.services import model_profile_service
+
+    res = client.post("/api/media", json={
+        "name": "文本", "mime": "text/plain",
+        "dataUrl": "data:text/plain;base64,aGVsbG8=",
+    })
+    assert res.status_code == 201
+    asset = res.json()
+    monkeypatch.setattr(
+        model_profile_service, "resolve_llm_profile_config",
+        lambda db, *, profile_id=None, owner_user_id=None: {
+            "api_key": "sk-test", "base_url": "", "model": "m",
+            "timeout_seconds": 30, "profileId": None, "profileName": None,
+            "capabilities": {"vision": True},
+        },
+    )
+    res = client.post(f"/api/media/{asset['id']}/analyze", json={})
+    assert res.status_code == 400
+    assert "仅支持分析图片素材" in res.json()["detail"]

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, ImagePlus, LoaderCircle, Pencil, Rocket, Save, Trash2, Upload, X } from "lucide-react";
+import { Check, Copy, ImagePlus, LoaderCircle, Pencil, Rocket, Save, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 
@@ -60,6 +60,7 @@ export default function MediaPage() {
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [form, setForm] = useState<MediaForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -158,6 +159,23 @@ export default function MediaPage() {
       setError("保存素材信息失败。");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const analyzeAsset = async () => {
+    if (!selected || analyzing) return;
+    setAnalyzing(true);
+    setError(null);
+    try {
+      const res = await api.post<MediaAsset>(`/media/${selected.id}/analyze`, {});
+      setSelected(res.data);
+      setForm(toForm(res.data));
+      await load();
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "AI 分析失败（需开启视觉能力的模型档案与密钥）。");
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -612,8 +630,18 @@ export default function MediaPage() {
                 标签（逗号分隔）
                 <input onChange={(event) => setForm({ ...form, tagsText: event.target.value })} style={{ borderRadius: 8, border: "1px solid var(--border, #ddd)", fontSize: 13, padding: "8px 10px" }} value={form.tagsText} />
               </label>
-              <div style={{ alignItems: "center", color: "var(--muted, #888)", display: "flex", fontSize: 11, gap: 6 }}>
-                <span>来源：{selected.descriptionSource || "manual"}</span>
+              <div style={{ alignItems: "center", display: "flex", fontSize: 11, gap: 8 }}>
+                <button
+                  className="button"
+                  disabled={analyzing}
+                  onClick={() => void analyzeAsset()}
+                  style={{ alignItems: "center", display: "flex", fontSize: 12, gap: 5, padding: "6px 12px" }}
+                  type="button"
+                >
+                  {analyzing ? <LoaderCircle className="spin" size={13} /> : <Sparkles size={13} />}
+                  {analyzing ? "分析中" : "AI 分析"}
+                </button>
+                <span style={{ color: "var(--muted, #888)" }}>来源：{selected.descriptionSource || "manual"}</span>
               </div>
               <button
                 className="button button--primary"

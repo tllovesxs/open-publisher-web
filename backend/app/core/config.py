@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     workflow_score_threshold: int = 80
     workflow_max_iterations: int = 3
 
+    # RAG：混合检索 + 重排 + 引用溯源（嵌入复用 LLM 档案密钥，仅存数据库）
+    rag_enabled: bool = True
+    rag_embedding_model: str = "text-embedding-3-small"
+    rag_index_dir: str = "data/rag"
+    rag_chunk_chars: int = 600
+    rag_top_k: int = 5
+    # TEI bge-reranker 服务地址（scripts/rerank.ps1 启动的容器）
+    rerank_base_url: str = "http://localhost:8080"
+    rerank_timeout_seconds: float = 3.0
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

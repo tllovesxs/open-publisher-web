@@ -604,6 +604,121 @@ def set_integration_key(kind: Literal["tavily", "github"], body: KeyPayload, db:
     secret_store.set_secret(db, "integration:" + kind, body.apiKey.strip(), actor=user.id)
     return _key_status_out(db, "integration:" + kind)
 
+# ---------- RAG 检索模型配置 ----------
+
+RAG_PREF_KEY = "admin:rag"
+
+
+class RagConfigUpdate(BaseModel):
+    embeddingBaseUrl: str = Field(default="", max_length=500)
+    embeddingModel: str = Field(min_length=1, max_length=200)
+    rerankBaseUrl: str = Field(default="", max_length=500)
+    rerankTimeoutSeconds: int = Field(default=3, ge=1, le=120)
+
+
+def _rag_out(db: Session) -> dict:
+    from app.core.config import get_settings
+    from app.services.workspace_settings import read_preferences
+
+    settings = get_settings()
+    saved = read_preferences(db, RAG_PREF_KEY) or {}
+    return {
+        "embeddingBaseUrl": saved.get("embeddingBaseUrl", ""),
+        "embeddingModel": saved.get("embeddingModel", settings.rag_embedding_model),
+        "rerankBaseUrl": saved.get("rerankBaseUrl", settings.rerank_base_url),
+        "rerankTimeoutSeconds": saved.get("rerankTimeoutSeconds", int(settings.rerank_timeout_seconds)),
+        "embeddingKeyConfigured": bool(resolve_llm_config().get("api_key")),
+        "source": "db" if saved else "default",
+    }
+
+
+@router.get("/rag", dependencies=[Depends(require_admin)])
+def rag_config(db: Session = Depends(get_db)):
+    return _rag_out(db)
+
+
+@router.put("/rag", dependencies=[Depends(require_admin)])
+def update_rag_config(body: RagConfigUpdate, db: Session = Depends(get_db)):
+    from app.services.workspace_settings import write_preferences
+
+    write_preferences(db, RAG_PREF_KEY, {
+        "embeddingBaseUrl": body.embeddingBaseUrl.strip(),
+        "embeddingModel": body.embeddingModel.strip(),
+        "rerankBaseUrl": body.rerankBaseUrl.strip(),
+        "rerankTimeoutSeconds": body.rerankTimeoutSeconds,
+    })
+    return _rag_out(db)
+
+
+@router.delete("/rag", dependencies=[Depends(require_admin)])
+def reset_rag_config(db: Session = Depends(get_db)):
+    from app.models.settings_profile import WorkspacePreference
+
+    row = db.get(WorkspacePreference, RAG_PREF_KEY)
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return _rag_out(db)
+
+
+@router.post("/rag/test", dependencies=[Depends(require_admin)])
+def test_rag_config(db: Session = Depends(get_db)):
+    """分别探测 embedding 与 rerank 链路连通性。"""
+    import json as _json
+    import urllib.request
+
+    config = _rag_out(db)
+    result: dict = {"embedding": {"ok": False}, "rerank": {"ok": False}}
+
+    if not config["embeddingKeyConfigured"]:
+        result["embedding"]["detail"] = "未配置嵌入密钥（复用 LLM 密钥库）"
+    else:
+        llm = resolve_llm_config()
+        base_url = config["embeddingBaseUrl"] or llm["base_url"]
+        started = time.monotonic()
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=llm["api_key"], base_url=base_url, timeout=30)
+            resp = client.embeddings.create(
+                model=config["embeddingModel"], input=["连通性测试"],
+            )
+            vector = resp.data[0].embedding
+            result["embedding"] = {
+                "ok": True,
+                "model": config["embeddingModel"],
+                "dimensions": len(vector),
+                "latencyMs": int((time.monotonic() - started) * 1000),
+            }
+        except Exception as exc:  # noqa: BLE001
+            result["embedding"] = {"ok": False, "detail": str(exc)}
+
+    base = (config["rerankBaseUrl"] or "").rstrip("/")
+    if not base:
+        result["rerank"] = {"ok": False, "detail": "未配置重排服务地址（可留空跳过重排）"}
+    else:
+        started = time.monotonic()
+        try:
+            body = _json.dumps({
+                "query": "连通性测试",
+                "texts": ["片段一", "片段二"],
+                "raw_scores": False,
+            }).encode()
+            req = urllib.request.Request(
+                f"{base}/rerank", data=body,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=max(3, config["rerankTimeoutSeconds"])) as resp:
+                payload = _json.loads(resp.read().decode("utf-8"))
+            ranked = payload.get("data") or payload.get("results") or []
+            result["rerank"] = {
+                "ok": bool(ranked),
+                "latencyMs": int((time.monotonic() - started) * 1000),
+            }
+        except Exception as exc:  # noqa: BLE001
+            result["rerank"] = {"ok": False, "detail": f"重排服务不可用：{exc}"}
+    return result
+
 @router.get("/data/export")
 def export_my_data(db: Session = Depends(get_db), user: AppUser = Depends(require_user)):
     from app.services.article_store import ArticleStore

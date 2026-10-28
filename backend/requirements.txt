@@ -12,6 +12,11 @@ openai>=1.50
 sse-starlette>=2.1
 fastapi-users>=15,<16
 
+# RAG：混合检索 + PDF 解析
+rank-bm25>=0.2.2
+pypdf>=5.0
+numpy>=1.26
+
 # 测试
 pytest>=8.0
 httpx>=0.27

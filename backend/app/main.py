@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, agent_runs, articles, assistant, auth, health, media, projects, publishing, revisions, runs, templates
+from app.api import admin, agent_runs, articles, assistant, auth, health, media, projects, publishing, rag, revisions, runs, templates
 from app.api import settings as settings_api
 from app.core.auth import require_admin, require_user
 from app.core.config import get_settings
@@ -36,6 +36,7 @@ app.include_router(assistant.router, prefix="/api", dependencies=[Depends(requir
 app.include_router(media.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(settings_api.router, prefix="/api")
 app.include_router(publishing.router, prefix="/api", dependencies=[Depends(require_user)])
+app.include_router(rag.router, prefix="/api", dependencies=[Depends(require_user)])
 
 
 @app.on_event("startup")

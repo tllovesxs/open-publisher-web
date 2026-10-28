@@ -52,6 +52,27 @@ const emptyImageForm = {
   timeoutSeconds: 180,
 };
 
+interface RagConfig {
+  embeddingBaseUrl: string;
+  embeddingModel: string;
+  rerankBaseUrl: string;
+  rerankTimeoutSeconds: number;
+  embeddingKeyConfigured: boolean;
+  source: "db" | "default";
+}
+
+
+const VIEWS = [
+  { view: "text", title: "文本模型", desc: "当前生效的文本生成模型与密钥。" },
+  { view: "profiles", title: "模型档案", desc: "维护多套文本模型配置并切换生效档案。" },
+  { view: "image", title: "生图模型", desc: "文章配图使用的图像生成模型。" },
+  { view: "embedding", title: "Embedding 模型", desc: "RAG 资料向量化与检索使用的嵌入模型。" },
+  { view: "rerank", title: "Rerank 模型", desc: "检索结果重排序服务（bge-reranker 兼容）。" },
+  { view: "wechat", title: "微信发布", desc: "微信公众号草稿发布凭据。" },
+  { view: "security", title: "密钥安全", desc: "密钥的存储与使用约定。" },
+] as const;
+
+
 function AiConfigPage() {
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [profiles, setProfiles] = useState<ProfileOut[]>([]);
@@ -72,21 +93,29 @@ function AiConfigPage() {
   const [wechatForm, setWechatForm] = useState({appId: "", appSecret: ""});
   const [showWechatForm, setShowWechatForm] = useState(false);
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);
+  const [rag, setRag] = useState<RagConfig | null>(null);
+  const [ragForm, setRagForm] = useState({ embeddingBaseUrl: "", embeddingModel: "", rerankBaseUrl: "", rerankTimeoutSeconds: 3 });
+  const [activeView, setActiveView] = useState("text");
+  const [showEmbeddingForm, setShowEmbeddingForm] = useState(false);
+  const [showRerankForm, setShowRerankForm] = useState(false);
+  const [ragTest, setRagTest] = useState<{embedding: {ok: boolean; detail?: string; dimensions?: number; latencyMs?: number}; rerank: {ok: boolean; detail?: string; latencyMs?: number}} | null>(null);
   const { logout, user } = useAdminAuth();
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [statusRes, profilesRes, imageRes, wechatRes] = await Promise.all([
+      const [statusRes, profilesRes, imageRes, wechatRes, ragRes] = await Promise.all([
         api.get<ModelStatus>("/settings/model"),
         api.get<{ profiles: ProfileOut[] }>("/settings/profiles"),
         api.get<ImageStatus>("/settings/image"),
         api.get<{configured: boolean; appId: string; keyHint: string; keyVersion: number}>("/settings/wechat"),
+        api.get<RagConfig>("/settings/rag"),
       ]);
       setStatus(statusRes.data);
       setProfiles(profilesRes.data.profiles);
       setImage(imageRes.data);
       setWechat(wechatRes.data);
+      setRag(ragRes.data);
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(typeof detail === "string" ? detail : "无法读取 AI 配置。");
@@ -338,7 +367,7 @@ function AiConfigPage() {
     try {
       await api.delete("/settings/image/key");
       await load();
-      setMessage("生图密钥已删除；可回退全局文本模型数据库密钥。");
+      setMessage("生图密钥已删除，后续调用沿用文本模型密钥。");
     } catch {
       setError("密钥删除失败。");
     } finally {
@@ -377,7 +406,7 @@ function AiConfigPage() {
     try {
       await api.delete(`/settings/profiles/${id}/key`);
       await load();
-      setMessage("档案密钥已删除；调用时将回退全局数据库密钥。");
+      setMessage("档案密钥已删除，调用时沿用全局密钥。");
     } catch {
       setError("密钥删除失败。");
     } finally {
@@ -445,22 +474,122 @@ function AiConfigPage() {
     }
   };
 
+  const openEmbeddingForm = () => {
+    if (rag) {
+      setRagForm((current) => ({
+        ...current,
+        embeddingBaseUrl: rag.embeddingBaseUrl,
+        embeddingModel: rag.embeddingModel,
+      }));
+    }
+    setRagTest(null);
+    setShowEmbeddingForm(true);
+  };
+
+  const openRerankForm = () => {
+    if (rag) {
+      setRagForm((current) => ({
+        ...current,
+        rerankBaseUrl: rag.rerankBaseUrl,
+        rerankTimeoutSeconds: rag.rerankTimeoutSeconds,
+      }));
+    }
+    setRagTest(null);
+    setShowRerankForm(true);
+  };
+
+  const saveRag = async () => {
+    if (!ragForm.embeddingModel.trim()) {
+      setError("Embedding 模型 ID 必填。");
+      return;
+    }
+    setBusy(true);
+    setBusyAction("saveRag");
+    setError(null);
+    try {
+      await api.put<RagConfig>("/settings/rag", ragForm);
+      setShowEmbeddingForm(false);
+      setShowRerankForm(false);
+      await load();
+      setMessage("RAG 检索模型配置已保存。");
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "RAG 配置保存失败。");
+    } finally {
+      setBusy(false);
+      setBusyAction(null);
+    }
+  };
+
+  const testRag = async () => {
+    setBusy(true);
+    setBusyAction("testRag");
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await api.post<{embedding: {ok: boolean; detail?: string; dimensions?: number; latencyMs?: number}; rerank: {ok: boolean; detail?: string; latencyMs?: number}}>("/settings/rag/test", null, { timeout: 120000 });
+      setRagTest(res.data);
+      if (res.data.embedding.ok && res.data.rerank.ok) {
+        setMessage(`Embedding 与 Rerank 均连通。`);
+      }
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "RAG 连通测试失败。");
+    } finally {
+      setBusy(false);
+      setBusyAction(null);
+    }
+  };
+
   return (
     <div className="admin-shell">
-      <header>
-        <div>
-          <small>管理控制台</small>
-          <h1>AI 与 API 配置</h1>
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <span className="brand-mark">OP</span>
+          <div>
+            <strong>Open Publisher</strong>
+            <small>管理控制台</small>
+          </div>
         </div>
+        <nav className="admin-nav" aria-label="模型列表">
+          <span className="nav-title">模型列表</span>
+          {VIEWS.filter((v) => v.view !== "wechat" && v.view !== "security").map((item) => (
+            <button
+              className={activeView === item.view ? "nav-link active" : "nav-link"}
+              key={item.view}
+              onClick={() => setActiveView(item.view)}
+              type="button"
+            >
+              {item.title}
+            </button>
+          ))}
+        </nav>
+        <nav className="admin-nav admin-nav-secondary" aria-label="系统管理">
+          <span className="nav-title">系统管理</span>
+          {VIEWS.filter((v) => v.view === "wechat" || v.view === "security").map((item) => (
+            <button
+              className={activeView === item.view ? "nav-link active" : "nav-link"}
+              key={item.view}
+              onClick={() => setActiveView(item.view)}
+              type="button"
+            >
+              {item.title}
+            </button>
+          ))}
+        </nav>
         <div className="admin-user">
           <span>{user?.displayName ?? user?.username}</span>
           <button className="quiet" onClick={() => void logout()} type="button">
-            <LogOut size={14} /> 退出
+            <LogOut size={14} /> 退出登录
           </button>
         </div>
-      </header>
-
-      <section className="admin-card">
+      </aside>
+      <main className="admin-main">
+        <div className="admin-main-head">
+          <h1>{VIEWS.find((v) => v.view === activeView)?.title ?? "管理控制台"}</h1>
+          <p className="muted">{VIEWS.find((v) => v.view === activeView)?.desc}</p>
+        </div>
+      <section className="admin-card" id="sec-current" hidden={activeView !== "text"}>
         <div className="section-head">
           <h2>当前生效配置</h2>
           <div>
@@ -485,7 +614,7 @@ function AiConfigPage() {
           {showDiscoveredModels && (
             <div className="admin-form" style={{ marginTop: 12 }}>
               {discoveredModels.length === 0 ? (
-                <p className="muted">上游没有返回模型。</p>
+                <p className="muted">未发现可用模型，请检查 API 地址与密钥。</p>
               ) : (
                 <div className="profile-list">
                   {discoveredModels.map((model) => (
@@ -516,7 +645,7 @@ function AiConfigPage() {
             )}
           </div>
           {status.keyHint && (
-            <p className="muted">当前密钥 {status.keyHint}（来源：数据库加密存储）</p>
+            <p className="muted">当前密钥 {status.keyHint}（已加密保存）</p>
           )}
           </>
         ) : (
@@ -524,7 +653,7 @@ function AiConfigPage() {
         )}
       </section>
 
-      <section className="admin-card">
+      <section className="admin-card" id="sec-profiles" hidden={activeView !== "profiles"}>
         <div className="section-head">
           <h2>模型档案</h2>
           <button className="primary" onClick={() => setShowForm(!showForm)} type="button">
@@ -571,7 +700,7 @@ function AiConfigPage() {
         </div>
       </section>
 
-      <section className="admin-card">
+      <section className="admin-card" id="sec-image" hidden={activeView !== "image"}>
         <div className="section-head">
           <h2>生图模型配置</h2>
           <div>
@@ -598,7 +727,7 @@ function AiConfigPage() {
               )}
             </div>
             {image.keyHint && (
-              <p className="muted">当前生图密钥 {image.keyHint}（来源：数据库加密存储）</p>
+              <p className="muted">当前生图密钥 {image.keyHint}（已加密保存）</p>
             )}
             <div className="section-head" style={{ marginTop: 12 }}>
               <span className="muted">密钥只使用数据库加密存储；均不回显明文。</span>
@@ -628,7 +757,95 @@ function AiConfigPage() {
         )}
       </section>
 
-      <section className="admin-card">
+      <section className="admin-card" id="sec-embedding" hidden={activeView !== "embedding"}>
+        <div className="section-head">
+          <h2>Embedding 模型</h2>
+          <div>
+            <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
+            <button className="primary" disabled={busy} onClick={() => void testRag()} type="button">
+              {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连通
+            </button>
+          </div>
+        </div>
+        {rag ? (
+          <>
+            <div className="config-grid">
+              <div><small>API Base URL</small><strong>{rag.embeddingBaseUrl || "沿用文本模型 API 地址"}</strong></div>
+              <div><small>模型</small><strong>{rag.embeddingModel}</strong></div>
+              <div><small>密钥状态</small><strong>{rag.embeddingKeyConfigured ? "已配置（复用文本模型密钥）" : "未配置"}</strong></div>
+            </div>
+            {ragTest && (
+              <div className="config-grid" style={{ marginTop: 12 }}>
+                <div><small>连通测试</small><strong>{ragTest.embedding.ok ? `正常（${ragTest.embedding.dimensions ?? "?"} 维 · ${ragTest.embedding.latencyMs ?? "?"}ms）` : `失败：${ragTest.embedding.detail ?? "未知"}`}</strong></div>
+              </div>
+            )}
+            <div className="section-head" style={{ marginTop: 12 }}>
+              <span className="muted">密钥复用文本模型密钥库，不回显明文。</span>
+              <button className="quiet" onClick={openEmbeddingForm} type="button">编辑配置</button>
+            </div>
+            {showEmbeddingForm && (
+              <form
+                className="admin-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveRag();
+                }}>
+                <input onChange={(e) => setRagForm({ ...ragForm, embeddingBaseUrl: e.target.value })} placeholder="Embedding API Base URL（留空沿用文本模型地址）" value={ragForm.embeddingBaseUrl} />
+                <input onChange={(e) => setRagForm({ ...ragForm, embeddingModel: e.target.value })} placeholder="Embedding 模型 ID，例如 text-embedding-3-small / embedding-3 / BAAI/bge-m3" required value={ragForm.embeddingModel} />
+                <button className="primary" disabled={busy} type="submit">保存 Embedding 配置</button>
+              </form>
+            )}
+          </>
+        ) : (
+          <p className="muted">加载中...</p>
+        )}
+      </section>
+
+      <section className="admin-card" id="sec-rerank" hidden={activeView !== "rerank"}>
+        <div className="section-head">
+          <h2>Rerank 模型</h2>
+          <div>
+            <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
+            <button className="primary" disabled={busy} onClick={() => void testRag()} type="button">
+              {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连通
+            </button>
+          </div>
+        </div>
+        {rag ? (
+          <>
+            <div className="config-grid">
+              <div><small>服务地址</small><strong>{rag.rerankBaseUrl || "未配置（跳过重排）"}</strong></div>
+              <div><small>超时</small><strong>{rag.rerankTimeoutSeconds}s</strong></div>
+              <div><small>配置来源</small><strong>{rag.source === "db" ? "管理端配置" : "默认配置"}</strong></div>
+            </div>
+            {ragTest && (
+              <div className="config-grid" style={{ marginTop: 12 }}>
+                <div><small>连通测试</small><strong>{ragTest.rerank.ok ? `正常（${ragTest.rerank.latencyMs ?? "?"}ms）` : `不可用：${ragTest.rerank.detail ?? "未知"}`}</strong></div>
+              </div>
+            )}
+            <div className="section-head" style={{ marginTop: 12 }}>
+              <span className="muted">使用 bge-reranker 兼容服务（TEI 协议 /rerank）。</span>
+              <button className="quiet" onClick={openRerankForm} type="button">编辑配置</button>
+            </div>
+            {showRerankForm && (
+              <form
+                className="admin-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveRag();
+                }}>
+                <input onChange={(e) => setRagForm({ ...ragForm, rerankBaseUrl: e.target.value })} placeholder="Rerank 服务地址，例如 http://localhost:8080（TEI bge-reranker）" value={ragForm.rerankBaseUrl} />
+                <input min={1} onChange={(e) => setRagForm({ ...ragForm, rerankTimeoutSeconds: Number(e.target.value) || 3 })} placeholder="Rerank 超时秒数" type="number" value={ragForm.rerankTimeoutSeconds} />
+                <button className="primary" disabled={busy} type="submit">保存 Rerank 配置</button>
+              </form>
+            )}
+          </>
+        ) : (
+          <p className="muted">加载中...</p>
+        )}
+      </section>
+
+      <section className="admin-card" id="sec-wechat" hidden={activeView !== "wechat"}>
         <div className="section-head">
           <h2>微信公众号发布</h2>
           <div>
@@ -646,7 +863,7 @@ function AiConfigPage() {
               <div><small>发布模式</small><strong>草稿（需在微信后台手动发布）</strong></div>
             </div>
             <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">凭据经 Fernet 加密存入数据库；AppSecret 永不回显。</span>
+              <span className="muted">凭据经加密存入数据库；AppSecret 永不回显。</span>
               <div>
                 <button className="quiet" onClick={() => setShowWechatForm(!showWechatForm)} type="button">
                   {wechat.configured ? "更新凭据" : "配置凭据"}
@@ -672,16 +889,16 @@ function AiConfigPage() {
         )}
       </section>
 
-      <section className="admin-card">
-        <h2>密钥安全约定</h2>
+      <section className="admin-card" id="sec-security" hidden={activeView !== "security"}>
+        <h2>密钥安全</h2>
         <p className="muted">
-          企业级密钥约定（2026-10-27 起）：API Key 密文经 Fernet 信封加密存入后端数据库（app_secrets），主密钥通过 SECRET_ENCRYPTION_KEY 环境变量注入、不进仓库；不再提供 API Key 环境变量回退。明文不回显到浏览器，不进日志。
-          管理端只填写 API 地址、模型和超时；密钥一律通过独立的密钥录入接口加密入库。
+          所有 API Key 均经加密存入数据库，不回显明文、不进日志；在各配置卡内通过"保存密钥"录入，删除后该配置回退到默认密钥。
         </p>
       </section>
 
       {message && <div className="success">{message}</div>}
       {error && <div className="error">{error}</div>}
+    </main>
     </div>
   );
 }

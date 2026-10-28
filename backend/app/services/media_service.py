@@ -274,6 +274,44 @@ class MediaService:
         self.db.refresh(row)
         return self._out(row)
 
+    ANALYZE_SYSTEM = (
+        "你是素材库图片分析助手。分析图片的主体、构图、色彩、风格与可用场景，"
+        "只输出一个 JSON 对象，字段：alt（不超过500字符的一句话概括）、"
+        "visualDescription（不超过2000字符，覆盖主体/构图/色彩/风格/可用场景）、"
+        "usageHint（不超过500字符，说明适用文章场景）、tags（不超过6个短标签的字符串数组）。"
+        "不要输出 JSON 以外的任何内容。"
+    )
+
+    def analyze(self, asset_id: str, *, owner_user_id: str | None = None, llm) -> dict:
+        """用视觉模型分析已上传/生成的图片素材，回填描述字段。
+
+        上传后分析的可行性验证链路：读取素材 data URL → 传入视觉 LLM →
+        结构化回填 alt/visualDescription/usageHint/tags。
+        """
+        row = self.get(asset_id, owner_user_id)
+        if row is None:
+            raise KeyError("asset not found")
+        if not row.mime.startswith("image/") or not row.source.startswith("data:image/"):
+            raise ValueError("仅支持分析图片素材（data URL）")
+        result = llm.complete_json(
+            self.ANALYZE_SYSTEM, "请分析这张图片素材并输出 JSON。",
+            images=[row.source], temperature=0.3,
+        )
+
+        def _text(value: object, limit: int) -> str:
+            return str(value).strip()[:limit] if value else ""
+
+        row.alt = _text(result.get("alt"), 500) or row.alt
+        row.visual_description = _text(result.get("visualDescription"), 2000) or row.visual_description
+        row.usage_hint = _text(result.get("usageHint"), 500) or row.usage_hint
+        tags = result.get("tags")
+        if isinstance(tags, list):
+            row.tags = self._clean_tags([str(tag) for tag in tags])
+        row.description_source = "ai_analysis"
+        self.db.commit()
+        self.db.refresh(row)
+        return self._out(row)
+
     @staticmethod
     def _clean_tags(tags: list[str]) -> list[str]:
         return list(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))[:20]

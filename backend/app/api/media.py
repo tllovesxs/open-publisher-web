@@ -132,6 +132,46 @@ def preview_media(
     raise HTTPException(status_code=502, detail="生图 API 没有返回内容")
 
 
+class MediaAnalyzeRequest(BaseModel):
+    """上传后 AI 分析：可用模型档案留空 = 全局激活档案。"""
+    profileId: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/{asset_id}/analyze")
+def analyze_media(
+    asset_id: str,
+    body: MediaAnalyzeRequest | None = None,
+    db: Session = Depends(get_db),
+    user: AppUser = Depends(require_user),
+):
+    """视觉模型分析素材图片，回填 alt/视觉描述/使用场景/标签。"""
+    row = MediaService(db).get(asset_id, owner_user_id=user.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="asset not found")
+    _writable_or_403(row, user)
+    from app.agents.llm_client import LLMClient, LLMError
+    from app.services.model_profile_service import resolve_llm_profile_config
+
+    resolved = resolve_llm_profile_config(
+        db, profile_id=body.profileId if body else None, owner_user_id=user.id,
+    )
+    capabilities = resolved.get("capabilities") or {}
+    if not capabilities.get("vision"):
+        raise HTTPException(status_code=400, detail="当前模型档案未开启图片理解能力。")
+    if not resolved.get("api_key"):
+        raise HTTPException(status_code=501, detail="LLM 模型未配置密钥")
+    try:
+        return MediaService(db).analyze(
+            asset_id, owner_user_id=user.id, llm=LLMClient(config=resolved),
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="asset not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
 @router.delete("/{asset_id}", status_code=204)
 def delete_media(
     asset_id: str,
