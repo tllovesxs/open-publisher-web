@@ -1038,32 +1038,36 @@ export default function ArticlesPage() {
                     </div>
                   </>
                 )}
-                <div
-                  aria-label="调节配图栏宽度"
-                  aria-orientation="vertical"
-                  className="pane-resizer"
-                  onPointerDown={(event) =>
-                    beginWidthDrag(event, figuresWidth, (start, dx) => {
-                      const ws = workspaceRef.current?.getBoundingClientRect().width ?? 1200;
-                      const max = Math.max(240, Math.min(560, ws - (aiPanelOpen ? aiPaneWidth + (viewMode === "split" ? 450 : 330) : 330)));
-                      setFiguresWidth(clampWidth(start - dx, 240, max));
-                    })}
-                  role="separator"
-                />
-                <div className="article-editor__pane article-editor__pane--figures" style={{ width: figuresWidth }}>
-                  <ArticleImagePane
-                  canInsert={viewMode !== "preview"}
-                  markdown={draft}
-                  onImageFileDrop={uploadImageFile}
-                  onDeleteFigure={(figure: ArticleFigure) => handleMarkdownChange(removeMarkdownSpan(draft, figure.span))}
-                  onInsertAtLine={(snippet: string, lineNumber: number) =>
-                    handleMarkdownChange(insertMarkdownAtLine(draft, snippet, lineNumber))
-                  }
-                  onMoveFigure={(figure: ArticleFigure, lineNumber: number) =>
-                    handleMarkdownChange(moveMarkdownSpanToLine(draft, figure.span, lineNumber))
-                  }
-                  />
-                </div>
+                {!aiPanelOpen && (
+                  <>
+                    <div
+                      aria-label="调节配图栏宽度"
+                      aria-orientation="vertical"
+                      className="pane-resizer"
+                      onPointerDown={(event) =>
+                        beginWidthDrag(event, figuresWidth, (start, dx) => {
+                          const ws = workspaceRef.current?.getBoundingClientRect().width ?? 1200;
+                          const max = Math.max(240, Math.min(560, ws - 330));
+                          setFiguresWidth(clampWidth(start - dx, 240, max));
+                        })}
+                      role="separator"
+                    />
+                    <div className="article-editor__pane article-editor__pane--figures" style={{ width: figuresWidth }}>
+                      <ArticleImagePane
+                        canInsert={viewMode !== "preview"}
+                        markdown={draft}
+                        onImageFileDrop={uploadImageFile}
+                        onDeleteFigure={(figure: ArticleFigure) => handleMarkdownChange(removeMarkdownSpan(draft, figure.span))}
+                        onInsertAtLine={(snippet: string, lineNumber: number) =>
+                          handleMarkdownChange(insertMarkdownAtLine(draft, snippet, lineNumber))
+                        }
+                        onMoveFigure={(figure: ArticleFigure, lineNumber: number) =>
+                          handleMarkdownChange(moveMarkdownSpanToLine(draft, figure.span, lineNumber))
+                        }
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 {lastAiSnapshot && (

@@ -9352,4 +9352,117 @@ aside[aria-label="模板列表"] .article-list-item:hover {
 aside[aria-label="模板列表"] .article-list-item.is-active {
   border-color: var(--accent);
   background: var(--accent-soft);
+/* Article editor: continuous columns and matching source/preview typography. */
+.article-editor__workspace {
+  gap: 0;
+}
+
+.article-editor__workspace > .pane-resizer {
+  flex-basis: 1px;
+  width: 1px;
+  border-radius: 0;
+  background: var(--border);
+}
+
+@media (min-width: 981px) {
+  .editor-surface--split {
+    grid-template-columns:
+      minmax(180px, var(--split-left, 1fr)) 1px
+      minmax(140px, var(--split-right, 1fr));
+  }
+
+  .editor-surface--split .pane-resizer {
+    flex-basis: 1px;
+    width: 1px;
+    border-radius: 0;
+    background: var(--border);
+  }
+}
+
+.article-editor__pane--ai {
+  flex: 0 0 auto;
+  max-width: none;
+  border-left: 1px solid var(--border);
+}
+
+.editor-surface--split {
+  column-gap: 0;
+}
+
+.article-editor__workbench .source-editor textarea,
+.article-editor__workbench .markdown-preview {
+  font-family: Inter, "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.8;
+  text-align: left;
+}
+
+.article-editor__workbench .source-editor textarea,
+.article-editor__workbench .source-editor__gutter {
+  padding-top: 62px;
+}
+
+.article-editor__workbench .source-editor__gutter {
+  font-family: Inter, "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.article-editor__workbench .markdown-preview {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 20px 22px 60px;
+  text-align: left;
+}
+
+.article-editor__workbench .markdown-preview h1,
+.article-editor__workbench .markdown-preview h2,
+.article-editor__workbench .markdown-preview h3,
+.article-editor__workbench .markdown-preview h4,
+.article-editor__workbench .markdown-preview h5,
+.article-editor__workbench .markdown-preview h6,
+.article-editor__workbench .markdown-preview p,
+.article-editor__workbench .markdown-preview ul,
+.article-editor__workbench .markdown-preview ol,
+.article-editor__workbench .markdown-preview blockquote {
+  text-align: left;
+  line-height: 1.8;
+}
+
+.article-editor__workbench .markdown-preview h1 {
+  margin: 0 0 16px;
+  font-size: 24px;
+}
+
+.article-editor__workbench .markdown-preview > h1 + p {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+.article-editor__workbench .markdown-preview h2 {
+  margin: 24px 0 10px;
+  font-size: 19px;
+}
+
+.article-editor__workbench .markdown-preview h3,
+.article-editor__workbench .markdown-preview h4,
+.article-editor__workbench .markdown-preview h5,
+.article-editor__workbench .markdown-preview h6 {
+  margin: 20px 0 8px;
+  font-size: 16px;
+}
+
+.article-editor__workbench .markdown-preview p {
+  margin: 0 0 16px;
+}
+
+.article-editor__workbench .markdown-preview ul,
+.article-editor__workbench .markdown-preview ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.article-editor__workbench .markdown-preview li {
+  margin: 0;
 }
