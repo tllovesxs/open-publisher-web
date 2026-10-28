@@ -1,4 +1,4 @@
-import { Bot, GripVertical, LoaderCircle, PencilLine, Send, X } from "lucide-react";
+import { Bot, ImagePlus, LoaderCircle, PencilLine, Send, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { usePersistentState } from "../../lib/usePersistentState";
 import { api } from "../../api/client";
@@ -594,15 +594,13 @@ export function AssistantDrawer({
       setBusy(false);
     }
   };
-
-  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null;
-
   return (
     <aside
       aria-label="编辑助手"
       className="article-assistant-window"
       style={{ left: position.left, top: position.top }}
     >
+      {/* 头部：图标 + 标题 + 模型选择 + 关闭 */}
       <header className="article-assistant-window__head">
         <button
           aria-label="拖动编辑助手"
@@ -612,120 +610,161 @@ export function AssistantDrawer({
           onPointerUp={endWindowDrag}
           type="button"
         >
-          <GripVertical aria-hidden="true" size={14} />
+          <span className="article-assistant-window__bot-icon">
+            <Bot aria-hidden="true" size={14} />
+          </span>
           <span className="article-assistant-window__title">
-            <strong>编辑助手</strong>
-            <small>只给建议，不直接改文章</small>
+            <strong>AI 编辑助手</strong>
+            <small>选中正文片段可精准改写 · 全文对话可整体调整</small>
           </span>
         </button>
-        <button aria-label="关闭编辑助手" className="icon-button" onClick={onClose} type="button">
-          <X size={14} />
-        </button>
-      </header>
-      <div style={{ display: "grid", gap: 6 }}>
         <select
           aria-label="助手模型"
-          className="creation-select"
+          className="article-assistant-window__model-select"
           disabled={profiles.length === 0}
           onChange={(event) => setActiveProfileId(event.target.value)}
           value={activeProfileId || ""}
         >
-          <option value="">默认模型</option>
+          <option value="">默认</option>
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>
-              {profile.name} · {profile.modelId}{profile.keyConfigured ? "" : "（缺少密钥）"}
+              {profile.name}{profile.keyConfigured ? "" : "（无密钥）"}
             </option>
           ))}
         </select>
-        <div style={{ alignItems: "center", display: "flex", gap: 6 }}>
-          <small className="muted" style={{ flex: 1 }}>
-            {session ? `会话 ${session.id.slice(0, 8)}…已持久化` : "会话未加载"}
-          </small>
-          <button className="text-button" disabled={!session || busy} onClick={() => void clearSession()} type="button">
-            清空
+        {onClose && (
+          <button aria-label="关闭编辑助手" className="icon-button" onClick={onClose} type="button">
+            <X size={14} />
           </button>
-        </div>
-        {activeProfile && !activeProfile.keyConfigured && (
-          <small style={{ color: "var(--warning)", fontSize: 11 }}>当前档案缺少服务端密钥。</small>
+        )}
+      </header>
+
+      {/* 作用域指示：整篇文章 vs 已选片段 */}
+      <div className="article-assistant-window__scope-bar">
+        {selection?.text.trim() ? (
+          <span className="article-assistant-window__scope-badge article-assistant-window__scope-badge--selection">
+            已选中 {selection.text.length} 字 · 可精准改写
+          </span>
+        ) : (
+          <span className="article-assistant-window__scope-badge">
+            全文模式 · AI 会阅读整篇文章
+          </span>
+        )}
+        {session && (
+          <button
+            aria-label="清空会话"
+            className="article-assistant-window__clear-btn"
+            disabled={busy}
+            onClick={() => void clearSession()}
+            type="button"
+          >
+            清空会话
+          </button>
         )}
       </div>
-      <div ref={listRef} style={{ display: "grid", gap: 8, alignContent: "start", overflowY: "auto" }}>
+
+      {/* 消息列表 */}
+      <div className="article-assistant-window__messages" ref={listRef}>
         {messages.length === 0 && (
-          <p className="muted" style={{ fontSize: 12 }}>
-            例如：「帮我检查开头是否有营销套话」「这三段的顺序怎么调更好」
-          </p>
+          <div className="article-assistant-window__empty">
+            <p className="article-assistant-window__empty-hint">
+              试试这些快捷指令，或直接输入你的要求：
+            </p>
+            <div className="article-assistant-window__chips">
+              {[
+                "帮我检查开头是否有营销套话",
+                "润色全文，让语气更自然",
+                "检查段落之间的过渡是否顺畅",
+                "帮我精简全文，删去冗余",
+              ].map((chip) => (
+                <button
+                  className="article-assistant-window__chip"
+                  disabled={busy}
+                  key={chip}
+                  onClick={() => { setInput(chip); }}
+                  type="button"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {messages.map((message) => (
           <div
+            className={`article-assistant-window__msg article-assistant-window__msg--${message.role}`}
             key={message.id}
-            style={{
-              padding: "8px 10px", borderRadius: 8, fontSize: 12, lineHeight: 1.6,
-              background: message.role === "user"
-                ? "var(--accent-soft)"
-                : "var(--surface-raised, var(--surface))",
-              whiteSpace: "pre-wrap",
-            }}
           >
-            {message.text}
+            <span className="article-assistant-window__msg-icon">
+              {message.role === "user" ? "你" : <Bot aria-hidden="true" size={12} />}
+            </span>
+            <div
+              className="article-assistant-window__msg-body"
+              dangerouslySetInnerHTML={
+                message.role === "assistant"
+                  ? { __html: renderMarkdown(message.text) }
+                  : undefined
+              }
+            >
+              {message.role === "user" ? message.text : null}
+            </div>
           </div>
         ))}
-        {busy && <p className="muted" style={{ fontSize: 12 }}>思考中……</p>}
-        {error && <p className="workflow-task__failure" style={{ fontSize: 12 }}>{error}</p>}
+        {busy && (
+          <div className="article-assistant-window__msg article-assistant-window__msg--assistant">
+            <span className="article-assistant-window__msg-icon"><Bot aria-hidden="true" size={12} /></span>
+            <div className="article-assistant-window__msg-body article-assistant-window__msg-body--thinking">
+              <LoaderCircle className="spin" size={13} /> 思考中……
+            </div>
+          </div>
+        )}
+        {error && <p className="article-assistant-window__error">{error}</p>}
       </div>
+
+      {/* 改写建议卡片 */}
       {pendingSuggestion && (
-        <div style={{ background: "var(--accent-soft)", borderRadius: 8, display: "grid", fontSize: 12, gap: 8, padding: 10 }}>
-          <strong>改写建议</strong>
-          <div style={{ maxHeight: 160, overflowY: "auto", whiteSpace: "pre-wrap" }}>{pendingSuggestion}</div>
-          <div style={{ display: "flex", gap: 6 }}>
+        <div className="article-assistant-window__suggestion">
+          <div className="article-assistant-window__suggestion-head">
+            <PencilLine aria-hidden="true" size={13} />
+            <strong>改写建议</strong>
+            {selection?.text.trim() && (
+              <small>替换选中的 {selection.text.length} 字</small>
+            )}
+          </div>
+          <div
+            className="article-assistant-window__suggestion-body"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(pendingSuggestion) }}
+          />
+          <div className="article-assistant-window__suggestion-actions">
             <button
-              className="button button--primary"
+              className="button button--primary article-assistant-window__apply-btn"
               onClick={() => { onApplySelection?.(pendingSuggestion); setPendingSuggestion(null); }}
               type="button"
             >
               应用到文章
             </button>
-            <button className="button button--quiet" onClick={() => setPendingSuggestion(null)} type="button">忽略</button>
+            <button
+              className="button button--quiet article-assistant-window__ignore-btn"
+              onClick={() => setPendingSuggestion(null)}
+              type="button"
+            >
+              忽略
+            </button>
           </div>
         </div>
       )}
-      {selection?.text.trim() ? (
-        <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-          <small className="muted" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            已选中 {selection.text.length} 字
-          </small>
-          <button
-            className="button button--quiet"
-            disabled={busy}
-            onClick={() => void send({ mode: "rewrite", message: input.trim() || "润色这段文字，保持原有语气" })}
-            type="button"
-          >
-            改写选中片段
-          </button>
-        </div>
-      ) : null}
-      <div style={{ display: "grid", gap: 6 }}>
-        <textarea
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void send();
-            }
-          }}
-          placeholder="问点什么……（Enter 发送）"
-          rows={3}
-          value={input}
-        />
+
+      {/* 输入区 */}
+      <div className="article-assistant-window__composer">
         {attachments.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div className="article-assistant-window__attachments">
             {attachments.map((dataUrl, index) => (
-              <div key={index} style={{ position: "relative" }}>
-                <img alt={`附件 ${index + 1}`} src={dataUrl} style={{ borderRadius: 6, height: 44, objectFit: "cover", width: 60 }} />
+              <div className="article-assistant-window__attachment" key={index}>
+                <img alt={`附件 ${index + 1}`} src={dataUrl} />
                 <button
                   aria-label={`移除附件 ${index + 1}`}
-                  className="icon-button"
+                  className="article-assistant-window__attachment-remove"
                   onClick={() => setAttachments((current) => current.filter((_, i) => i !== index))}
-                  style={{ position: "absolute", right: -6, top: -6 }}
                   type="button"
                 >
                   ×
@@ -734,21 +773,64 @@ export function AssistantDrawer({
             ))}
           </div>
         )}
-        <div style={{ alignItems: "center", display: "flex", gap: 6 }}>
-          <button className="text-button" disabled={attachments.length >= 4} onClick={() => attachmentsRef.current?.click()} type="button">
-            附加图片（≤4 张，需模型支持图片理解）
-          </button>
-          <input
-            accept="image/*"
-            hidden
-            multiple
-            onChange={(event) => void addAttachments(event.target.files)}
-            ref={attachmentsRef}
-            type="file"
+        <div className="article-assistant-window__input-row">
+          <textarea
+            className="article-assistant-window__textarea"
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+            placeholder={selection?.text.trim() ? "说明如何修改选中的片段……" : "向 AI 描述你想要的修改……"}
+            rows={2}
+            value={input}
           />
+          <div className="article-assistant-window__tools">
+            <button
+              aria-label="附加图片"
+              className="article-assistant-window__tool-btn"
+              disabled={attachments.length >= 4}
+              onClick={() => attachmentsRef.current?.click()}
+              title="附加图片（最多 4 张，需模型支持图片理解）"
+              type="button"
+            >
+              <ImagePlus aria-hidden="true" size={15} />
+            </button>
+            <input
+              accept="image/*"
+              hidden
+              multiple
+              onChange={(event) => void addAttachments(event.target.files)}
+              ref={attachmentsRef}
+              type="file"
+            />
+            {selection?.text.trim() && (
+              <button
+                aria-label="改写选中片段"
+                className="article-assistant-window__tool-btn"
+                disabled={busy || !input.trim()}
+                onClick={() => void send({ mode: "rewrite", message: input.trim() || "润色这段文字，保持原有语气" })}
+                title="改写选中片段"
+                type="button"
+              >
+                <PencilLine aria-hidden="true" size={15} />
+              </button>
+            )}
+            <button
+              aria-label={busy ? "思考中……" : "发送"}
+              className="article-assistant-window__send-btn"
+              disabled={busy || !input.trim()}
+              onClick={() => void send()}
+              type="button"
+            >
+              {busy ? <LoaderCircle className="spin" size={15} /> : <Send aria-hidden="true" size={15} />}
+            </button>
+          </div>
         </div>
-        <small className="muted" style={{ fontSize: 10 }}>
-          上下文：当前编辑器正文；模型由服务端档案决定。
+        <small className="article-assistant-window__hint">
+          Enter 发送 · Shift+Enter 换行 · 上下文：当前编辑器正文
         </small>
       </div>
     </aside>
@@ -862,3 +944,6 @@ export function RevisionHistoryDrawer({
     </div>
   );
 }
+
+
+
