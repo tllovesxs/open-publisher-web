@@ -9238,6 +9238,10 @@ body.is-pane-dragging {
     width: 100% !important;
     flex: 1 1 100%;
   }
+  .article-editor__pane--ai {
+    position: static;
+    height: auto;
+  }
 }
 
 
@@ -9381,7 +9385,13 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
   }
 }
 
+/* AI 修改栏固定在视口内：随滚动容器吸顶，内部自行滚动，不随 Markdown 文档一起下滑。
+   高度 = 视口 - 顶栏(56) - 文章头部(82+1 边框) - 滚动容器上下内边距(40)。 */
 .article-editor__pane--ai {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: max(360px, calc(100dvh - var(--topbar-height, 56px) - 183px));
   flex: 0 0 auto;
   max-width: none;
   border-left: 1px solid var(--border);
@@ -9482,4 +9492,18 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
 /* 原「h1 + p」首段规则在块级包裹后依然生效 */
 .article-editor__workbench .markdown-preview__block:has(> h1) + .markdown-preview__block > p:first-child {
   margin-top: 0;
+}
+
+/* 预览中失效图片的占位提示 */
+.markdown-image-broken {
+  align-items: center;
+  background: var(--warning-soft, #fff3cd);
+  border: 1px dashed var(--warning, #ffc107);
+  border-radius: 8px;
+  color: var(--warning-ink, #856404);
+  display: flex;
+  font-size: 13px;
+  margin: 12px 0;
+  min-height: 64px;
+  padding: 12px 16px;
 }

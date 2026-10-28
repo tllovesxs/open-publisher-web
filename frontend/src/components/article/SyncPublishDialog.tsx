@@ -135,7 +135,7 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
   return (
     <div
       className="sync-publish"
-      style={{ background: "var(--surface, #fff)", inset: 0, position: "fixed", zIndex: 1300 }}
+      style={{ background: "var(--surface, #fff)", inset: 0, overflowY: "auto", position: "fixed", zIndex: 1300 }}
     >
       <article
         id="sync-article"

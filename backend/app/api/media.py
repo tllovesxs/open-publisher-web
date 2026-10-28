@@ -237,6 +237,7 @@ def raw_media(
     # 兼容历史生成任务：模型网关可能只返回临时 URL。仅允许后端生成的素材走代理，
     # 避免把用户上传/外部素材库变成任意 SSRF 入口。
     if row.origin == "generated" and row.source.startswith(("http://", "https://")):
+        import base64
         import httpx
         try:
             response = httpx.get(row.source, follow_redirects=True, timeout=30)
@@ -246,5 +247,9 @@ def raw_media(
         content_type = response.headers.get("content-type", row.mime).split(";", 1)[0].strip()
         if not content_type.startswith("image/") or not response.content or len(response.content) > 20 * 1024 * 1024:
             raise HTTPException(status_code=404, detail="remote asset is not a valid image")
+        # 自愈：临时 URL 首次成功取回后立即落成 data URL，之后不再依赖远端。
+        row.source = f"data:{content_type};base64," + base64.b64encode(response.content).decode("ascii")
+        row.mime = content_type
+        db.commit()
         return Response(content=response.content, media_type=content_type)
     raise HTTPException(status_code=404, detail="remote asset has no local raw content")

@@ -96,6 +96,13 @@ export function MarkdownPreview({ markdown, maxHeight }: { markdown: string; max
         return;
       }
       img.loading = "lazy";
+      // 加载失败（如历史生成图的临时链接过期）时展示占位，而不是裂图图标。
+      img.addEventListener("error", () => {
+        const placeholder = document.createElement("div");
+        placeholder.className = "markdown-image-broken";
+        placeholder.textContent = `图片加载失败：${img.getAttribute("alt") || "未命名配图"}（可在配图中心重新生成）`;
+        img.replaceWith(placeholder);
+      }, { once: true });
     });
 
     // 外链新窗口打开
