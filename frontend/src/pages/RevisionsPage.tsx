@@ -27,7 +27,7 @@ export default function RevisionsPage() {
       const res = await api.get<TweetRevision[]>(`/projects/${projectId}/revisions`);
       setRevisions(res.data);
     } catch {
-      setError("无法加载版本历史，请确认后端服务已启动。");
+      setError("无法加载版本历史，请稍后重试。");
     } finally {
       setLoading(false);
     }

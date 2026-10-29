@@ -80,7 +80,7 @@ export default function RunPage() {
         setCompletedNodes(new Set(WORKFLOW_NODES.map((n) => n.id)));
       }
     } catch {
-      setError("加载运行详情失败，请确认后端服务已启动。");
+      setError("加载运行详情失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ export default function RunPage() {
       const message =
         event.message ??
         EVENT_LABELS[event.eventType] ??
-        (event.eventType === "node.completed" ? `节点 ${event.nodeId ?? ""} 完成` : event.eventType);
+        (event.eventType === "node.completed" ? "创作步骤已完成" : "任务进度已更新");
       const feedKey = event.id ?? `${event.eventType}-${event.createdAt ?? Date.now()}`;
       setFeed((prev) =>
         [{ key: feedKey, message, time: formatTime(event.createdAt), eventType: event.eventType }, ...prev].slice(0, 50),
@@ -199,7 +199,7 @@ export default function RunPage() {
     <section className="page">
       <header className="page-heading">
         <div>
-          <span className="page-kicker">工作流运行</span>
+          <span className="page-kicker">创作任务</span>
           <h1>推文生成任务</h1>
         </div>
         <div className="page-heading__actions">
@@ -251,12 +251,12 @@ export default function RunPage() {
       </ol>
 
       <div className="workflow-task__details" style={{ marginTop: 18 }}>
-        <span className="page-kicker">实时事件</span>
+        <span className="page-kicker">任务动态</span>
         {feed.length === 0 ? (
           <p className="workflow-workspace__empty" style={{ marginTop: 8 }}>
             {running
-              ? "等待事件……"
-              : "本运行的实时事件已归档（Redis 事件保留 1 小时），以下为最终结果。"}
+              ? "等待任务更新……"
+              : "任务动态已归档，以下为最终结果。"}
           </p>
         ) : (
           <ol aria-label="本次任务记录" className="workflow-task__events" style={{ marginTop: 8 }}>

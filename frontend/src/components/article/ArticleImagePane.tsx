@@ -145,7 +145,7 @@ export function ArticleImagePane({
 
   const importFiles = async (files: File[]) => {
     if (!onImageFileDrop) {
-      setError("图片上传服务尚未连接。");
+      setError("暂时无法上传图片，请稍后重试。");
       return;
     }
     const images = files.filter((file) => file.type.startsWith("image/"));

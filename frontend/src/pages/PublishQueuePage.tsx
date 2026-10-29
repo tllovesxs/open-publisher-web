@@ -149,7 +149,7 @@ export default function PublishQueuePage() {
       </header>
 
       <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-        发布计划在文章页「发布」弹窗创建；这里走蓝本 Outbox 状态机：审批 → 入队 → 处理（当前为 dry-run 演练，不触达真实平台）。
+        在文章页创建发布计划，然后在这里确认和处理。此队列目前仅模拟执行，不会向平台实际发布；实际同步请使用文章同步助手。
       </p>
 
       {error && (
@@ -325,7 +325,7 @@ export default function PublishQueuePage() {
                     type="button"
                   >
                     {busyId === `enqueue-${plan.planId}` ? <LoaderCircle className="spin" size={15} /> : <Send size={15} />}
-                    入队（生成幂等任务）
+                    加入处理队列
                   </button>
                 )}
               </footer>

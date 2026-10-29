@@ -134,7 +134,7 @@ export default function MediaPage() {
       await load();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "图片生成失败（需在管理端配置并录入数据库加密密钥）。");
+      setError(typeof detail === "string" ? detail : "图片生成失败，请检查模型设置或联系管理员。");
     } finally {
       setGenerating(false);
     }
@@ -174,7 +174,7 @@ export default function MediaPage() {
       await load();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "AI 分析失败（需开启视觉能力的模型档案与密钥）。");
+      setError(typeof detail === "string" ? detail : "图片分析暂时不可用，请选择支持图片理解的模型或联系管理员。");
     } finally {
       setAnalyzing(false);
     }
@@ -244,7 +244,7 @@ export default function MediaPage() {
     <section style={{ padding: "20px 24px", display: "grid", gap: 16, maxWidth: 1100 }}>
       <div>
         <p className="page-kicker">素材库</p>
-        <h1>结构化图片素材</h1>
+        <h1>图片素材</h1>
       </div>
 
       {error && (

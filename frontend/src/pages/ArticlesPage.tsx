@@ -48,7 +48,7 @@ const JOURNAL_LABELS: Record<string, string> = {
   "run.completed": "任务完成",
   "run.failed": "任务失败",
   "run.stopped": "任务已停止",
-  "agent.message_delta": "写作 Agent 正在撰写正文……",
+  "agent.message_delta": "正在撰写正文……",
   "article.checkpointed": "正文初稿已生成（不可变版本）",
   "revision.committed": "文章已保存新版本",
 
@@ -258,7 +258,7 @@ export default function ArticlesPage() {
       const res = await api.get<{ articles: ArticleState[] }>("/articles");
       setArticles(res.data.articles);
     } catch {
-      setError("无法加载文章列表，请确认后端服务已启动。");
+      setError("无法加载文章列表，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -494,7 +494,7 @@ export default function ArticlesPage() {
       }
       setCreating(false);
     } catch {
-      setError("启动创作运行失败，请确认后端服务已启动。");
+      setError("启动创作运行失败，请稍后重试。");
     }
   };
 
@@ -837,7 +837,7 @@ export default function ArticlesPage() {
                   <label htmlFor="a-materials">资料文件（可选）</label>
                 </div>
                 <small>
-                  蓝本资料文件夹导入的 Web 等价：选择 .md / .txt 资料，
+                  选择 .md / .txt 参考资料，
                   内容会并入创作要求，AI 只引用这些资料中的事实。
                 </small>
                 <div

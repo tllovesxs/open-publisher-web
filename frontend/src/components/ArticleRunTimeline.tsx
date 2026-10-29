@@ -17,7 +17,7 @@ const DETAIL_LABELS: Record<string, string> = {
 const DETAIL_VALUES: Record<string, string> = {
   disabled: "用户已禁用", "manual-or-frontend-driven": "由配图工具继续处理",
   "no-draft": "没有可用正文", "no-references": "未提供参考资料",
-  "output-invalid": "输出未通过校验", retrieved: "已检索", fallback: "已使用原文兜底",
+  "output-invalid": "输出未通过校验", retrieved: "已检索", fallback: "已使用参考原文",
   low: "低风险", medium: "中风险", high: "高风险，建议修改", unknown: "未完成检查",
   pass: "通过", revise: "建议修改", structured: "结构化大纲", free: "自由结构",
 };

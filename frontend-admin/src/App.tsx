@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { CheckCircle2, LoaderCircle, LogOut, Plus, RefreshCw, Star, Trash2, XCircle } from "lucide-react";
 import { api } from "./api";
 import AdminLoginPage from "./AdminLoginPage";
@@ -63,14 +63,28 @@ interface RagConfig {
 
 
 const VIEWS = [
-  { view: "text", title: "文本模型", desc: "当前生效的文本生成模型与密钥。" },
-  { view: "profiles", title: "模型档案", desc: "维护多套文本模型配置并切换生效档案。" },
+  { view: "text", title: "文本模型", desc: "用于文章撰写、修改和内容检查。" },
+  { view: "profiles", title: "文本模型方案", desc: "保存不同服务商和模型的配置，按需切换用于写作。" },
   { view: "image", title: "生图模型", desc: "文章配图使用的图像生成模型。" },
-  { view: "embedding", title: "Embedding 模型", desc: "RAG 资料向量化与检索使用的嵌入模型。" },
-  { view: "rerank", title: "Rerank 模型", desc: "检索结果重排序服务（bge-reranker 兼容）。" },
-  { view: "security", title: "密钥安全", desc: "密钥的存储与使用约定。" },
+  { view: "embedding", title: "资料检索模型", desc: "理解参考资料，帮助写作时找到相关内容。" },
+  { view: "rerank", title: "检索排序模型", desc: "优先选出与主题相关的资料，可按需启用。" },
 ] as const;
 
+
+function ModelPanel({ id, hidden, title, actions, children }: { id: string; hidden: boolean; title: string; actions: ReactNode; children: ReactNode }) {
+  return <section className="admin-card model-panel" id={id} hidden={hidden}>
+    <div className="section-head"><h2>{title}</h2><div className="panel-actions">{actions}</div></div>
+    {children}
+  </section>;
+}
+
+function connectionError(detail: unknown): string {
+  if (typeof detail !== "string") return "连接失败，请检查服务地址、模型名称和访问密钥。";
+  if (/401|403|api.?key|unauthorized/i.test(detail)) return "访问验证失败，请检查密钥及模型使用权限。";
+  if (/404|does not support|not found/i.test(detail)) return "当前服务不支持所选模型，请检查服务地址和模型名称。";
+  if (/timeout|timed out|超时/i.test(detail)) return "服务响应超时，请稍后重试。";
+  return "暂时无法连接，请检查配置或联系服务提供方。";
+}
 
 function AiConfigPage() {
   const [status, setStatus] = useState<ModelStatus | null>(null);
@@ -81,9 +95,15 @@ function AiConfigPage() {
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ view: string; name: string } | null>(null);
+  const [activeView, setActiveView] = useState("text");
+  const busyAction = pendingAction?.view === activeView ? pendingAction.name : null;
+  function setBusyAction(name: string | null) { setPendingAction(name ? { view: activeView, name } : null); }
+  const [notices, setNotices] = useState<Record<string, { message?: string | null; error?: string | null }>>({});
+  const message = notices[activeView]?.message;
+  const error = notices[activeView]?.error;
+  function setMessage(value: string | null) { setNotices(current => ({ ...current, [activeView]: { message: value } })); }
+  function setError(value: string | null) { setNotices(current => ({ ...current, [activeView]: value ? { error: value } : { ...current[activeView], error: null } })); }
   const [llmKeyInput, setLlmKeyInput] = useState("");
   const [imageKeyInput, setImageKeyInput] = useState("");
   const [profileKeyInputs, setProfileKeyInputs] = useState<Record<string, string>>({});
@@ -91,14 +111,11 @@ function AiConfigPage() {
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);
   const [rag, setRag] = useState<RagConfig | null>(null);
   const [ragForm, setRagForm] = useState({ embeddingBaseUrl: "", embeddingModel: "", rerankBaseUrl: "", rerankTimeoutSeconds: 3 });
-  const [activeView, setActiveView] = useState("text");
   const [showEmbeddingForm, setShowEmbeddingForm] = useState(false);
   const [showRerankForm, setShowRerankForm] = useState(false);
-  const [ragTest, setRagTest] = useState<{embedding: {ok: boolean; detail?: string; dimensions?: number; latencyMs?: number}; rerank: {ok: boolean; detail?: string; latencyMs?: number}} | null>(null);
   const { logout, user } = useAdminAuth();
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       const [statusRes, profilesRes, imageRes, ragRes] = await Promise.all([
         api.get<ModelStatus>("/settings/model"),
@@ -112,9 +129,9 @@ function AiConfigPage() {
       setRag(ragRes.data);
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "无法读取 AI 配置。");
+      setError(typeof detail === "string" ? connectionError(detail) : "无法读取 AI 配置。");
     }
-  }, []);
+  }, [activeView]);
 
   useEffect(() => {
     void load();
@@ -122,7 +139,7 @@ function AiConfigPage() {
 
   const createProfile = async () => {
     if (!form.name.trim() || !form.baseUrl.trim() || !form.modelId.trim()) {
-      setError("档案名称 / API Base URL / 模型 ID 必填。");
+      setError("方案名称 / 服务地址 / 模型名称 必填。");
       return;
     }
     setBusy(true);
@@ -133,10 +150,10 @@ function AiConfigPage() {
       setForm(emptyForm);
       setShowForm(false);
       await load();
-      setMessage("AI 档案已保存。");
+      setMessage("文本模型方案已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "保存失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "保存失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -150,9 +167,9 @@ function AiConfigPage() {
     try {
       await api.post(`/settings/profiles/${id}/activate`);
       await load();
-      setMessage("已切换生效档案。");
+      setMessage("已切换当前方案。");
     } catch {
-      setError("激活失败。");
+      setError("设为默认失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -166,7 +183,7 @@ function AiConfigPage() {
     try {
       await api.delete(`/settings/profiles/${id}`);
       await load();
-      setMessage("档案已删除。");
+      setMessage("方案已删除。");
     } catch {
       setError("删除失败。");
     } finally {
@@ -187,11 +204,11 @@ function AiConfigPage() {
       setMessage(`已发现 ${res.data.models.length} 个模型。`);
     } catch (err) {
       if ((err as { code?: string })?.code === "ECONNABORTED") {
-        setError("模型发现请求超时（上游超过 120 秒未响应）。");
+        setError("模型发现请求超时（服务超过 120 秒未响应）。");
         return;
       }
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "模型列表拉取失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "模型设置拉取失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -204,15 +221,15 @@ function AiConfigPage() {
     setMessage(null);
     setError(null);
     try {
-      const res = await api.post<{ latencyMs: number; model: string; reply: string }>("/settings/model/test", null, { timeout: 120000 });
-      setMessage(`连通正常：${res.data.model} · ${res.data.latencyMs}ms · ${res.data.reply}`);
+      const res = await api.post<{ latencyMs: number; model: string }>("/settings/model/test", null, { timeout: 120000 });
+      setMessage(`连接成功：${res.data.model} · ${res.data.latencyMs} 毫秒`);
     } catch (err) {
       if ((err as { code?: string })?.code === "ECONNABORTED") {
-        setError("连通测试请求超时（上游超过 120 秒未响应）。");
+        setError("连通测试请求超时（服务超过 120 秒未响应）。");
         return;
       }
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "连通测试失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "连通测试失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -234,7 +251,7 @@ function AiConfigPage() {
 
   const saveImage = async () => {
     if (!imageForm.baseUrl.trim() || !imageForm.modelId.trim()) {
-      setError("生图 API Base URL / 模型 ID 必填。");
+      setError("生图服务地址 / 模型名称 必填。");
       return;
     }
     setBusy(true);
@@ -247,7 +264,7 @@ function AiConfigPage() {
       setMessage("生图配置已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "生图配置保存失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "生图配置保存失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -262,7 +279,7 @@ function AiConfigPage() {
       await api.delete<ImageStatus>("/settings/image");
       setShowImageForm(false);
       await load();
-      setMessage("已恢复默认模型配置。");
+      setMessage("已使用默认配置。");
     } catch {
       setError("重置失败。");
     } finally {
@@ -278,14 +295,14 @@ function AiConfigPage() {
     setError(null);
     try {
       const res = await api.post<{ latencyMs: number; model: string }>("/settings/image/test", null, { timeout: 120000 });
-      setMessage(`生图连通正常：${res.data.model} · ${res.data.latencyMs}ms`);
+      setMessage(`连接成功：${res.data.model} · ${res.data.latencyMs} 毫秒`);
     } catch (err) {
       if ((err as { code?: string })?.code === "ECONNABORTED") {
-        setError("生图测试请求超时（上游超过 120 秒未响应）。");
+        setError("生图测试请求超时（服务超过 120 秒未响应）。");
         return;
       }
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "生图连通测试失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "生图连通测试失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -302,13 +319,13 @@ function AiConfigPage() {
     setBusyAction("saveLlmKey");
     setError(null);
     try {
-      await api.put("/settings/llm/key", { apiKey: value });
+      await api.put(status?.profileId ? `/settings/profiles/${status.profileId}/key` : "/settings/llm/key", { apiKey: value });
       setLlmKeyInput("");
       await load();
-      setMessage("LLM 密钥已加密入库。");
+      setMessage("当前模型访问密钥已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "密钥保存失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "密钥保存失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -320,9 +337,9 @@ function AiConfigPage() {
     setBusyAction("removeLlmKey");
     setError(null);
     try {
-      await api.delete("/settings/llm/key");
+      await api.delete(status?.profileId ? `/settings/profiles/${status.profileId}/key` : "/settings/llm/key");
       await load();
-      setMessage("LLM 密钥已删除；未配置档案密钥时将不可用。");
+      setMessage("独立密钥已移除；如有默认密钥，将自动使用。");
     } catch {
       setError("密钥删除失败。");
     } finally {
@@ -344,10 +361,10 @@ function AiConfigPage() {
       await api.put("/settings/image/key", { apiKey: value });
       setImageKeyInput("");
       await load();
-      setMessage("生图密钥已加密入库。");
+      setMessage("生图访问密钥已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "密钥保存失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "密钥保存失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -383,10 +400,10 @@ function AiConfigPage() {
       await api.put(`/settings/profiles/${id}/key`, { apiKey: value });
       setProfileKeyInputs({ ...profileKeyInputs, [id]: "" });
       await load();
-      setMessage("档案密钥已加密入库。");
+      setMessage("方案访问密钥已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "密钥保存失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "密钥保存失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -400,7 +417,7 @@ function AiConfigPage() {
     try {
       await api.delete(`/settings/profiles/${id}/key`);
       await load();
-      setMessage("档案密钥已删除，调用时沿用全局密钥。");
+      setMessage("方案密钥已删除，调用时沿用全局密钥。");
     } catch {
       setError("密钥删除失败。");
     } finally {
@@ -408,33 +425,16 @@ function AiConfigPage() {
       setBusyAction(null);
     }
   };
-  const openEmbeddingForm = () => {
-    if (rag) {
-      setRagForm((current) => ({
-        ...current,
-        embeddingBaseUrl: rag.embeddingBaseUrl,
-        embeddingModel: rag.embeddingModel,
-      }));
-    }
-    setRagTest(null);
-    setShowEmbeddingForm(true);
+  const openRagForm = (kind: "embedding" | "rerank") => {
+    if (rag) setRagForm({ embeddingBaseUrl: rag.embeddingBaseUrl, embeddingModel: rag.embeddingModel, rerankBaseUrl: rag.rerankBaseUrl, rerankTimeoutSeconds: rag.rerankTimeoutSeconds });
+    if (kind === "embedding") setShowEmbeddingForm(true); else setShowRerankForm(true);
   };
-
-  const openRerankForm = () => {
-    if (rag) {
-      setRagForm((current) => ({
-        ...current,
-        rerankBaseUrl: rag.rerankBaseUrl,
-        rerankTimeoutSeconds: rag.rerankTimeoutSeconds,
-      }));
-    }
-    setRagTest(null);
-    setShowRerankForm(true);
-  };
+  const openEmbeddingForm = () => openRagForm("embedding");
+  const openRerankForm = () => openRagForm("rerank");
 
   const saveRag = async () => {
     if (!ragForm.embeddingModel.trim()) {
-      setError("Embedding 模型 ID 必填。");
+      setError("资料检索模型名称 必填。");
       return;
     }
     setBusy(true);
@@ -445,30 +445,29 @@ function AiConfigPage() {
       setShowEmbeddingForm(false);
       setShowRerankForm(false);
       await load();
-      setMessage("RAG 检索模型配置已保存。");
+      setMessage("资料检索配置已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "RAG 配置保存失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "检索配置保存失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
     }
   };
 
-  const testRag = async () => {
+  const testRag = async (target: "embedding" | "rerank") => {
     setBusy(true);
     setBusyAction("testRag");
     setMessage(null);
     setError(null);
     try {
-      const res = await api.post<{embedding: {ok: boolean; detail?: string; dimensions?: number; latencyMs?: number}; rerank: {ok: boolean; detail?: string; latencyMs?: number}}>("/settings/rag/test", null, { timeout: 120000 });
-      setRagTest(res.data);
-      if (res.data.embedding.ok && res.data.rerank.ok) {
-        setMessage(`Embedding 与 Rerank 均连通。`);
-      }
+      const res = await api.post<Record<string, { ok: boolean; detail?: string; latencyMs?: number }>>("/settings/rag/test?target=" + target, null, { timeout: 120000 });
+      const result = res.data[target];
+      if (result.ok) setMessage("连接成功 · " + (result.latencyMs ?? 0) + " 毫秒");
+      else setError(connectionError(result.detail));
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "RAG 连通测试失败。");
+      setError(typeof detail === "string" ? connectionError(detail) : "检索连接测试失败。");
     } finally {
       setBusy(false);
       setBusyAction(null);
@@ -485,8 +484,8 @@ function AiConfigPage() {
             <small>管理控制台</small>
           </div>
         </div>
-        <nav className="admin-nav" aria-label="模型列表">
-          <span className="nav-title">模型列表</span>
+        <nav className="admin-nav" aria-label="模型设置">
+          <span className="nav-title">模型设置</span>
           {VIEWS.map((item) => (
             <button
               className={activeView === item.view ? "nav-link active" : "nav-link"}
@@ -510,27 +509,24 @@ function AiConfigPage() {
           <h1>{VIEWS.find((v) => v.view === activeView)?.title ?? "管理控制台"}</h1>
           <p className="muted">{VIEWS.find((v) => v.view === activeView)?.desc}</p>
         </div>
-      <section className="admin-card" id="sec-current" hidden={activeView !== "text"}>
-        <div className="section-head">
-          <h2>当前生效配置</h2>
-          <div>
+      <ModelPanel id="sec-current" hidden={activeView !== "text"} title="文本模型配置" actions={<>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
+            <button className="quiet" onClick={() => setActiveView("profiles")} type="button">选择或新增方案</button>
             <button className="quiet" disabled={busy} onClick={() => void discoverModels()} type="button">
-              {busyAction === "discoverModels" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} 发现模型
+              {busyAction === "discoverModels" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} 获取模型列表
             </button>
             <button className="primary" disabled={busy} onClick={() => void test()} type="button">
-              {busyAction === "test" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连通
+              {busyAction === "test" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
-          </div>
-        </div>
+          </>}>
         {status ? (
           <>
           <div className="config-grid">
-            <div><small>API Base URL</small><strong>{status.baseUrl}</strong></div>
+            <div><small>服务地址</small><strong>{status.baseUrl}</strong></div>
             <div><small>模型</small><strong>{status.model}</strong></div>
-            <div><small>密钥状态</small><strong>{status.keyConfigured ? "已配置（数据库加密）" : "未配置"}</strong></div>
-            <div><small>生效档案</small><strong>{status.profileName ?? "全局数据库密钥"}</strong></div>
-            <div><small>超时</small><strong>{status.timeoutSeconds}s</strong></div>
+            <div><small>密钥状态</small><strong>{status.keyConfigured ? "已配置" : "未配置"}</strong></div>
+            <div><small>当前方案</small><strong>{status.profileName ?? "默认配置"}</strong></div>
+            <div><small>等待时限</small><strong>{status.timeoutSeconds}s</strong></div>
           </div>
           {showDiscoveredModels && (
             <div className="admin-form" style={{ marginTop: 12 }}>
@@ -546,11 +542,12 @@ function AiConfigPage() {
                         onClick={() => {
                           setForm((current) => ({ ...current, modelId: model }));
                           setShowForm(true);
-                          setMessage(`已选择 ${model}，确认 API Base URL 后保存档案。`);
+                          setActiveView("profiles");
+                          setNotices(current => ({ ...current, profiles: { message: `已选择 ${model}，补充服务地址后保存方案。` } }));
                         }}
                         type="button"
                       >
-                        填入档案
+                        创建方案
                       </button>
                     </div>
                   ))}
@@ -558,41 +555,41 @@ function AiConfigPage() {
               )}
             </div>
           )}
-          <div className="admin-form" style={{ marginTop: 12 }}>
-            <input autoComplete="new-password" onChange={(e) => setLlmKeyInput(e.target.value)} placeholder="录入全局 LLM 密钥（加密入库，不回显）" type="password" value={llmKeyInput} />
+          <div className="key-editor">
+            <input autoComplete="new-password" onChange={(e) => setLlmKeyInput(e.target.value)} placeholder="输入当前模型的访问密钥" type="password" value={llmKeyInput} />
             <button className="primary" disabled={busy} onClick={() => void saveLlmKey()} type="button">保存密钥</button>
             {status.keySource === "db" && (
-              <button className="quiet" disabled={busy} onClick={() => void removeLlmKey()} type="button">删除密钥</button>
+              <button className="quiet" disabled={busy} onClick={() => void removeLlmKey()} type="button">移除密钥</button>
             )}
           </div>
           {status.keyHint && (
-            <p className="muted">当前密钥 {status.keyHint}（已加密保存）</p>
+            <p className="muted">当前密钥 {status.keyHint}</p>
           )}
           </>
         ) : (
           <p className="muted">加载中...</p>
         )}
-      </section>
+      </ModelPanel>
 
       <section className="admin-card" id="sec-profiles" hidden={activeView !== "profiles"}>
         <div className="section-head">
-          <h2>模型档案</h2>
+          <h2>文本模型方案</h2>
           <button className="primary" onClick={() => setShowForm(!showForm)} type="button">
-            <Plus size={14} /> 新增配置
+            <Plus size={14} /> 新增方案
           </button>
         </div>
 
         {showForm && (
           <form
-            className="admin-form"
+            className="admin-form config-form"
             onSubmit={(event) => {
               event.preventDefault();
               void createProfile();
             }}>
-            <input onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="档案名称" required value={form.name} />
-            <input onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="API Base URL，例如 https://api.openai.com/v1" required value={form.baseUrl} />
-            <input onChange={(e) => setForm({ ...form, modelId: e.target.value })} placeholder="模型 ID，例如 gpt-4o-mini" required value={form.modelId} />
-            <input min={1} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) || 120 })} placeholder="超时秒数" type="number" value={form.timeoutSeconds} />
+            <label><span>方案名称</span><input onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="方案名称" required value={form.name} /></label>
+            <label><span>服务地址</span><input onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="服务地址，例如 https://api.openai.com/v1" required value={form.baseUrl} /></label>
+            <label><span>模型名称</span><input onChange={(e) => setForm({ ...form, modelId: e.target.value })} placeholder="模型名称，例如 gpt-4o-mini" required value={form.modelId} /></label>
+            <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) || 120 })} placeholder="等待时限（秒）" type="number" value={form.timeoutSeconds} /></label>
             <button className="primary" disabled={busy} type="submit">保存配置</button>
           </form>
         )}
@@ -600,75 +597,72 @@ function AiConfigPage() {
         <div className="profile-list">
           {profiles.map((profile) => (
             <div className={profile.isDefault ? "profile active" : "profile"} key={profile.id}>
-              <div>
-                <strong>{profile.isDefault && <Star color="#f59e0b" size={13} />} {profile.name}</strong>
-                <small>{profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `Key 已配置（数据库）${profile.keyHint}` : "Key 未配置"} · {profile.timeoutSeconds}s</small>
+              <div className="profile-summary">
+                <strong>{profile.isDefault && <Star color="#f59e0b" size={13} />} {profile.name}{profile.isDefault && <span className="profile-badge">使用中</span>}</strong>
+                <small>{profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "使用默认密钥"} · {profile.timeoutSeconds}s</small>
               </div>
-              <div className="admin-form" style={{ marginTop: 8 }}>
-                <input autoComplete="new-password" onChange={(e) => setProfileKeyInputs({ ...profileKeyInputs, [profile.id]: e.target.value })} placeholder="录入该档案密钥（加密入库，不回显）" type="password" value={profileKeyInputs[profile.id] ?? ""} />
-                <button className="quiet" disabled={busy} onClick={() => void saveProfileKey(profile.id)} type="button">存密钥</button>
+              <div className="key-editor">
+                <input autoComplete="new-password" onChange={(e) => setProfileKeyInputs({ ...profileKeyInputs, [profile.id]: e.target.value })} placeholder="输入此方案的访问密钥" type="password" value={profileKeyInputs[profile.id] ?? ""} />
+                <button className="quiet" disabled={busy} onClick={() => void saveProfileKey(profile.id)} type="button">保存密钥</button>
                 {profile.keySource === "db" && (
-                  <button className="quiet" disabled={busy} onClick={() => void removeProfileKey(profile.id)} type="button">删密钥</button>
+                  <button className="quiet" disabled={busy} onClick={() => void removeProfileKey(profile.id)} type="button">移除密钥</button>
                 )}
               </div>
               <div className="actions">
-                {!profile.isDefault && <button className="quiet" disabled={busy} onClick={() => void activate(profile.id)} type="button">激活</button>}
+                {!profile.isDefault && <button className="quiet" disabled={busy} onClick={() => void activate(profile.id)} type="button">设为默认</button>}
                 <button aria-label={`删除 ${profile.name}`} className="danger" disabled={busy} onClick={() => void remove(profile.id)} type="button"><Trash2 size={14} /></button>
               </div>
             </div>
           ))}
-          {profiles.length === 0 && <p className="muted">还没有模型档案。</p>}
+          {profiles.length === 0 && <p className="muted">还没有文本模型方案。</p>}
         </div>
       </section>
 
-      <section className="admin-card" id="sec-image" hidden={activeView !== "image"}>
-        <div className="section-head">
-          <h2>生图模型配置</h2>
-          <div>
+      <ModelPanel id="sec-image" hidden={activeView !== "image"} title="生图模型配置" actions={<>
+            <button className="quiet" onClick={openImageForm} type="button">编辑配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testImage()} type="button">
-              {busyAction === "testImage" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试生图
+              {busyAction === "testImage" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
-          </div>
-        </div>
+          </>}>
         {image ? (
           <>
             <div className="config-grid">
-              <div><small>API Base URL</small><strong>{image.baseUrl}</strong></div>
+              <div><small>服务地址</small><strong>{image.baseUrl}</strong></div>
               <div><small>模型</small><strong>{image.model}</strong></div>
-                <div><small>密钥状态</small><strong>{image.keyConfigured ? "已配置（数据库加密）" : "未配置"}</strong></div>
-              <div><small>配置来源</small><strong>{image.source === "db" ? "管理端配置" : "回退默认模型配置"}</strong></div>
-              <div><small>超时</small><strong>{image.timeoutSeconds}s</strong></div>
+                <div><small>密钥状态</small><strong>{image.keyConfigured ? "已配置" : "未配置"}</strong></div>
+              <div><small>配置方式</small><strong>{image.source === "db" ? "独立配置" : "使用默认配置"}</strong></div>
+              <div><small>等待时限</small><strong>{image.timeoutSeconds}s</strong></div>
             </div>
-            <div className="admin-form" style={{ marginTop: 12 }}>
-              <input autoComplete="new-password" onChange={(e) => setImageKeyInput(e.target.value)} placeholder="录入生图密钥（加密入库，不回显；留空表示沿用文本模型密钥）" type="password" value={imageKeyInput} />
+            <div className="key-editor">
+              <input autoComplete="new-password" onChange={(e) => setImageKeyInput(e.target.value)} placeholder="输入生图访问密钥" type="password" value={imageKeyInput} />
               <button className="primary" disabled={busy} onClick={() => void saveImageKey()} type="button">保存密钥</button>
               {image.keySource === "db" && (
-                <button className="quiet" disabled={busy} onClick={() => void removeImageKey()} type="button">删除密钥</button>
+                <button className="quiet" disabled={busy} onClick={() => void removeImageKey()} type="button">移除密钥</button>
               )}
             </div>
             {image.keyHint && (
-              <p className="muted">当前生图密钥 {image.keyHint}（已加密保存）</p>
+              <p className="muted">当前生图密钥 {image.keyHint}</p>
             )}
             <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">密钥只使用数据库加密存储；均不回显明文。</span>
+              <span className="muted">未设置独立密钥时，使用文本模型的访问密钥。</span>
               <div>
-                <button className="quiet" onClick={openImageForm} type="button">编辑配置</button>
+
                 {image.source === "db" && (
-                  <button className="quiet" disabled={busy} onClick={() => void resetImage()} type="button">恢复默认模型配置</button>
+                  <button className="quiet" disabled={busy} onClick={() => void resetImage()} type="button">使用默认配置</button>
                 )}
               </div>
             </div>
             {showImageForm && (
               <form
-                className="admin-form"
+                className="admin-form config-form"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void saveImage();
                 }}>
-                <input onChange={(e) => setImageForm({ ...imageForm, baseUrl: e.target.value })} placeholder="生图 API Base URL，例如 https://api.openai.com/v1" required value={imageForm.baseUrl} />
-                <input onChange={(e) => setImageForm({ ...imageForm, modelId: e.target.value })} placeholder="生图模型 ID，例如 gpt-image-1" required value={imageForm.modelId} />
-                <input min={1} onChange={(e) => setImageForm({ ...imageForm, timeoutSeconds: Number(e.target.value) || 180 })} placeholder="超时秒数" type="number" value={imageForm.timeoutSeconds} />
+                <label><span>服务地址</span><input onChange={(e) => setImageForm({ ...imageForm, baseUrl: e.target.value })} placeholder="生图服务地址，例如 https://api.openai.com/v1" required value={imageForm.baseUrl} /></label>
+                <label><span>模型名称</span><input onChange={(e) => setImageForm({ ...imageForm, modelId: e.target.value })} placeholder="生图模型名称，例如 gpt-image-1" required value={imageForm.modelId} /></label>
+                <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setImageForm({ ...imageForm, timeoutSeconds: Number(e.target.value) || 180 })} placeholder="等待时限（秒）" type="number" value={imageForm.timeoutSeconds} /></label>
                 <button className="primary" disabled={busy} type="submit">保存生图配置</button>
               </form>
             )}
@@ -676,105 +670,84 @@ function AiConfigPage() {
         ) : (
           <p className="muted">加载中...</p>
         )}
-      </section>
+      </ModelPanel>
 
-      <section className="admin-card" id="sec-embedding" hidden={activeView !== "embedding"}>
-        <div className="section-head">
-          <h2>Embedding 模型</h2>
-          <div>
+      <ModelPanel id="sec-embedding" hidden={activeView !== "embedding"} title="资料检索模型配置" actions={<>
+            <button className="quiet" onClick={openEmbeddingForm} type="button">编辑配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
-            <button className="primary" disabled={busy} onClick={() => void testRag()} type="button">
-              {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连通
+            <button className="primary" disabled={busy} onClick={() => void testRag("embedding")} type="button">
+              {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
-          </div>
-        </div>
+          </>}>
         {rag ? (
           <>
             <div className="config-grid">
-              <div><small>API Base URL</small><strong>{rag.embeddingBaseUrl || "沿用文本模型 API 地址"}</strong></div>
+              <div><small>服务地址</small><strong>{rag.embeddingBaseUrl || "使用文本模型服务地址"}</strong></div>
               <div><small>模型</small><strong>{rag.embeddingModel}</strong></div>
-              <div><small>密钥状态</small><strong>{rag.embeddingKeyConfigured ? "已配置（复用文本模型密钥）" : "未配置"}</strong></div>
+              <div><small>密钥状态</small><strong>{rag.embeddingKeyConfigured ? "使用文本模型密钥" : "未配置"}</strong></div>
             </div>
-            {ragTest && (
-              <div className="config-grid" style={{ marginTop: 12 }}>
-                <div><small>连通测试</small><strong>{ragTest.embedding.ok ? `正常（${ragTest.embedding.dimensions ?? "?"} 维 · ${ragTest.embedding.latencyMs ?? "?"}ms）` : `失败：${ragTest.embedding.detail ?? "未知"}`}</strong></div>
-              </div>
-            )}
+
             <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">密钥复用文本模型密钥库，不回显明文。</span>
-              <button className="quiet" onClick={openEmbeddingForm} type="button">编辑配置</button>
+              <span className="muted">使用文本模型的访问密钥，请确认它支持资料检索。</span>
+
             </div>
             {showEmbeddingForm && (
               <form
-                className="admin-form"
+                className="admin-form config-form"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void saveRag();
                 }}>
-                <input onChange={(e) => setRagForm({ ...ragForm, embeddingBaseUrl: e.target.value })} placeholder="Embedding API Base URL（留空沿用文本模型地址）" value={ragForm.embeddingBaseUrl} />
-                <input onChange={(e) => setRagForm({ ...ragForm, embeddingModel: e.target.value })} placeholder="Embedding 模型 ID，例如 text-embedding-3-small / embedding-3 / BAAI/bge-m3" required value={ragForm.embeddingModel} />
-                <button className="primary" disabled={busy} type="submit">保存 Embedding 配置</button>
+                <label><span>服务地址</span><input onChange={(e) => setRagForm({ ...ragForm, embeddingBaseUrl: e.target.value })} placeholder="检索服务地址（留空沿用文本模型地址）" value={ragForm.embeddingBaseUrl} /></label>
+                <label><span>模型名称</span><input onChange={(e) => setRagForm({ ...ragForm, embeddingModel: e.target.value })} placeholder="资料检索模型名称，例如 text-embedding-3-small / embedding-3 / BAAI/bge-m3" required value={ragForm.embeddingModel} /></label>
+                <button className="primary" disabled={busy} type="submit">保存配置</button>
               </form>
             )}
           </>
         ) : (
           <p className="muted">加载中...</p>
         )}
-      </section>
+      </ModelPanel>
 
-      <section className="admin-card" id="sec-rerank" hidden={activeView !== "rerank"}>
-        <div className="section-head">
-          <h2>Rerank 模型</h2>
-          <div>
+      <ModelPanel id="sec-rerank" hidden={activeView !== "rerank"} title="检索排序模型配置" actions={<>
+            <button className="quiet" onClick={openRerankForm} type="button">编辑配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
-            <button className="primary" disabled={busy} onClick={() => void testRag()} type="button">
-              {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连通
+            <button className="primary" disabled={busy} onClick={() => void testRag("rerank")} type="button">
+              {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
-          </div>
-        </div>
+          </>}>
         {rag ? (
           <>
             <div className="config-grid">
-              <div><small>服务地址</small><strong>{rag.rerankBaseUrl || "未配置（跳过重排）"}</strong></div>
-              <div><small>超时</small><strong>{rag.rerankTimeoutSeconds}s</strong></div>
-              <div><small>配置来源</small><strong>{rag.source === "db" ? "管理端配置" : "默认配置"}</strong></div>
+              <div><small>服务地址</small><strong>{rag.rerankBaseUrl || "未启用"}</strong></div>
+              <div><small>等待时限</small><strong>{rag.rerankTimeoutSeconds}s</strong></div>
+              <div><small>配置方式</small><strong>{rag.source === "db" ? "独立配置" : "默认配置"}</strong></div>
             </div>
-            {ragTest && (
-              <div className="config-grid" style={{ marginTop: 12 }}>
-                <div><small>连通测试</small><strong>{ragTest.rerank.ok ? `正常（${ragTest.rerank.latencyMs ?? "?"}ms）` : `不可用：${ragTest.rerank.detail ?? "未知"}`}</strong></div>
-              </div>
-            )}
+
             <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">使用 bge-reranker 兼容服务（TEI 协议 /rerank）。</span>
-              <button className="quiet" onClick={openRerankForm} type="button">编辑配置</button>
+              <span className="muted">配置后可提升资料匹配效果；留空时使用原有检索顺序。</span>
+
             </div>
             {showRerankForm && (
               <form
-                className="admin-form"
+                className="admin-form config-form"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void saveRag();
                 }}>
-                <input onChange={(e) => setRagForm({ ...ragForm, rerankBaseUrl: e.target.value })} placeholder="Rerank 服务地址，例如 http://localhost:8080（TEI bge-reranker）" value={ragForm.rerankBaseUrl} />
-                <input min={1} onChange={(e) => setRagForm({ ...ragForm, rerankTimeoutSeconds: Number(e.target.value) || 3 })} placeholder="Rerank 超时秒数" type="number" value={ragForm.rerankTimeoutSeconds} />
-                <button className="primary" disabled={busy} type="submit">保存 Rerank 配置</button>
+                <label><span>服务地址</span><input onChange={(e) => setRagForm({ ...ragForm, rerankBaseUrl: e.target.value })} placeholder="排序服务地址，例如 http://localhost:8080" value={ragForm.rerankBaseUrl} /></label>
+                <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setRagForm({ ...ragForm, rerankTimeoutSeconds: Number(e.target.value) || 3 })} placeholder="排序等待时限（秒）" type="number" value={ragForm.rerankTimeoutSeconds} /></label>
+                <button className="primary" disabled={busy} type="submit">保存配置</button>
               </form>
             )}
           </>
         ) : (
           <p className="muted">加载中...</p>
         )}
-      </section>
+      </ModelPanel>
 
-      <section className="admin-card" id="sec-security" hidden={activeView !== "security"}>
-        <h2>密钥安全</h2>
-        <p className="muted">
-          所有 API Key 均经加密存入数据库，不回显明文、不进日志；在各配置卡内通过"保存密钥"录入，删除后该配置回退到默认密钥。
-        </p>
-      </section>
-
-      {message && <div className="success">{message}</div>}
-      {error && <div className="error">{error}</div>}
+{message && <div className="success" role="status">{message}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
     </main>
     </div>
   );

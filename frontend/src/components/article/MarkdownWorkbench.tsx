@@ -275,7 +275,7 @@ export function MarkdownWorkbench({
 
   const importFiles = async (files: File[]) => {
     if (!onImageFileDrop) {
-      setImageDropError("图片导入服务尚未连接。");
+      setImageDropError("暂时无法导入图片，请稍后重试。");
       return;
     }
     const images = files.filter((file) => file.type.startsWith("image/"));
@@ -652,7 +652,7 @@ export function MarkdownWorkbench({
         <span>{lines} 行</span>
         <span>{characters} 字</span>
         {isDroppingImage && <span className="editor-status__progress" role="status">正在导入图片</span>}
-        {streaming && <span className="editor-status__progress" role="status">写作 Agent 正在流式写入</span>}
+        {streaming && <span className="editor-status__progress" role="status">正在撰写正文</span>}
         {imageDropError && <span className="editor-status__error" role="alert">{imageDropError}</span>}
       </footer>
     </section>

@@ -343,7 +343,7 @@ export default function CreatePage() {
               { id: "auto", label: "自动" },
               { id: "off", label: "关闭" },
             ]}
-            title="联网检索需要配置 Tavily Key；未配置时自动降级为本地写作"
+            title="查找最新网络资料；服务不可用时，将使用已提供的资料继续创作"
             value={webSearchMode}
           />
           <button className="creation-toolbar__choice creation-toolbar__button" onClick={() => setPicker("image")} type="button">
@@ -453,7 +453,7 @@ export default function CreatePage() {
               <button aria-label="关闭" className="icon-button" onClick={() => setPicker(null)} type="button"><X size={18} /></button>
             </header>
             <div className="creation-picker__grid">
-              <button aria-pressed={!selectedTemplate} className={!selectedTemplate ? "is-selected" : ""} onClick={() => { setSelectedTemplateId(null); setPicker(null); }} type="button"><strong>自由结构</strong><span>由写作 Agent 根据主题组织文章，不套用既有模板。</span>{!selectedTemplate && <Check size={16} />}</button>
+              <button aria-pressed={!selectedTemplate} className={!selectedTemplate ? "is-selected" : ""} onClick={() => { setSelectedTemplateId(null); setPicker(null); }} type="button"><strong>自由结构</strong><span>根据主题自动组织文章，不套用模板。</span>{!selectedTemplate && <Check size={16} />}</button>
               {templates.map((template) => (
                 <button
                   aria-pressed={selectedTemplate?.id === template.id}
@@ -571,7 +571,7 @@ export default function CreatePage() {
                   />
                 </label>
               )}
-              <small>当前 Web 版由后端在创作流程中自动决定配图；此处选择会随创作要求一并发送。生图模型可不选，留空即使用系统默认配置。</small>
+              <small>按你的选择规划文章配图。不选择生图模型时，使用默认模型。</small>
             </div>
           </section>
         )}
@@ -585,7 +585,7 @@ export default function CreatePage() {
             <div className="creation-settings-form">
               <label className="field">
                 <span>文章标题（可选）</span>
-                <input onChange={(event) => setTitle(event.target.value)} placeholder="留空则由写作 Agent 根据主题拟定" value={title} />
+                <input onChange={(event) => setTitle(event.target.value)} placeholder="留空则根据主题自动拟定" value={title} />
               </label>
               <label className="field">
                 <span>参考资料</span>

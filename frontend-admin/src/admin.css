@@ -373,3 +373,30 @@ button:disabled { cursor: default; opacity: 0.55; }
 .admin-card[hidden] {
   display: none;
 }
+
+/* Shared model settings layout */
+.model-panel { gap: 20px; }
+.model-panel .section-head { flex-wrap: wrap; }
+.model-panel p { margin: 0; }
+.panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.key-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.key-editor input { flex: 1 1 240px; min-width: 0; }
+.key-editor button { flex-shrink: 0; }
+.config-form { padding: 16px; background: var(--surface-muted); border-radius: 12px; }
+.config-form label { min-width: 0; }
+.config-form input { width: 100%; min-width: 0; }
+.config-form input:first-child, .config-form input:nth-child(2) { grid-column: auto; }
+.config-form button { grid-column: 1 / -1; }
+.profile { flex-wrap: wrap; align-items: flex-start; }
+.profile-summary { flex: 1 1 100%; min-width: 0; }
+.profile-summary small { overflow-wrap: anywhere; line-height: 1.6; }
+.profile .key-editor { flex: 1 1 350px; }
+.profile .actions { margin-left: auto; }
+.profile-badge { border-radius: 6px; padding: 2px 6px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; }
+.profile-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.success, .error { overflow-wrap: anywhere; line-height: 1.6; }
+@media (max-width: 600px) {
+ .section-head { flex-wrap: wrap; }
+ .config-form { grid-template-columns: 1fr; }
+ .profile .actions { margin-left: 0; }
+}

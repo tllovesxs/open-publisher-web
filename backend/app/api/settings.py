@@ -10,6 +10,7 @@
 
 import time
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -662,7 +663,7 @@ def reset_rag_config(db: Session = Depends(get_db)):
 
 
 @router.post("/rag/test", dependencies=[Depends(require_admin)])
-def test_rag_config(db: Session = Depends(get_db)):
+def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embedding", "rerank"] = "all"):
     """分别探测 embedding 与 rerank 链路连通性。"""
     import json as _json
     import urllib.request
@@ -670,7 +671,9 @@ def test_rag_config(db: Session = Depends(get_db)):
     config = _rag_out(db)
     result: dict = {"embedding": {"ok": False}, "rerank": {"ok": False}}
 
-    if not config["embeddingKeyConfigured"]:
+    if target == "rerank":
+        pass
+    elif not config["embeddingKeyConfigured"]:
         result["embedding"]["detail"] = "未配置嵌入密钥（复用 LLM 密钥库）"
     else:
         llm = resolve_llm_config()
@@ -694,7 +697,9 @@ def test_rag_config(db: Session = Depends(get_db)):
             result["embedding"] = {"ok": False, "detail": str(exc)}
 
     base = (config["rerankBaseUrl"] or "").rstrip("/")
-    if not base:
+    if target == "embedding":
+        pass
+    elif not base:
         result["rerank"] = {"ok": False, "detail": "未配置重排服务地址（可留空跳过重排）"}
     else:
         started = time.monotonic()

@@ -132,7 +132,7 @@ export function AiModifyPane({
       }
       setError("AI 修改超时，请稍后重试。");
     } catch {
-      setError("发起 AI 修改失败（需要后端配置 LLM Key）。");
+      setError("AI 修改暂时不可用，请检查模型设置或联系管理员。");
     } finally {
       setBusy(false);
     }
@@ -323,7 +323,7 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
       setError("改写超时。");
       setBusy(false);
     } catch {
-      setError("发起改写失败（需要后端配置 LLM Key）。");
+      setError("改写暂时不可用，请检查模型设置或联系管理员。");
       setBusy(false);
     }
   };
@@ -561,7 +561,7 @@ export function AssistantDrawer({
       }
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "助手调用失败（需要后端配置模型 Key）。");
+      setError(typeof detail === "string" ? detail : "助手暂时不可用，请稍后重试或联系管理员。");
     } finally {
       setBusy(false);
     }

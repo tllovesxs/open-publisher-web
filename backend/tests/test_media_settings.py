@@ -78,6 +78,33 @@ def test_generated_image_rejects_bad_payload_and_size():
         service._decode_image_bytes(base64.b64encode(b"x" * (12 * 1024 * 1024 + 1)).decode())
 
 
+@pytest.mark.parametrize("target", ["embedding", "rerank"])
+def test_rag_test_only_calls_selected_service(client, monkeypatch, target):
+    from app.api import settings
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    import openai
+    import urllib.request
+
+    monkeypatch.setattr(settings, "_rag_out", lambda db: {"embeddingKeyConfigured": True, "embeddingBaseUrl": "https://example.test/v1", "embeddingModel": "embed", "rerankBaseUrl": "https://example.test", "rerankTimeoutSeconds": 3})
+    monkeypatch.setattr(settings, "resolve_llm_config", lambda: {"api_key": "test-only", "base_url": "https://example.test"})
+    calls = []
+    def embed(**kwargs):
+        calls.append("embedding")
+        return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(embeddings=SimpleNamespace(create=embed)))
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = b'[{"index": 0, "score": 1}]'
+    def rerank(*args, **kwargs):
+        calls.append("rerank")
+        return response
+    monkeypatch.setattr(urllib.request, "urlopen", rerank)
+    result = client.post("/api/settings/rag/test", params={"target": target})
+    assert result.status_code == 200
+    assert result.json()[target]["ok"] is True
+    assert calls == [target]
+
+
 def test_model_status_endpoint(client):
     res = client.get("/api/settings/model")
     assert res.status_code == 200

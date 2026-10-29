@@ -8,13 +8,13 @@ import { useAuth } from "../auth/AuthContext";
 const FEATURES = [
   {
     icon: Bot,
-    title: "多 Agent 创作引擎",
+    title: "AI 辅助创作",
     description: "产品理解 → 受众分析 → 策略规划 → 写作 → 评分 → 优化 → 风险检查，一次输入成稿。",
   },
   {
     icon: FileText,
-    title: "版本即权威",
-    description: "每次生成与修改都是不可变版本，随时回溯、对比与恢复，不怕改丢。",
+    title: "修改可追溯",
+    description: "保留每次生成与修改，随时查看、对比或恢复历史内容。",
   },
   {
     icon: ImageIcon,
@@ -23,13 +23,13 @@ const FEATURES = [
   },
   {
     icon: Send,
-    title: "发布 Outbox",
-    description: "审批绑定内容 → 幂等入队 → dry-run 演练，外部写入安全可控不重复。",
+    title: "发布计划管理",
+    description: "集中查看发布计划与处理状态；文章同步助手帮助你同步到已登录的平台。",
   },
   {
     icon: Lock,
-    title: "密钥不出服务端",
-    description: "API Key 只存在于服务端环境变量，模型接入由管理员统一配置，浏览器永不接触。",
+    title: "访问密钥受保护",
+    description: "模型服务由管理员配置，访问密钥安全保存，不会显示在文章或导出内容中。",
   },
 ];
 
@@ -49,7 +49,7 @@ export default function LandingPage() {
           </span>
           <strong>稿流</strong>
         </div>
-        <nav aria-label="Landing 导航" className="landing-nav__links">
+        <nav aria-label="产品导航" className="landing-nav__links">
           <button onClick={() => navigate(user ? "/" : "/login")} type="button">
             {user ? "打开工作台" : "登录"}
           </button>
@@ -68,8 +68,8 @@ export default function LandingPage() {
           与多平台发布工作台
         </h1>
         <p className="landing-hero__sub">
-          不是聊天工具，而是创作系统：多 Agent 理解你的产品、规划策略、生成评分、检查风险，
-          版本全程可追溯，发布走幂等队列。
+          从主题和资料出发，规划大纲、撰写正文、审阅内容并检查风险，
+          保留修改记录，随时审阅并同步文章。
         </p>
         <div className="landing-hero__cta">
           <button className="button button--primary" onClick={primaryCta} type="button">
@@ -97,11 +97,11 @@ export default function LandingPage() {
         <ol>
           <li>
             <strong>输入主题与资料</strong>
-            <span>支持文件夹导入、参考文件、素材库图片与视觉输入。</span>
+            <span>支持参考文件、素材库图片与图片输入。</span>
           </li>
           <li>
-            <strong>Agent 工作流执行</strong>
-            <span>8 节点流水线实时流式输出，过程与产物全程可见。</span>
+            <strong>AI 辅助成稿</strong>
+            <span>从整理资料到文章配图，实时查看创作进展。</span>
           </li>
           <li>
             <strong>审阅与迭代</strong>
@@ -109,7 +109,7 @@ export default function LandingPage() {
           </li>
           <li>
             <strong>审批发布</strong>
-            <span>多平台目标入队 dry-run，确认后进入发布队列。</span>
+            <span>确认文章内容后，使用文章同步助手选择目标平台。</span>
           </li>
         </ol>
         <button className="button button--primary" onClick={primaryCta} type="button">

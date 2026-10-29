@@ -55,7 +55,7 @@ export default function SettingsPage() {
     <div className="settings-page" style={{ padding: 32, maxWidth: 720, display: "grid", gap: 0, margin: "0 auto" }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>设置</h1>
       <p style={{ color: "var(--muted, #888)", fontSize: 13, marginBottom: 20 }}>
-        管理写作模型、工作流和账号安全
+        管理写作模型、创作偏好和账号安全
       </p>
 
       {/* Tab navigation */}
@@ -157,7 +157,7 @@ export default function SettingsPage() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                     {(["contextWindow", "maxTokens"] as const).map(key => (
                       <label key={key} style={{ color: "var(--muted, #888)", fontSize: 11 }}>
-                        {key === "contextWindow" ? "上下文窗口" : "最大输出 tokens"}
+                        {key === "contextWindow" ? "上下文窗口" : "最大输出长度"}
                         <input
                           disabled={!admin}
                           onChange={e => setProfiles(ps => ps.map(item => item.id === p.id ? {...item, capabilities: {...item.capabilities, [key]: Number(e.target.value)}} : item))}
@@ -191,7 +191,7 @@ export default function SettingsPage() {
               ))}
             </section>
           )}
-          {!admin && <p style={{ color: "var(--muted, #888)", fontSize: 12 }}>模型接入与密钥由管理员统一管理；此处选择仅影响你的写作。</p>}
+          {!admin && <p style={{ color: "var(--muted, #888)", fontSize: 12 }}>模型服务与访问密钥由管理员统一管理；此处选择仅影响你的写作。</p>}
         </div>
       )}
 
@@ -223,15 +223,15 @@ export default function SettingsPage() {
               borderRadius: 12, display: "grid", gap: 14, padding: 20,
             }}>
               <div>
-                <strong style={{ fontSize: 14 }}>服务接入</strong>
+                <strong style={{ fontSize: 14 }}>外部服务</strong>
                 <p style={{ color: "var(--muted, #888)", fontSize: 12, marginTop: 2 }}>
-                  联网检索与代码仓库 API 密钥
+                  管理联网搜索和代码仓库的访问权限
                 </p>
               </div>
               {(["tavily", "github"] as const).map(kind => (
                 <div key={kind} style={{ display: "grid", gap: 6 }}>
                   <label style={{ color: "var(--ink)", fontSize: 13, fontWeight: 500 }}>
-                    {kind === "tavily" ? "Tavily Key" : "GitHub Token"}
+                    {kind === "tavily" ? "联网搜索密钥（Tavily）" : "代码仓库访问凭证（GitHub）"}
                     <span style={{
                       background: integrations[kind]?.keyConfigured ? "var(--success-soft, #f0fff4)" : "var(--surface-muted, #f5f5f5)",
                       borderRadius: 4, color: integrations[kind]?.keyConfigured ? "var(--success, #22543d)" : "var(--muted, #888)",
@@ -264,7 +264,7 @@ export default function SettingsPage() {
                 </div>
               ))}
               <label style={{ color: "var(--ink)", display: "grid", fontSize: 13, fontWeight: 500, gap: 6 }}>
-                可信 Host（每行一个）
+                允许访问的网站域名（每行一个）
                 <textarea
                   onChange={e => setIntegrations({...integrations, trustedHosts: e.target.value.split("\n")})}
                   rows={3}
@@ -273,7 +273,7 @@ export default function SettingsPage() {
                 />
               </label>
               <label style={{ color: "var(--ink)", display: "grid", fontSize: 13, fontWeight: 500, gap: 6 }}>
-                发布桥地址
+                发布连接服务地址
                 <input
                   onChange={e => setIntegrations({...integrations, publishBridgeUrl: e.target.value})}
                   placeholder="https://bridge.example.com"
@@ -287,11 +287,11 @@ export default function SettingsPage() {
                 onClick={() => void act(() => api.put("/settings/integrations", {trustedHosts: integrations.trustedHosts, publishBridgeUrl: integrations.publishBridgeUrl}))}
                 style={{ alignItems: "center", display: "flex", gap: 6, fontSize: 13, justifyContent: "center", padding: "9px 16px" }}
               >
-                <Save size={14} /> 保存接入设置
+                <Save size={14} /> 保存服务设置
               </button>
             </section>
           )}
-          {!admin && <p style={{ color: "var(--muted, #888)", fontSize: 12 }}>服务接入由管理员配置。</p>}
+          {!admin && <p style={{ color: "var(--muted, #888)", fontSize: 12 }}>外部服务由管理员配置。</p>}
         </div>
       )}
 
@@ -302,9 +302,9 @@ export default function SettingsPage() {
           borderRadius: 12, display: "grid", gap: 14, padding: 20,
         }}>
           <div>
-            <strong style={{ fontSize: 14 }}>默认工作流</strong>
+            <strong style={{ fontSize: 14 }}>默认创作流程</strong>
             <p style={{ color: "var(--muted, #888)", fontSize: 12, marginTop: 2 }}>
-              取消勾选以跳过创作流程中的对应节点
+              取消勾选可跳过对应创作步骤
             </p>
           </div>
           {ARTICLE_WORKFLOW_NODES.map(node => (
@@ -368,7 +368,7 @@ export default function SettingsPage() {
           <div>
             <strong style={{ fontSize: 14 }}>安全与个人数据</strong>
             <p style={{ color: "var(--muted, #888)", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>
-              API 密钥在服务端加密保存，导出不包含密钥。个人文章、素材、模板和助手会话按账号隔离；历史共享内容按共享规则可读。
+              导出内容不含访问密钥。你的文章、素材、模板和助手会话仅供本人使用；共享内容按原有权限访问。
             </p>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>

@@ -72,7 +72,7 @@ export default function ProjectsPage() {
       setProjects(res.data);
       setSelectedId((current) => current ?? res.data[0]?.id ?? null);
     } catch {
-      setError("无法加载项目列表，请确认后端服务已启动。");
+      setError("无法加载项目列表，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -203,7 +203,7 @@ export default function ProjectsPage() {
       const res = await api.post<{ id: string }>(`/projects/${id}/runs`);
       navigate(`/runs/${res.data.id}`);
     } catch {
-      setError("启动工作流失败，请确认后端服务已启动。");
+      setError("启动工作流失败，请稍后重试。");
       setStartingId(null);
     }
   };

@@ -53,6 +53,39 @@ interface TemplateForm {
   variables: string;
 }
 
+const profileFields: Record<string, Array<[string, string]>> = {
+  style: [["tone", "文章语气"], ["readerRelationship", "与读者的交流方式"], ["forbiddenPatterns", "避免使用的表达"], ["preferredEvidence", "论据偏好"]],
+  structure: [["sectionOrder", "章节顺序"], ["sectionPurposes", "各章节的写作目的"], ["transitionStyle", "段落衔接方式"], ["ctaPosition", "行动建议的位置"]],
+  layout: [["headingLevelRule", "标题层级"], ["paragraphLength", "段落长度"], ["listUsage", "列表使用方式"], ["emphasisStyle", "重点强调方式"]],
+};
+
+function ProfileFields({ kind, value, disabled, onChange }: { kind: string; value: string; disabled: boolean; onChange: (value: string) => void }) {
+  const data = JSON.parse(value || "{}") ?? {};
+  return <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10, minWidth: 0 }}>
+    {profileFields[kind].map(([key, label]) => <label className="field" key={key}><span>{label}</span>
+      <textarea aria-label={label} rows={2} value={Array.isArray(data[key]) ? data[key].join("\n") : String(data[key] ?? "")} onChange={event => {
+        const text = event.target.value;
+        const next = Array.isArray(data[key]) ? text.split("\n") : text;
+        onChange(JSON.stringify({ ...data, [key]: next }));
+      }} />
+    </label>)}
+  </fieldset>;
+}
+
+function FixedContentFields({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
+  const blocks: Array<Record<string, string>> = JSON.parse(value || "[]") ?? [];
+  const updateBlock = (index: number, key: string, text: string) => onChange(JSON.stringify(blocks.map((block, i) => i === index ? { ...block, [key]: text } : block)));
+  return <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10, minWidth: 0 }}>
+    {blocks.map((block, index) => <div key={index} style={{ display: "grid", gap: 8 }}>
+      <label className="field"><span>内容名称</span><input value={block.name ?? ""} onChange={event => updateBlock(index, "name", event.target.value)} /></label>
+      <label className="field"><span>固定内容</span><textarea aria-label="固定内容" rows={3} value={block.content ?? ""} onChange={event => updateBlock(index, "content", event.target.value)} /></label>
+      <label className="field"><span>插入位置</span><input value={block.position ?? ""} onChange={event => updateBlock(index, "position", event.target.value)} /></label>
+      <button className="button button--quiet" type="button" onClick={() => onChange(JSON.stringify(blocks.filter((_, i) => i !== index)))}>移除此段内容</button>
+    </div>)}
+    <button className="button button--quiet" type="button" onClick={() => onChange(JSON.stringify([...blocks, { name: "", content: "", position: "" }]))}>添加固定内容</button>
+  </fieldset>;
+}
+
 function jsonText(value: unknown) {
   return value == null ? "{}" : JSON.stringify(value, null, 2);
 }
@@ -76,7 +109,7 @@ function parseJson<T>(value: string, label: string): T {
   try {
     return JSON.parse(value || "null") as T;
   } catch {
-    throw new Error(`${label} 不是有效 JSON。`);
+    throw new Error(`${label}格式有误，请重新填写。`);
   }
 }
 
@@ -340,18 +373,18 @@ export default function TemplatesPage() {
               />
             </label>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-              <label className="field"><span>文风画像 styleProfile</span>
-                <textarea disabled={selected.isBuiltIn} onChange={(event) => update({ styleProfile: event.target.value })} rows={6} value={form.styleProfile} />
-              </label>
-              <label className="field"><span>结构画像 structureProfile</span>
-                <textarea disabled={selected.isBuiltIn} onChange={(event) => update({ structureProfile: event.target.value })} rows={6} value={form.structureProfile} />
-              </label>
-              <label className="field"><span>排版画像 layoutProfile</span>
-                <textarea disabled={selected.isBuiltIn} onChange={(event) => update({ layoutProfile: event.target.value })} rows={6} value={form.layoutProfile} />
-              </label>
-              <label className="field"><span>固定块 fixedBlocks</span>
-                <textarea disabled={selected.isBuiltIn} onChange={(event) => update({ fixedBlocks: event.target.value })} rows={6} value={form.fixedBlocks} />
-              </label>
+              <div className="field"><span>文风设置</span>
+                <ProfileFields kind="style" disabled={selected.isBuiltIn} onChange={(value) => update({ styleProfile: value })} value={form.styleProfile} />
+              </div>
+              <div className="field"><span>结构设置</span>
+                <ProfileFields kind="structure" disabled={selected.isBuiltIn} onChange={(value) => update({ structureProfile: value })} value={form.structureProfile} />
+              </div>
+              <div className="field"><span>排版设置</span>
+                <ProfileFields kind="layout" disabled={selected.isBuiltIn} onChange={(value) => update({ layoutProfile: value })} value={form.layoutProfile} />
+              </div>
+              <div className="field"><span>固定内容</span>
+                <FixedContentFields disabled={selected.isBuiltIn} onChange={(value) => update({ fixedBlocks: value })} value={form.fixedBlocks} />
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label className="field"><span>变量</span>
