@@ -164,6 +164,8 @@ class MediaService:
             raise HTTPException(status_code=400, detail="不支持的生成尺寸")
 
         resolved = resolve_image_config(db=self.db, profile_id=image_profile_id)
+        from app.services.image_config_validation import validate_image_generation_config
+        validate_image_generation_config(resolved["base_url"], resolved["model"])
         if not resolved["api_key"]:
             raise HTTPException(
                 status_code=501,

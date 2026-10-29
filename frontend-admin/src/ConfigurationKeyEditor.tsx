@@ -1,3 +1,4 @@
+import { useSuccessMessage } from "./useSuccessMessage";
 import { useState } from "react";
 import { api } from "./api";
 
@@ -5,7 +6,7 @@ export function ConfigurationKeyEditor({ endpoint, configured, hint, onChanged }
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useSuccessMessage();
   const update = async (remove = false) => {
     if (!remove && value.trim().length < 4) { setError("密钥长度至少 4 位。"); return; }
     setBusy(true); setError(""); setMessage("");

@@ -43,6 +43,9 @@ def validate_config(kind: str, body: ConfigurationInput) -> None:
             raise HTTPException(status_code=400, detail="服务地址格式无效") from None
         if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.query or url.fragment:
             raise HTTPException(status_code=400, detail="服务地址需为不含密钥和查询参数的 HTTP(S) 地址")
+    if kind == "image":
+        from app.services.image_config_validation import validate_image_generation_config
+        validate_image_generation_config(body.baseUrl, body.modelId)
     if kind == "rerank" and body.timeoutSeconds > 120:
         raise HTTPException(status_code=400, detail="排序等待时限不能超过 120 秒")
 

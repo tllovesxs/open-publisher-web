@@ -31,6 +31,25 @@ def payload(name, kind):
     return {"name": name, "baseUrl": "https://example.test/v1", "modelId": name + "-model", "timeoutSeconds": 60 if kind == "image" else 5}
 
 
+@pytest.mark.parametrize("base,model,reason", [
+    ("https://cloud.siliconflow.cn/me/models", "Qwen/Qwen-Image", "控制台"),
+    ("https://api.siliconflow.cn/v1/images/generations", "Qwen/Qwen-Image", "/v1"),
+    ("https://api.siliconflow.cn/v1", "Qwen/Qwen-Image-Edit", "图片编辑模型"),
+])
+def test_image_config_rejects_console_and_edit_models(setup, base, model, reason):
+    client, _ = setup
+    response = client.post("/api/settings/model-configs/image", json={**payload("bad-image", "image"), "baseUrl": base, "modelId": model})
+    assert response.status_code == 400
+    assert reason in response.json()["detail"]
+    assert client.get("/api/settings/model-configs/image").json()["profiles"] == []
+
+
+def test_image_generation_config_valid_api(setup):
+    client, _ = setup
+    response = client.post("/api/settings/model-configs/image", json={**payload("image", "image"), "baseUrl": "https://api.siliconflow.cn/v1", "modelId": "Qwen/Qwen-Image"})
+    assert response.status_code == 201
+
+
 @pytest.mark.parametrize("kind", ["image", "embedding", "rerank"])
 def test_create_edit_activate_delete_and_validation(setup, kind):
     client, factory = setup

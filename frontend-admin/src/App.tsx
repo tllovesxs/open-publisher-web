@@ -61,7 +61,8 @@ function ModelPanel({ id, hidden, title, actions, children }: { id: string; hidd
 
 function connectionError(detail: unknown): string {
   if (typeof detail !== "string") return "连接失败，请检查服务地址、模型名称和访问密钥。";
-  if (/401|403|api.?key|unauthorized/i.test(detail)) return "访问验证失败，请检查密钥及模型使用权限。";
+  if (/控制台|图片编辑模型|硅基流动服务地址|服务商拒绝生图参数|生图接口或模型不存在|生图调用失败/.test(detail)) return detail;
+  if (/401|403|api.?key|unauthorized|访问验证失败/i.test(detail)) return "访问验证失败，请检查密钥及模型使用权限。";
   if (/404|does not support|not found/i.test(detail)) return "当前服务不支持所选模型，请检查服务地址和模型名称。";
   if (/timeout|timed out|超时/i.test(detail)) return "服务响应超时，请稍后重试。";
   return "暂时无法连接，请检查配置或联系服务提供方。";
@@ -84,10 +85,17 @@ function AiConfigPage() {
   const [activeView, setActiveView] = useState("text");
   const busyAction = pendingAction?.view === activeView ? pendingAction.name : null;
   function setBusyAction(name: string | null) { setPendingAction(name ? { view: activeView, name } : null); }
+  const successTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => () => Object.values(successTimers.current).forEach(clearTimeout), []);
   const [notices, setNotices] = useState<Record<string, { message?: string | null; error?: string | null }>>({});
   const message = notices[activeView]?.message;
   const error = notices[activeView]?.error;
-  function setMessage(value: string | null) { setNotices(current => ({ ...current, [activeView]: { message: value } })); }
+  function setMessage(value: string | null) {
+    const view = activeView;
+    clearTimeout(successTimers.current[view]);
+    setNotices(current => ({ ...current, [view]: { message: value } }));
+    if (value) successTimers.current[view] = setTimeout(() => setNotices(current => ({ ...current, [view]: { ...current[view], message: null } })), 5000);
+  }
   function setError(value: string | null) { setNotices(current => ({ ...current, [activeView]: value ? { error: value } : { ...current[activeView], error: null } })); }
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);

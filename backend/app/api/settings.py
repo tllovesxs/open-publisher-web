@@ -458,6 +458,8 @@ def update_image_config(
     db: Session = Depends(get_db),
 ):
     """保存全局生图配置（单行 upsert，id 固定 global）。"""
+    from app.services.image_config_validation import validate_image_generation_config
+    validate_image_generation_config(body.baseUrl, body.modelId)
     from app.models.settings_profile import ImageConfig
     from app.services.model_profile_service import IMAGE_CONFIG_ID
 
@@ -512,6 +514,8 @@ def test_image_config(db: Session = Depends(get_db), profileId: str | None = Non
         resolved = resolve_image_config(db, profile_id=profileId)
     else:
         resolved = resolve_image_config()
+    from app.services.image_config_validation import validate_image_generation_config
+    validate_image_generation_config(resolved["base_url"], resolved["model"])
     if not resolved["api_key"]:
         raise HTTPException(
             status_code=501,
@@ -522,6 +526,7 @@ def test_image_config(db: Session = Depends(get_db), profileId: str | None = Non
         api_key=resolved["api_key"],
         base_url=resolved["base_url"],
         timeout=resolved["timeout_seconds"],
+        max_retries=0,
     )
     try:
         result = None
@@ -535,11 +540,24 @@ def test_image_config(db: Session = Depends(get_db), profileId: str | None = Non
                 )
                 break
             except Exception as exc:  # noqa: BLE001
+                if getattr(exc, "status_code", None) not in (400, 422):
+                    raise
                 last_exc = exc
         if result is None:
             raise last_exc if last_exc else RuntimeError("image test failed")
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail="生图调用失败，请检查服务地址、模型和访问密钥") from None
+        status = getattr(exc, "status_code", None)
+        if status in (401, 403):
+            detail = "访问验证失败，请检查此配置的密钥及模型使用权限"
+        elif status == 404:
+            detail = "生图接口或模型不存在，请检查 API 服务地址及模型名称"
+        elif status in (400, 422):
+            detail = "服务商拒绝生图参数，请检查模型是否支持文生图及测试尺寸"
+        elif "timeout" in type(exc).__name__.lower():
+            detail = "生图服务响应超时，请检查等待时限，核实服务商请求记录后重试"
+        else:
+            detail = "生图调用失败，请检查服务地址、模型和访问密钥"
+        raise HTTPException(status_code=502, detail=detail) from None
     item = result.data[0] if result.data else None
     if not item or not (item.b64_json or item.url):
         raise HTTPException(status_code=502, detail="生图调用没有返回内容")

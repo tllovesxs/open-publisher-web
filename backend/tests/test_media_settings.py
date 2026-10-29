@@ -192,6 +192,20 @@ def test_image_test_without_key_returns_501(client, monkeypatch):
     assert res.status_code == 501
 
 
+@pytest.mark.parametrize("base,model,reason", [
+    ("https://cloud.siliconflow.cn/me/models", "Qwen/Qwen-Image", "控制台"),
+    ("https://api.siliconflow.cn/v1", "Qwen/Qwen-Image-Edit", "图片编辑模型"),
+])
+def test_image_test_rejects_invalid_legacy_config_before_provider(client, monkeypatch, base, model, reason):
+    from app.services import model_profile_service
+    monkeypatch.setattr(model_profile_service, "resolve_image_config", lambda: {"api_key": "test-only", "base_url": base, "model": model, "timeout_seconds": 5})
+    import openai
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: pytest.fail("invalid configuration must not call provider"))
+    response = client.post("/api/settings/image/test")
+    assert response.status_code == 400
+    assert reason in response.json()["detail"]
+
+
 class _FakeVisionLLM:
     def __init__(self):
         self.calls = []

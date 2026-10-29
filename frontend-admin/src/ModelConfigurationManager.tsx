@@ -1,3 +1,4 @@
+import { useSuccessMessage } from "./useSuccessMessage";
 import { forwardRef, useEffect, useImperativeHandle, useState, type FormEvent } from "react";
 import { Plus, Star, Trash2, X } from "lucide-react";
 import { api } from "./api";
@@ -26,7 +27,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useSuccessMessage();
   const label = labels[kind];
   const endpoint = `/settings/model-configs/${kind}`;
   const reload = async () => {
@@ -100,6 +101,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
       <div className="config-form-heading"><h3>{editing ? "编辑" : "新增"}{label}配置</h3><button aria-label="关闭配置表单" className="quiet" disabled={busy} onClick={cancel} type="button"><X size={15} /></button></div>
       <label><span>方案名称</span><input autoFocus disabled={busy} maxLength={120} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="为配置取一个易于识别的名称" required value={draft.name} /></label>
       <label><span>服务地址</span><input disabled={busy} maxLength={500} onChange={e => setDraft({ ...draft, baseUrl: e.target.value })} placeholder={kind === "embedding" ? "留空沿用文本模型服务地址" : "https://api.example.com/v1"} required={kind !== "embedding"} value={draft.baseUrl} /></label>
+      {kind === "image" && <p className="muted config-form-hint">填写 API 服务地址，而非控制台网页。硅基流动：https://api.siliconflow.cn/v1。文章配图使用文生图模型；Qwen-Image-Edit 需要原图，当前流程不支持。</p>}
       <label><span>模型名称</span><input disabled={busy} maxLength={200} onChange={e => setDraft({ ...draft, modelId: e.target.value })} placeholder="服务提供方的模型名称" required value={draft.modelId} /></label>
       {kind !== "embedding" && <label><span>等待时限（秒）</span><input disabled={busy} min={1} max={kind === "rerank" ? 120 : 1800} onChange={e => setDraft({ ...draft, timeoutSeconds: Number(e.target.value) })} required type="number" value={draft.timeoutSeconds} /></label>}
       <label><span>访问密钥（可选）</span><input autoComplete="new-password" disabled={busy} maxLength={4096} minLength={4} onChange={e => setDraft({ ...draft, apiKey: e.target.value })} placeholder={editing ? "留空保留此配置已有密钥" : "仅用于此配置"} type="password" value={draft.apiKey} /></label>
