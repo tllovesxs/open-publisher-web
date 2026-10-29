@@ -106,3 +106,24 @@ def test_assistant_attachments_rejected_without_vision_profile(client):
     })
     assert res.status_code == 400
     assert "图片理解" in res.json()["detail"]
+
+
+def test_assistant_image_attached_to_user_message_once(client, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from app.api import assistant
+    config = {"api_key": "test-only", "base_url": "http://localhost/v1", "model": "test",
+              "timeout_seconds": 1, "profileId": None, "profileName": None, "capabilities": {"vision": True}}
+    monkeypatch.setattr(assistant, "resolve_llm_profile_config", lambda *args, **kwargs: config)
+    mock = MagicMock()
+    mock.chat.completions.create.return_value = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="reply"))])
+    monkeypatch.setattr(assistant, "OpenAI", lambda **kwargs: mock)
+    response = client.post("/api/assistant/chat", json={
+        "messages": [{"role": "user", "text": "describe image"}],
+        "attachments": ["data:image/png;base64,iVBORw0KGgo="],
+    })
+    assert response.status_code == 200
+    messages = mock.chat.completions.create.call_args.kwargs["messages"]
+    assert len(messages) == 2
+    assert messages[-1]["content"][0] == {"type": "text", "text": "describe image"}
+    assert messages[-1]["content"][1]["type"] == "image_url"

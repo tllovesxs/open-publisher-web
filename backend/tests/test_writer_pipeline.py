@@ -401,3 +401,54 @@ def test_stop_during_llm_return_does_not_commit(db):
     service._execute(run["id"], article_id="stop-return", prompt="x", tone=None, length_preset="short", custom_length=None, humanize=False, base_revision_id=None, base_content_hash=None, owner_user_id=None, creation={})
     assert service.journal.get_run(run["id"])["status"] == "stopped"
     assert service.store.read("stop-return") is None
+
+
+@pytest.mark.parametrize("system,result", [
+    ("[Review]", {"score": 101, "issues": [], "verdict": "pass"}),
+    ("[Review]", {"score": 90, "issues": "bad", "verdict": "pass"}),
+    ("[ReferenceSafety]", {"ok": "false", "issues": []}),
+    ("[ReferenceSafety]", {}),
+    ("[RiskCheck]", {"level": "safe", "issues": []}),
+    ("[RiskCheck]", {}),
+])
+def test_malformed_check_results_are_never_treated_as_pass(db, system, result):
+    class StructuredLLM:
+        def complete_json(self, *args):
+            return result
+    service = WriterService(db, llm=StructuredLLM())
+    run = service.journal.create_run(article_id="validation", agent_id="writer", operation="article-create")
+    service._run_id = run["id"]
+    with pytest.raises(ValueError, match="格式无效"):
+        service._llm_json(system, "article")
+
+
+def test_rag_success_does_not_duplicate_reference_text_in_draft(db, monkeypatch):
+    from app.services import rag_service
+    class FakeRag:
+        def ingest(self, *args):
+            return {"chunks": 5}
+        def search(self, *args):
+            return {"hits": [{"text": "SELECTED_EVIDENCE"}], "rerankUsed": True}
+        def build_context(self, hits):
+            return "[1] SELECTED_EVIDENCE"
+    monkeypatch.setattr(rag_service, "get_rag_service", lambda: FakeRag())
+    llm = FakeAgentLLM([{"toolCalls": [{"id": "write", "name": "write_article", "arguments": json.dumps({"title": "t", "markdown": "# t\n\nbody", "reason": "r"})}]}])
+    service = WriterService(db, llm=llm)
+    run = service.start_article_create(article_id="rag-evidence", prompt="task", creation={"references": "UNSELECTED_REFERENCE", "webSearchMode": "off"})
+    assert _wait_terminal(service.journal, run["id"])["status"] == "completed"
+    messages = str(llm.calls[0]["messages"])
+    assert "SELECTED_EVIDENCE" in messages
+    assert "UNSELECTED_REFERENCE" not in messages
+
+
+def test_invalid_risk_response_reports_unknown_without_losing_article(db):
+    class InvalidCheckLLM(FakeLLM):
+        def complete_json(self, *args):
+            return {}
+    service = WriterService(db, llm=InvalidCheckLLM())
+    run = service.start_article_create(article_id="invalid-risk", prompt="task")
+    assert _wait_terminal(service.journal, run["id"])["status"] == "completed"
+    risk = next(event["payload"] for event in service.journal.events_after(run["id"], 0) if event["type"] == "node.completed" and event["payload"]["nodeId"] == "risk")
+    assert risk["level"] == "unknown"
+    assert risk["skipped"] is True
+    assert service.store.read("invalid-risk") is not None

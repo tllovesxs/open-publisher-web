@@ -134,7 +134,10 @@ def _llm_reply(
             if not data_url.startswith("data:image/"):
                 raise HTTPException(status_code=400, detail="附件必须是图片 dataURL。")
             parts.append({"type": "image_url", "image_url": {"url": data_url}})
-        messages.append({"role": "user", "content": parts})
+        if messages[-1]["role"] == "user":
+            messages[-1]["content"] = parts
+        else:
+            raise HTTPException(status_code=400, detail="图片附件需要随用户消息发送。")
     try:
         response = client.chat.completions.create(
             model=config["model"], messages=messages, temperature=0.6,

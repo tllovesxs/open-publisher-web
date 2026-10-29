@@ -710,7 +710,7 @@ def test_rag_config(db: Session = Depends(get_db)):
             )
             with urllib.request.urlopen(req, timeout=max(3, config["rerankTimeoutSeconds"])) as resp:
                 payload = _json.loads(resp.read().decode("utf-8"))
-            ranked = payload.get("data") or payload.get("results") or []
+            ranked = payload if isinstance(payload, list) else payload.get("data") or payload.get("results") or []
             result["rerank"] = {
                 "ok": bool(ranked),
                 "latencyMs": int((time.monotonic() - started) * 1000),

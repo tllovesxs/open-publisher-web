@@ -186,7 +186,7 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
 
           {extStatus === "missing" && (
             <small style={{ color: "var(--warning, #b45309)", maxWidth: 460 }}>
-              未检测到扩展或未登录平台账号。请确认「文章同步助手」已在浏览器启用（D:\应用\wechatsync-2.0.9）并登录目标平台，然后刷新本页。
+              未检测到扩展或未登录平台账号。请在当前浏览器安装并启用「文章同步助手」扩展，登录目标平台后刷新本页。
             </small>
           )}
 

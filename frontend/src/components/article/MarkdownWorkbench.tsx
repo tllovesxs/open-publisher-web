@@ -181,6 +181,15 @@ export function MarkdownWorkbench({
   onInsertAtLine,
 }: MarkdownWorkbenchProps) {
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const latestMarkdownRef = useRef(markdown);
+  latestMarkdownRef.current = markdown;
+  const [streamPreview, setStreamPreview] = useState(markdown);
+  useEffect(() => {
+    if (!streaming) return;
+    setStreamPreview(latestMarkdownRef.current);
+    const timer = window.setInterval(() => setStreamPreview(latestMarkdownRef.current), 100);
+    return () => window.clearInterval(timer);
+  }, [streaming]);
   const previewRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
   // 用户是否在编辑器里主动放置过光标。程序化赋值会让未聚焦的 textarea
@@ -628,7 +637,7 @@ export function MarkdownWorkbench({
               />
             </div>
             <div style={{ margin: "0 auto", maxWidth: previewPlatform === "twitter" ? 560 : previewPlatform === "wechat" ? 680 : "none" }}>
-              <MarkdownPreview markdown={markdown} />
+              <MarkdownPreview markdown={streaming ? streamPreview : markdown} />
             </div>
           </div>
         )}

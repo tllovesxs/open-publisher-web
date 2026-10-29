@@ -58,12 +58,13 @@ export function renderMarkdownBlockHtml(markdown: string): string {
   const resolved = resolveAssetReferences(markdown);
   const tokens = marked.lexer(resolved);
   const parts: string[] = [];
-  let rawOffset = 0;
+  let nextLine = 1;
   for (const token of tokens) {
-    rawOffset += token.raw.length;
+    const startLine = nextLine;
+    const newlines = token.raw.split("\n").length - 1;
+    nextLine += newlines;
     if (token.type === "space") continue;
-    const startLine = resolved.slice(0, rawOffset - token.raw.length).split("\n").length;
-    const endLine = startLine + token.raw.split("\n").length - 1;
+    const endLine = startLine + newlines;
     const tokenHtml = DOMPurify.sanitize(marked.parse(token.raw, { async: false }) as string, SANITIZE_CONFIG);
     parts.push(`<div class="markdown-preview__block" data-md-line="${startLine}" data-md-end="${endLine}">${tokenHtml}</div>`);
   }
@@ -146,9 +147,11 @@ export function MarkdownPreview({ markdown, maxHeight }: { markdown: string; max
       pre.replaceWith(holder);
 
       mermaidQueue = mermaidQueue.then(
-        () =>
-          renderMermaidSvg(`opw-mermaid-${Date.now()}-${index}`, source)
+        () => {
+          if (!holder.isConnected) return;
+          return renderMermaidSvg(`opw-mermaid-${Date.now()}-${index}`, source)
             .then((svg) => {
+              if (!holder.isConnected) return;
               holder.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
             })
             .catch(() => {
@@ -156,7 +159,8 @@ export function MarkdownPreview({ markdown, maxHeight }: { markdown: string; max
               holder.innerHTML =
                 `<strong>图表无法渲染</strong>` +
                 `<details><summary>查看 Mermaid 源码</summary><pre><code>${escapeHtml(source)}</code></pre></details>`;
-            }),
+            });
+        },
         () => undefined,
       );
     });

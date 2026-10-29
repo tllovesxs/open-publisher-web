@@ -147,3 +147,50 @@ def test_revision_endpoints_scoped(env):
     assert client.get("/api/revisions/rev-bob-1").status_code == 200
     assert client.get("/api/projects/proj-bob/revisions").status_code == 200
 
+
+def test_rag_all_project_operations_enforce_ownership(env):
+    client, factory, switch = env
+    _seed_bob_data(factory)
+    switch("alice")
+    assert client.post("/api/rag/documents", json={"projectId": "proj-bob", "name": "x", "text": "x"}).status_code == 404
+    assert client.post("/api/rag/documents/upload?projectId=proj-bob", files={"file": ("x.txt", b"x")}).status_code == 404
+    assert client.get("/api/rag/documents?projectId=proj-bob").status_code == 404
+    assert client.delete("/api/rag/documents/x?projectId=proj-bob").status_code == 404
+    assert client.post("/api/rag/search", json={"projectId": "proj-bob", "query": "x"}).status_code == 404
+
+
+def test_rag_global_library_is_private_and_legacy_index_untouched(env, monkeypatch, tmp_path):
+    from app.api import rag as rag_api
+    from tests.test_rag_service import _FakeRag
+    rag = _FakeRag(tmp_path)
+    rag.ingest("global", "legacy", "历史归属未知资料")
+    monkeypatch.setattr(rag_api, "get_rag_service", lambda: rag)
+    client, _, switch = env
+    switch("alice")
+    assert client.post("/api/rag/documents", json={"name": "private", "text": "价格 99 元"}).status_code == 201
+    assert client.get("/api/rag/documents").json()["documents"] == {"private": 1}
+    switch("bob")
+    assert client.get("/api/rag/documents").json()["documents"] == {}
+    assert client.post("/api/rag/search", json={"query": "价格"}).json()["hits"] == []
+    assert client.delete("/api/rag/documents/private").status_code == 404
+    assert rag.stats("global")["documents"] == {"legacy": 1}
+    switch("alice")
+    assert client.post("/api/rag/search", json={"query": "价格"}).json()["hits"][0]["source"] == "private"
+
+
+def test_rag_legacy_project_index_is_preserved_for_verified_owner(env, monkeypatch, tmp_path):
+    from app.api import rag as rag_api
+    from tests.test_rag_service import _FakeRag
+    rag = _FakeRag(tmp_path)
+    rag.ingest("proj-bob", "legacy", "价格 99 元")
+    monkeypatch.setattr(rag_api, "get_rag_service", lambda: rag)
+    client, factory, switch = env
+    _seed_bob_data(factory)
+    switch("alice")
+    assert client.get("/api/rag/documents?projectId=proj-bob").status_code == 404
+    switch("bob")
+    assert client.get("/api/rag/documents?projectId=proj-bob").json()["documents"] == {"legacy": 1}
+    assert client.delete("/api/rag/documents/legacy?projectId=proj-bob").status_code == 200
+    assert client.get("/api/rag/documents?projectId=proj-bob").json()["documents"] == {}
+    assert rag.stats("proj-bob")["documents"] == {"legacy": 1}
+

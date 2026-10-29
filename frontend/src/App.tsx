@@ -1,29 +1,28 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Menu, Plus } from "lucide-react";
 import { api } from "./api/client";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ActiveRunProvider } from "./lib/activeRunContext";
-import LoginPage from "./pages/LoginPage";
-import LandingPage from "./pages/LandingPage";
+import { PageBoundary, PageLoading } from "./components/PageBoundary";
 import { AvatarMenu } from "./components/AvatarMenu";
 import { useThemeSetting } from "./lib/theme";
-import ArticlesPage from "./pages/ArticlesPage";
-import CreatePage from "./pages/CreatePage";
 import { VisualPlanProvider } from "./components/article/VisualPlanProvider";
-import AnnouncementsPage from "./pages/AnnouncementsPage";
-import TemplatesPage from "./pages/TemplatesPage";
-import MediaPage from "./pages/MediaPage";
-import ProjectsPage from "./pages/ProjectsPage";
-import PublishQueuePage from "./pages/PublishQueuePage";
-import SettingsPage from "./pages/SettingsPage";
-import RevisionsPage from "./pages/RevisionsPage";
-import RunPage from "./pages/RunPage";
-import {
-  AppNavigation,
-  type NavKey,
-} from "./components/AppNavigation";
+import { AppNavigation, type NavKey } from "./components/AppNavigation";
 import "./blueprint.css";
+
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const ArticlesPage = lazy(() => import("./pages/ArticlesPage"));
+const CreatePage = lazy(() => import("./pages/CreatePage"));
+const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
+const TemplatesPage = lazy(() => import("./pages/TemplatesPage"));
+const MediaPage = lazy(() => import("./pages/MediaPage"));
+const ProjectsPage = lazy(() => import("./pages/ProjectsPage"));
+const PublishQueuePage = lazy(() => import("./pages/PublishQueuePage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const RevisionsPage = lazy(() => import("./pages/RevisionsPage"));
+const RunPage = lazy(() => import("./pages/RunPage"));
 
 // 外壳布局迁移自蓝本 App.tsx 的 app-shell / app-workspace 结构（团队自有代码）。
 // 2026-10-16：导航/品牌/首页按蓝本 1:1 迁移；旧工作台保留在 /projects（未入导航）。
@@ -135,7 +134,7 @@ function Shell() {
         <main
           className={`page-viewport${location.pathname === "/" ? " page-viewport--articles" : ""}`}
           id="main-content">
-          <Routes>
+          <PageBoundary><Suspense fallback={<PageLoading />}><Routes>
             <Route path="/" element={<CreatePage />} />
             <Route path="/announcements" element={<AnnouncementsPage />} />
             <Route path="/runs/:runId" element={<RunPage />} />
@@ -147,7 +146,7 @@ function Shell() {
             <Route path="/projects/:projectId/revisions" element={<RevisionsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          </Routes></Suspense></PageBoundary>
         </main>
       </div>
     </div>
@@ -160,11 +159,11 @@ export default function App() {
       <AuthProvider>
         <ActiveRunProvider>
           <VisualPlanProvider>
-            <Routes>
+            <PageBoundary resetOnNavigation={false}><Suspense fallback={<PageLoading />}><Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/landing" element={<LandingPage />} />
               <Route path="/*" element={<Shell />} />
-            </Routes>
+            </Routes></Suspense></PageBoundary>
           </VisualPlanProvider>
         </ActiveRunProvider>
       </AuthProvider>

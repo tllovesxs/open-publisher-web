@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from app.services.rag_service import (
+    RAGUnavailable,
     RRF_K,
     RagService,
     chunk_markdown,
@@ -110,3 +111,68 @@ def test_remove_document(rag):
     assert rag.stats("proj-d")["chunks"] > 0
     assert rag.remove_document("proj-d", "旧文档") is True
     assert rag.stats("proj-d")["chunks"] == 0
+
+
+def test_long_paragraph_is_bounded_and_keeps_overlap():
+    text = "价格部署安全速度" * 150
+    chunks = chunk_markdown(text, chunk_chars=200, overlap_chars=40)
+    assert len(chunks) > 1
+    assert all(len(chunk["text"]) <= 200 for chunk in chunks)
+    assert chunks[0]["text"][-40:] == chunks[1]["text"][:40]
+
+
+def test_reingest_same_source_replaces_stale_chunks(rag):
+    rag.ingest("update", "价格", "原价格 99 元。" * 80)
+    rag.ingest("update", "价格", "新价格 59 元。")
+    assert rag.stats("update")["chunks"] == 1
+    assert "原价格" not in rag.search(["update"], "价格", use_rerank=False)["hits"][0]["text"]
+
+
+def test_dimension_change_does_not_corrupt_existing_index(rag):
+    rag.ingest("dimension", "价格", "价格 99 元")
+    rag._embed = lambda texts: [[1.0, 0.0] for _ in texts]
+    with pytest.raises(RAGUnavailable, match="维度"):
+        rag.ingest("dimension", "部署", "部署文档")
+    assert rag.stats("dimension")["documents"] == {"价格": 1}
+
+
+def test_incomplete_embeddings_are_not_saved(rag):
+    rag._embed = lambda texts: []
+    with pytest.raises(RAGUnavailable):
+        rag.ingest("broken", "价格", "价格说明")
+    assert rag.stats("broken")["chunks"] == 0
+
+
+def test_invalid_partial_rerank_keeps_remaining_candidates(rag):
+    for i in range(3):
+        rag.ingest("partial", f"文档{i}", f"价格说明{i}")
+    rag._rerank = lambda query, texts: [(999, 1.0), (1, 0.9), (1, 0.8)]
+    result = rag.search(["partial"], "价格", top_k=3)
+    assert result["rerankUsed"]
+    assert len({hit["source"] for hit in result["hits"]}) == 3
+
+
+def test_tei_list_response_supported(rag, monkeypatch):
+    import json
+    from unittest.mock import MagicMock
+    from app.services import rag_service
+    from app.services import workspace_settings
+
+    monkeypatch.setattr(workspace_settings, "read_preferences", lambda *args: {"rerankBaseUrl": "http://localhost:8080", "rerankTimeoutSeconds": 7})
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = json.dumps([{"index": 1, "score": 0.9}, {"index": 0, "score": 0.1}]).encode()
+    observed = {}
+    def open_response(request, timeout):
+        observed["timeout"] = timeout
+        return response
+    monkeypatch.setattr(rag_service.urllib.request, "urlopen", open_response)
+    assert rag._rerank("价格", ["a", "b"])[0][0] == 1
+    assert observed["timeout"] == 7
+
+
+def test_corrupt_index_is_not_silently_overwritten(rag):
+    path = rag._path("corrupt")
+    path.write_text("{broken", encoding="utf-8")
+    with pytest.raises(RAGUnavailable):
+        rag.ingest("corrupt", "价格", "价格说明")
+    assert path.read_text(encoding="utf-8") == "{broken"

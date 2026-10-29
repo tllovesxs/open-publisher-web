@@ -45,7 +45,7 @@ open-publisher-web/
 ## 快速开始（Docker Compose）
 
 ```bash
-cp .env.example .env   # 按需修改数据库密码、管理员账号与模型密钥
+cp .env.example .env   # 配置数据库密码、管理员账号和 SECRET_ENCRYPTION_KEY
 docker compose up -d --build
 ```
 
@@ -58,6 +58,8 @@ docker compose up -d --build
 - 健康检查：http://localhost:8000/api/health
 
 首次启动自动执行数据库迁移（`alembic upgrade head`），并按 `AUTH_ADMIN_USERNAME` / `AUTH_ADMIN_PASSWORD` 初始化管理员账号。
+
+模型与集成 API Key 在管理后台录入，密文保存于数据库；无需填写 API Key 环境变量。
 
 > 安全约定：管理员密码等敏感配置只来自环境变量。代码内默认值仅为占位符，
 > 未配置时启动会打警告，请务必在 `.env` 中设置后再对外提供服务。
@@ -104,6 +106,26 @@ npm run dev
 - 存量迁移：`backend/scripts/migrate_env_keys_to_db.py`（先干跑，确认后加 `--execute`）。
 - 其余秘密（数据库密码、JWT 密钥、管理员密码）仍通过 `.env` / 环境变量注入，参考 `.env.example` 占位模板；`.env` 已被 `.gitignore` 排除。
 - 密钥明文永不进入仓库、不回显浏览器、不写日志；管理端只见掩码尾号（keyHint）。
+
+## 质量验证
+
+后端在 `backend/` 执行 `python -m pytest tests -q -p no:cacheprovider`。用户端在
+`frontend/` 执行 `npm run typecheck` 或 `npm run build`（构建已包含类型检查）；
+管理端在 `frontend-admin/` 执行 `npm run build`。GitHub Actions 会运行后端测试与双前端构建。
+
+浏览器冒烟脚本为 `frontend/scripts/smoke-ui.cjs`：先启动 Vite，再设置
+`PLAYWRIGHT_MODULE` 为已安装的 Playwright 模块路径，按需设置 `SMOKE_BROWSER_PATH`
+和 `SMOKE_BASE_URL`（默认 `http://127.0.0.1:5183`），执行 `node scripts/smoke-ui.cjs`。
+该检查使用隔离浏览器和模拟 API，验证页面加载、编辑器、大图读取及资料限制，不访问真实用户数据，
+不能替代真实模型、生图和平台同步验收。
+
+RAG 接口的 `global` 表示当前用户的个人资料库。项目索引同时检查项目归属；可确认独占归属的
+旧项目索引首次访问时复制到用户命名空间，保留旧文件。历史 `global` 和无归属共享索引不会
+自动分配给某个用户，也不会删除，需要运营方确认归属后另行迁移。
+
+JSON 索引支持单进程内写入互斥与原子文件替换；部署多进程并发写入前，需迁移到支持事务的
+索引存储或加入跨进程锁。检查结果无效时显示未完成检查，文章仍按现有流程保存；本轮未新增
+发布阻断或额外模型复查调用。
 
 ## 路线图
 
