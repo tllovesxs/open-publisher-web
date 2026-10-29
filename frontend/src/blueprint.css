@@ -8476,8 +8476,6 @@ select optgroup {
   border-radius: 12px;
 }
 
-.creation-pill-select__item {
-
 .creation-prompt-images {
   display: flex;
   flex-wrap: wrap;
@@ -8514,6 +8512,7 @@ select optgroup {
   color: #fff;
   cursor: pointer;
 }
+.creation-pill-select__item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -8581,14 +8580,17 @@ select optgroup {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.creation-pill-select--field .creation-pill-select__menu {
-  width: 100%;
+.creation-pill-select__menu--floating {
   min-width: 0;
-  z-index: 200;
+  z-index: 1100;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
   border-radius: 14px;
+  animation: none;
 }
 
-.creation-pill-select--field .creation-pill-select__item {
+.creation-pill-select__menu--floating .creation-pill-select__item {
   padding: 9px 10px;
   border-radius: 9px;
   font-size: 13px;

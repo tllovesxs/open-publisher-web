@@ -2,7 +2,6 @@ import {
   Check,
   ChevronDown,
   FilePlus2,
-  FolderOpen,
   ImagePlus,
   LoaderCircle,
   SlidersHorizontal,
@@ -117,8 +116,6 @@ export default function CreatePage() {
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [inputImages, setInputImages] = useState<string[]>([]);
   const [promptImageImporting, setPromptImageImporting] = useState(false);
-  const projectFolderInputRef = useRef<HTMLInputElement | null>(null);
-  const referenceFolderInputRef = useRef<HTMLInputElement | null>(null);
   const promptImageInputRef = useRef<HTMLInputElement | null>(null);
   const [profiles, setProfiles] = useState<ModelProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
@@ -143,14 +140,6 @@ export default function CreatePage() {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [picker]);
-
-  useEffect(() => {
-    // React 不类型化非标准目录选择属性；Chromium 需要 webkitdirectory 才能选文件夹。
-    for (const input of [projectFolderInputRef.current, referenceFolderInputRef.current]) {
-      input?.setAttribute("webkitdirectory", "");
-      input?.setAttribute("directory", "");
-    }
-  }, []);
 
 
   useEffect(() => {
@@ -203,29 +192,6 @@ export default function CreatePage() {
       const text = await readReferenceFiles(files, "来源文件");
       setReferences((current) => appendReferences(current, text));
       setImportNote(`已导入资料，最多保留 40 个文件、共 30 万字。`);
-    } catch (error) {
-      setValidation(error instanceof Error ? error.message : "资料读取失败，请重试。");
-    }
-  };
-
-  const importFolder = async (kind: "project" | "reference", files: FileList | null) => {
-    if (!files || !files.length) return;
-    const readableExtensions = new Set([".md", ".markdown", ".txt", ".text"]);
-    const candidates = Array.from(files)
-      .filter((file) => {
-        const ext = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
-        return readableExtensions.has(ext);
-      })
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .slice(0, 40);
-    if (!candidates.length) {
-      setValidation("所选文件夹中没有可读取的文本资料（支持 md / markdown / txt）。");
-      return;
-    }
-    try {
-      const merged = await readReferenceFiles(candidates, "来源文件夹");
-      setReferences((current) => appendReferences(current, merged));
-      setImportNote(`已导入${kind === "project" ? "项目" : "资料"}文件夹，最多保留 40 个文件、共 30 万字。`);
     } catch (error) {
       setValidation(error instanceof Error ? error.message : "资料读取失败，请重试。");
     }
@@ -410,8 +376,6 @@ export default function CreatePage() {
             <div className="creation-composer__tools">
               <button className="text-button" onClick={() => setPicker("details")} type="button"><SlidersHorizontal size={15} />资料</button>
               <button className="text-button" onClick={() => fileInputRef.current?.click()} type="button"><FilePlus2 size={15} />导入文件</button>
-              <button className="text-button" onClick={() => projectFolderInputRef.current?.click()} type="button"><FolderOpen size={15} />项目文件夹</button>
-              <button className="text-button" onClick={() => referenceFolderInputRef.current?.click()} type="button"><FolderOpen size={15} />资料文件夹</button>
               <button className="text-button" onClick={() => setPicker("media")} type="button"><ImagePlus size={15} />{selectedMedia.length ? `素材 ${selectedMedia.length}` : "选择素材"}</button>
               <button className="text-button" disabled={promptImageImporting} onClick={() => promptImageInputRef.current?.click()} type="button"><ImagePlus size={15} />{promptImageImporting ? "导入图片" : "添加图片"}</button>
               <input
@@ -421,22 +385,6 @@ export default function CreatePage() {
                 multiple
                 onChange={(event) => { void importReferenceFiles(event.target.files); event.currentTarget.value = ""; }}
                 ref={fileInputRef}
-                type="file"
-              />
-              <input
-                aria-label="选择项目文件夹"
-                className="visually-hidden"
-                multiple
-                onChange={(event) => { void importFolder("project", event.target.files); event.currentTarget.value = ""; }}
-                ref={projectFolderInputRef}
-                type="file"
-              />
-              <input
-                aria-label="选择资料文件夹"
-                className="visually-hidden"
-                multiple
-                onChange={(event) => { void importFolder("reference", event.target.files); event.currentTarget.value = ""; }}
-                ref={referenceFolderInputRef}
                 type="file"
               />
               <input
