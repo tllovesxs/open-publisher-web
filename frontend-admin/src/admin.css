@@ -141,6 +141,7 @@ body {
 }
 
 .admin-main {
+  align-content: start;
   display: grid;
   flex: 1;
   gap: 16px;
