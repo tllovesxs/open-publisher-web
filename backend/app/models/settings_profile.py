@@ -28,7 +28,7 @@ class ModelProfile(Base):
 
 
 class ImageConfig(Base):
-    """生图模型配置：全局单行（id 固定 "global"）。
+    """生图模型配置：兼容旧 global 行，并保存各命名配置；默认选择存于 WorkspacePreference。
 
     API Key 同样只存 app_secrets；本行只保存 API 地址、模型、超时。
     """

@@ -444,3 +444,12 @@ button:disabled { cursor: default; opacity: 0.55; }
  .config-form { grid-template-columns: 1fr; }
  .profile .actions { margin-left: 0; }
 }
+
+.config-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.config-form .config-form-actions button { grid-column: auto; }
+.config-form-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.config-form-heading h3 { margin: 0; font-size: 14px; }
+.config-form-heading button { padding: 6px; }
+.config-form-hint { grid-column: 1 / -1; font-size: 12px; line-height: 1.6; }
+.model-config-manager { display: grid; gap: 12px; }
+.model-config-manager .actions { display: flex; flex-wrap: wrap; gap: 8px; }

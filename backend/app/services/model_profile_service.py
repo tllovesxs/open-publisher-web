@@ -167,7 +167,9 @@ IMAGE_CONFIG_ID = "global"
 
 
 def get_image_config(db: Session) -> ImageConfig | None:
-    return db.get(ImageConfig, IMAGE_CONFIG_ID)
+    from app.services.workspace_settings import read_preferences
+    active_id = read_preferences(db, "admin:model-configs:image").get("activeId")
+    return (db.get(ImageConfig, active_id) if active_id else None) or db.get(ImageConfig, IMAGE_CONFIG_ID)
 
 
 def resolve_image_config(
@@ -193,14 +195,14 @@ def resolve_image_config(
     try:
         if db is None:
             with SessionLocal() as session:
-                row = session.get(ImageConfig, profile_id or IMAGE_CONFIG_ID)
+                row = session.get(ImageConfig, profile_id) if profile_id else get_image_config(session)
                 if row is None and profile_id:
-                    row = session.get(ImageConfig, IMAGE_CONFIG_ID)
+                    row = get_image_config(session)
                 _apply_image_row(config, session, row)
         else:
-            row = db.get(ImageConfig, profile_id or IMAGE_CONFIG_ID)
+            row = db.get(ImageConfig, profile_id) if profile_id else get_image_config(db)
             if row is None and profile_id:
-                row = db.get(ImageConfig, IMAGE_CONFIG_ID)
+                row = get_image_config(db)
             _apply_image_row(config, db, row)
     except Exception:  # noqa: BLE001 - 表不存在等场景按未配置处理
         return config

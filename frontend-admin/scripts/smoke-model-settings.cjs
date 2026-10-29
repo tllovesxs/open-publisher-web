@@ -20,6 +20,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.route(url => url.pathname.startsWith('/api/'), async route => {
       const url = new URL(route.request().url());
       const path = url.pathname;
+      const catalog = path.match(/\/settings\/model-configs\/(image|embedding|rerank)(?:\/([^/]+))?$/);
+      if (catalog) {
+        const [, kind, id] = catalog;
+        const profile = { id: 'existing-' + kind, name: '当前配置', baseUrl: kind === 'image' ? 'https://image.example.test' : rag[kind + 'BaseUrl'], modelId: kind === 'image' ? 'image-model' : rag[kind + 'Model'], timeoutSeconds: kind === 'rerank' ? rag.rerankTimeoutSeconds : 60 };
+        if (route.request().method() === 'PATCH' && id) {
+          const body = route.request().postDataJSON();
+          savedRag = { ...rag, [kind + 'BaseUrl']: body.baseUrl, [kind + 'Model']: body.modelId, ...(kind === 'rerank' ? { rerankTimeoutSeconds: body.timeoutSeconds } : {}) };
+          Object.assign(rag, savedRag);
+          return route.fulfill({ json: { ...profile, ...body } });
+        }
+        return route.fulfill({ json: { profiles: [profile], activeId: profile.id } });
+      }
       if (path.endsWith('/model/test')) {
         signal();
         await new Promise(resolve => { release = resolve; });

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, LoaderCircle, LogOut, Plus, RefreshCw, Settings2, Star, Trash2, XCircle } from "lucide-react";
 import { api } from "./api";
+import { ModelConfigurationManager, type ConfigurationManagerHandle } from "./ModelConfigurationManager";
 import AdminLoginPage from "./AdminLoginPage";
 import { AdminAuthProvider, useAdminAuth } from "./AuthContext";
 
@@ -51,12 +52,6 @@ interface ImageStatus {
   source: "db" | "fallback";
 }
 
-const emptyImageForm = {
-  baseUrl: "",
-  modelId: "",
-  timeoutSeconds: 180,
-};
-
 interface RagConfig {
   embeddingBaseUrl: string;
   embeddingModel: string;
@@ -92,11 +87,13 @@ function connectionError(detail: unknown): string {
 }
 
 function AiConfigPage() {
+  const [configurationRevision, setConfigurationRevision] = useState(0);
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [profiles, setProfiles] = useState<ProfileOut[]>([]);
   const [image, setImage] = useState<ImageStatus | null>(null);
-  const [imageForm, setImageForm] = useState(emptyImageForm);
-  const [showImageForm, setShowImageForm] = useState(false);
+  const imageManager = useRef<ConfigurationManagerHandle>(null);
+  const embeddingManager = useRef<ConfigurationManagerHandle>(null);
+  const rerankManager = useRef<ConfigurationManagerHandle>(null);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
@@ -116,9 +113,7 @@ function AiConfigPage() {
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);
   const [rag, setRag] = useState<RagConfig | null>(null);
-  const [ragForm, setRagForm] = useState({ embeddingBaseUrl: "", embeddingModel: "", rerankBaseUrl: "", rerankModel: "", rerankTimeoutSeconds: 3 });
-  const [showEmbeddingForm, setShowEmbeddingForm] = useState(false);
-  const [showRerankForm, setShowRerankForm] = useState(false);
+
   const { logout, user } = useAdminAuth();
 
   const load = useCallback(async () => {
@@ -133,6 +128,7 @@ function AiConfigPage() {
       setProfiles(profilesRes.data.profiles);
       setImage(imageRes.data);
       setRag(ragRes.data);
+      setConfigurationRevision(value => value + 1);
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(typeof detail === "string" ? connectionError(detail) : "无法读取 AI 配置。");
@@ -142,6 +138,18 @@ function AiConfigPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) { setShowForm(false); setEditingProfileId(null); setForm(emptyForm); setNotices(current => ({ ...current, text: {} })); }
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [showForm, busy]);
+  useEffect(() => {
+    if (activeView !== "text" && !busy) { setShowForm(false); setEditingProfileId(null); setForm(emptyForm); }
+  }, [activeView, busy]);
 
   const createProfile = async () => {
     if (!form.name.trim() || !form.baseUrl.trim() || !form.modelId.trim()) {
@@ -244,48 +252,13 @@ function AiConfigPage() {
     }
   };
 
-  const openImageForm = () => {
-    if (image && image.source === "db") {
-      setImageForm({
-        baseUrl: image.baseUrl,
-        modelId: image.model,
-        timeoutSeconds: image.timeoutSeconds,
-      });
-    } else {
-      setImageForm(emptyImageForm);
-    }
-    setShowImageForm(true);
-  };
-
-  const saveImage = async () => {
-    if (!imageForm.baseUrl.trim() || !imageForm.modelId.trim()) {
-      setError("生图服务地址 / 模型名称 必填。");
-      return;
-    }
-    setBusy(true);
-    setBusyAction("saveImage");
-    setError(null);
-    try {
-      await api.put<ImageStatus>("/settings/image", imageForm);
-      setShowImageForm(false);
-      await load();
-      setMessage("生图配置已保存。");
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? connectionError(detail) : "生图配置保存失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
   const resetImage = async () => {
     setBusy(true);
     setBusyAction("resetImage");
     setError(null);
     try {
       await api.delete<ImageStatus>("/settings/image");
-      setShowImageForm(false);
+
       await load();
       setMessage("已使用默认配置。");
     } catch {
@@ -434,40 +407,11 @@ function AiConfigPage() {
     }
   };
   const openProfileForm = () => {
+    setNotices(current => ({ ...current, text: {} }));
     setEditingProfileId(null);
     setForm(emptyForm);
     setShowForm(!showForm);
   };
-  const openRagForm = (kind: "embedding" | "rerank") => {
-    if (rag) setRagForm({ embeddingBaseUrl: rag.embeddingBaseUrl, embeddingModel: rag.embeddingModel, rerankBaseUrl: rag.rerankBaseUrl, rerankModel: rag.rerankModel, rerankTimeoutSeconds: rag.rerankTimeoutSeconds });
-    if (kind === "embedding") setShowEmbeddingForm(true); else setShowRerankForm(true);
-  };
-  const openEmbeddingForm = () => openRagForm("embedding");
-  const openRerankForm = () => openRagForm("rerank");
-
-  const saveRag = async () => {
-    if (!ragForm.embeddingModel.trim()) {
-      setError("资料检索模型名称 必填。");
-      return;
-    }
-    setBusy(true);
-    setBusyAction("saveRag");
-    setError(null);
-    try {
-      await api.put<RagConfig>("/settings/rag", ragForm);
-      setShowEmbeddingForm(false);
-      setShowRerankForm(false);
-      await load();
-      setMessage("资料检索配置已保存。");
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? connectionError(detail) : "检索配置保存失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
   const testRag = async (target: "embedding" | "rerank") => {
     setBusy(true);
     setBusyAction("testRag");
@@ -553,6 +497,7 @@ function AiConfigPage() {
                       <button
                         className="quiet"
                         onClick={() => {
+                          setEditingProfileId(null);
                           setForm((current) => ({ ...current, modelId: model }));
                           setShowForm(true);
                           setNotices(current => ({ ...current, text: { message: `已选择 ${model}，补充服务地址后保存配置。` } }));
@@ -579,6 +524,7 @@ function AiConfigPage() {
           )}
           {showForm && (
             <form
+              aria-label={`${editingProfileId ? "编辑" : "新增"}文本模型配置`}
               className="admin-form config-form"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -593,13 +539,13 @@ function AiConfigPage() {
               <label className="check-field"><input type="checkbox" checked={form.capabilities.reasoning} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, reasoning: e.target.checked } })} /><span>启用模型思考</span></label>
               <label><span>思考等级</span><select value={form.capabilities.thinkingLevel} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, thinkingLevel: e.target.value } })}><option value="auto">自动</option><option value="off">关闭</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
               <label className="check-field"><input type="checkbox" checked={form.capabilities.vision} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, vision: e.target.checked } })} /><span>支持图片理解</span></label>
-              <button className="primary" disabled={busy} type="submit">保存配置</button>
+              <div className="config-form-actions"><button className="quiet" disabled={busy} onClick={() => { setShowForm(false); setEditingProfileId(null); setForm(emptyForm); setNotices(current => ({ ...current, text: {} })); }} type="button">取消</button><button className="primary" disabled={busy} type="submit">保存配置</button></div>
             </form>
           )}
           <div className="profile-list profile-list--embedded">
             <div className="section-head section-head--compact">
               <h2>文本模型配置</h2>
-              <button className="quiet" onClick={openProfileForm} type="button"><Plus size={14} /> 新增配置</button>
+              <button className="quiet" onClick={() => { setEditingProfileId(null); setForm(emptyForm); setShowForm(true); }} type="button"><Plus size={14} /> 新增配置</button>
             </div>
             {profiles.map((profile) => (
               <div className={profile.isDefault ? "profile active" : "profile"} key={profile.id}>
@@ -630,7 +576,7 @@ function AiConfigPage() {
       </ModelPanel>
 
       <ModelPanel id="sec-image" hidden={activeView !== "image"} title="生图模型配置" actions={<>
-            <button className="quiet" onClick={openImageForm} type="button"><Settings2 size={14} /> 模型配置</button>
+            <button className="quiet" onClick={() => imageManager.current?.toggleCurrent()} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testImage()} type="button">
               {busyAction === "testImage" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
@@ -664,19 +610,7 @@ function AiConfigPage() {
                 )}
               </div>
             </div>
-            {showImageForm && (
-              <form
-                className="admin-form config-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveImage();
-                }}>
-                <label><span>服务地址</span><input onChange={(e) => setImageForm({ ...imageForm, baseUrl: e.target.value })} placeholder="生图服务地址，例如 https://api.openai.com/v1" required value={imageForm.baseUrl} /></label>
-                <label><span>模型名称</span><input onChange={(e) => setImageForm({ ...imageForm, modelId: e.target.value })} placeholder="生图模型名称，例如 gpt-image-1" required value={imageForm.modelId} /></label>
-                <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setImageForm({ ...imageForm, timeoutSeconds: Number(e.target.value) || 180 })} placeholder="等待时限（秒）" type="number" value={imageForm.timeoutSeconds} /></label>
-                <button className="primary" disabled={busy} type="submit">保存生图配置</button>
-              </form>
-            )}
+            <ModelConfigurationManager revision={configurationRevision} kind="image" onChanged={load} ref={imageManager} visible={activeView === "image"} />
           </>
         ) : (
           <p className="muted">加载中...</p>
@@ -684,7 +618,7 @@ function AiConfigPage() {
       </ModelPanel>
 
       <ModelPanel id="sec-embedding" hidden={activeView !== "embedding"} title="资料检索模型配置" actions={<>
-            <button className="quiet" onClick={openEmbeddingForm} type="button"><Settings2 size={14} /> 模型配置</button>
+            <button className="quiet" onClick={() => embeddingManager.current?.toggleCurrent()} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testRag("embedding")} type="button">
               {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
@@ -702,18 +636,7 @@ function AiConfigPage() {
               <span className="muted">使用文本模型的访问密钥，请确认它支持资料检索。</span>
 
             </div>
-            {showEmbeddingForm && (
-              <form
-                className="admin-form config-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveRag();
-                }}>
-                <label><span>服务地址</span><input onChange={(e) => setRagForm({ ...ragForm, embeddingBaseUrl: e.target.value })} placeholder="检索服务地址（留空沿用文本模型地址）" value={ragForm.embeddingBaseUrl} /></label>
-                <label><span>模型名称</span><input onChange={(e) => setRagForm({ ...ragForm, embeddingModel: e.target.value })} placeholder="资料检索模型名称，例如 text-embedding-3-small / embedding-3 / BAAI/bge-m3" required value={ragForm.embeddingModel} /></label>
-                <button className="primary" disabled={busy} type="submit">保存配置</button>
-              </form>
-            )}
+            <ModelConfigurationManager revision={configurationRevision} kind="embedding" onChanged={load} ref={embeddingManager} visible={activeView === "embedding"} />
           </>
         ) : (
           <p className="muted">加载中...</p>
@@ -721,7 +644,7 @@ function AiConfigPage() {
       </ModelPanel>
 
       <ModelPanel id="sec-rerank" hidden={activeView !== "rerank"} title="检索排序模型配置" actions={<>
-            <button className="quiet" onClick={openRerankForm} type="button"><Settings2 size={14} /> 模型配置</button>
+            <button className="quiet" onClick={() => rerankManager.current?.toggleCurrent()} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testRag("rerank")} type="button">
               {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
@@ -740,19 +663,7 @@ function AiConfigPage() {
               <span className="muted">配置后可提升资料匹配效果；留空时使用原有检索顺序。</span>
 
             </div>
-            {showRerankForm && (
-              <form
-                className="admin-form config-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void saveRag();
-                }}>
-                <label><span>服务地址</span><input onChange={(e) => setRagForm({ ...ragForm, rerankBaseUrl: e.target.value })} placeholder="排序服务地址，例如 http://localhost:8080" value={ragForm.rerankBaseUrl} /></label>
-                <label><span>模型名称</span><input onChange={(e) => setRagForm({ ...ragForm, rerankModel: e.target.value })} placeholder="排序模型名称，例如 bge-reranker-v2-m3" value={ragForm.rerankModel} /></label>
-                <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setRagForm({ ...ragForm, rerankTimeoutSeconds: Number(e.target.value) || 3 })} placeholder="排序等待时限（秒）" type="number" value={ragForm.rerankTimeoutSeconds} /></label>
-                <button className="primary" disabled={busy} type="submit">保存配置</button>
-              </form>
-            )}
+            <ModelConfigurationManager revision={configurationRevision} kind="rerank" onChanged={load} ref={rerankManager} visible={activeView === "rerank"} />
           </>
         ) : (
           <p className="muted">加载中...</p>

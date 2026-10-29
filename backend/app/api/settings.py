@@ -125,12 +125,16 @@ def list_image_models(db: Session = Depends(get_db)):
 
     rows = db.query(ImageConfig).order_by(ImageConfig.updated_at.desc()).all()
     meta = secret_store.get_secret_meta(db, secret_store.SECRET_ID_IMAGE_GLOBAL)
+    from app.services.model_config_catalog import read_catalog
+    catalog = read_catalog(db, "image")
+    names = {p["id"]: p["name"] for p in catalog["profiles"]}
     models = []
     for row in rows:
         models.append(
             {
                 "id": row.id,
-                "name": row.model_id,
+                "name": names.get(row.id, row.model_id),
+                "isDefault": row.id == catalog["activeId"],
                 "model": row.model_id,
                 "keyConfigured": meta is not None,
                 "keySource": "db" if meta is not None else "none",
@@ -428,13 +432,22 @@ def update_image_config(
     from app.models.settings_profile import ImageConfig
     from app.services.model_profile_service import IMAGE_CONFIG_ID
 
-    row = db.get(ImageConfig, IMAGE_CONFIG_ID)
+    from app.services.model_profile_service import get_image_config
+    row = get_image_config(db)
     if row is None:
         row = ImageConfig(id=IMAGE_CONFIG_ID)
         db.add(row)
     row.base_url = body.baseUrl.strip()
     row.model_id = body.modelId.strip()
     row.timeout_seconds = body.timeoutSeconds
+    from app.services.model_config_catalog import catalog_key, read_catalog
+    from app.services.workspace_settings import write_preferences
+    catalog = read_catalog(db, "image")
+    profile = {"id": row.id, "name": next((p["name"] for p in catalog["profiles"] if p["id"] == row.id), row.model_id), "baseUrl": row.base_url, "modelId": row.model_id, "timeoutSeconds": row.timeout_seconds}
+    profiles = [profile if p["id"] == row.id else p for p in catalog["profiles"]]
+    if not any(p["id"] == row.id for p in profiles):
+        profiles.append(profile)
+    write_preferences(db, catalog_key("image"), {"profiles": profiles, "activeId": row.id})
     db.commit()
     db.refresh(row)
     return _image_out(db)
@@ -446,10 +459,13 @@ def reset_image_config(db: Session = Depends(get_db)):
     from app.models.settings_profile import ImageConfig
     from app.services.model_profile_service import IMAGE_CONFIG_ID
 
+    from app.services.model_config_catalog import catalog_key, read_catalog
+    from app.services.workspace_settings import write_preferences
+    catalog = read_catalog(db, "image")
     row = db.get(ImageConfig, IMAGE_CONFIG_ID)
     if row is not None:
         db.delete(row)
-        db.commit()
+    write_preferences(db, catalog_key("image"), {"profiles": [p for p in catalog["profiles"] if p["id"] != IMAGE_CONFIG_ID], "activeId": None})
     return _image_out(db)
 
 
@@ -656,6 +672,14 @@ def update_rag_config(body: RagConfigUpdate, db: Session = Depends(get_db)):
         "rerankModel": body.rerankModel.strip(),
         "rerankTimeoutSeconds": body.rerankTimeoutSeconds,
     })
+    from app.services.model_config_catalog import catalog_key
+    for kind in ("embedding", "rerank"):
+        catalog = read_preferences(db, catalog_key(kind))
+        if catalog and catalog.get("activeId"):
+            fields = {"baseUrl": getattr(body, kind + "BaseUrl").strip(), "modelId": getattr(body, kind + "Model").strip()}
+            if kind == "rerank":
+                fields["timeoutSeconds"] = body.rerankTimeoutSeconds
+            write_preferences(db, catalog_key(kind), {**catalog, "profiles": [{**p, **fields} if p["id"] == catalog["activeId"] else p for p in catalog["profiles"]]})
     return _rag_out(db)
 
 
@@ -667,6 +691,11 @@ def reset_rag_config(db: Session = Depends(get_db)):
     if row is not None:
         db.delete(row)
         db.commit()
+    from app.services.model_config_catalog import catalog_key
+    for kind in ("embedding", "rerank"):
+        catalog = read_preferences(db, catalog_key(kind))
+        if catalog:
+            write_preferences(db, catalog_key(kind), {**catalog, "activeId": None})
     return _rag_out(db)
 
 
