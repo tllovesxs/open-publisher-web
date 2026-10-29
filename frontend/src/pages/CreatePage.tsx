@@ -70,6 +70,12 @@ const lengthOptions: Array<{ id: LengthPreset; label: string }> = [
   { id: "custom", label: "自定义" },
 ];
 
+const promptSuggestions = [
+  { label: "产品介绍", prompt: "为一款产品写一篇介绍，面向初次了解它的读者，说明它解决的问题、核心功能和适用场景。产品信息：" },
+  { label: "经验分享", prompt: "围绕一段真实经历写一篇经验分享，交代背景、具体做法、遇到的问题和可复用的建议。我的经历：" },
+  { label: "观点分析", prompt: "分析一个值得讨论的话题，面向普通读者，梳理不同观点，用可靠资料支持判断，并说明适用边界。话题：" },
+];
+
 const toneOptions: Array<{ id: Tone; instruction: string }> = [
   {
     id: "真人感",
@@ -397,6 +403,7 @@ export default function CreatePage() {
                 type="file"
               />
             </div>
+            <div className="creation-composer__actions">
             <span className="creation-composer__summary">{templateLabel}</span>
             <PillSelect
               ariaLabel="写作模型"
@@ -414,10 +421,25 @@ export default function CreatePage() {
               {starting ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
               {starting ? "正在进入文章工作区…" : user ? "开始创作" : "登录后开始创作"}
             </button>
+            </div>
           </div>
           {validation && <p className="creation-validation" role="alert">{validation}</p>}
           {importNote && <p className="creation-import-note" role="status">{importNote}</p>}
         </div>
+        {!topic.trim() && (
+          <div aria-label="创作建议" className="creation-suggestions">
+            <span>还没想好怎么写？试试</span>
+            <div>
+              {promptSuggestions.map((suggestion) => (
+                <button className="creation-suggestions__item" key={suggestion.label} onClick={() => {
+                  setTopic(suggestion.prompt);
+                  setValidation(null);
+                  document.getElementById(promptId)?.focus();
+                }} type="button">{suggestion.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
       </div>
 

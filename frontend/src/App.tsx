@@ -132,7 +132,7 @@ function Shell() {
         </header>
 
         <main
-          className={`page-viewport${location.pathname === "/" ? " page-viewport--articles" : ""}`}
+          className="page-viewport"
           id="main-content">
           <PageBoundary><Suspense fallback={<PageLoading />}><Routes>
             <Route path="/" element={<CreatePage />} />
