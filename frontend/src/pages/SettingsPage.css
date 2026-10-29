@@ -34,15 +34,15 @@
 .client-settings-theme-preview--dark > span:first-child { background: #161922; border-color: #3b404c; }
 .client-settings-theme-preview--dark i { background: #414754; }
 .client-settings-theme-preview--system { background: linear-gradient(110deg, #fff 50%, #20232c 50%); }
-.settings-page { width: 100%; max-width: 1040px; margin: 0 auto; padding: 32px; }
+.settings-page { width: 100%; max-width: none; margin: 0; padding: 28px; }
 .client-settings-page-heading { margin-bottom: 28px; }
 .client-settings-page-heading h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
 .client-settings-page-heading p { margin: 0; color: var(--muted); font-size: 13px; }
-.client-settings-layout { display: grid; grid-template-columns: 152px minmax(0, 1fr); gap: 28px; align-items: start; }
-.client-settings-nav { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-muted); position: sticky; top: 24px; }
+.client-settings-layout { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 24px; align-items: start; }
+.client-settings-nav { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface)); position: sticky; top: 24px; }
 .client-settings-nav button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: background 150ms, color 150ms; }
 .client-settings-nav button:hover { background: var(--surface); color: var(--ink); }
-.client-settings-nav button.is-active { border-color: var(--border); background: var(--surface); color: var(--accent); box-shadow: 0 2px 6px rgb(0 0 0 / 3%); }
+.client-settings-nav button.is-active { border-color: var(--border); background: var(--surface); color: var(--accent); box-shadow: 0 3px 10px rgb(0 0 0 / 4%); }
 .client-settings-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .client-settings-content { min-width: 0; }
 .client-settings-writing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -62,4 +62,18 @@
 .client-settings-search-label > svg { color: var(--accent); flex-shrink: 0; }
 .client-settings-search-label strong { font-size: 13px; font-weight: 600; }
 .client-settings-search-row .toolbar-select { flex: 0 0 100px; }
+.client-settings-account { display: grid; gap: 18px; }
+.client-settings-account-card { display: flex; align-items: center; gap: 20px; padding: 28px; min-height: 152px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(115deg, var(--accent-soft), var(--surface) 55%); }
+.client-settings-avatar { display: grid; place-items: center; flex: 0 0 64px; height: 64px; border: 4px solid var(--surface); border-radius: 20px; color: #fff; font-size: 26px; font-weight: 700; background: linear-gradient(135deg, var(--accent), #6787ea); box-shadow: 0 5px 16px rgb(51 156 255 / 15%); }
+.client-settings-account-info { flex: 1; min-width: 0; }
+.client-settings-eyebrow { color: var(--muted); font-size: 11px; }
+.client-settings-account-info h2 { margin: 5px 0 8px; font-size: 20px; overflow-wrap: anywhere; }
+.client-settings-role { display: inline-block; padding: 3px 9px; border-radius: 6px; background: var(--surface); color: var(--accent); font-size: 11px; }
+.client-settings-account-card > .button { flex-shrink: 0; }
+.client-settings-account-note { display: flex; align-items: center; gap: 12px; padding: 20px 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
+.client-settings-account-note > svg { color: var(--accent); flex-shrink: 0; }
+.client-settings-account-note strong { font-size: 13px; font-weight: 600; }
+.client-settings-account-note p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 @media (max-width: 760px) { .settings-page { padding: 24px 16px; } .client-settings-layout { grid-template-columns: 68px minmax(0, 1fr); gap: 12px; } .client-settings-nav { padding: 5px; } .client-settings-nav button { flex-direction: column; gap: 6px; padding: 12px 4px; font-size: 12px; } .client-settings-card { padding: 16px; gap: 18px; } .client-settings-section-heading { align-items: flex-start; gap: 9px; } .client-settings-icon { width: 34px; height: 34px; border-radius: 10px; } .client-settings-model-grid, .client-settings-writing-grid { grid-template-columns: 1fr; gap: 12px; } .client-settings-theme-options { grid-template-columns: 1fr; } .client-settings-theme-preview { height: 88px; } .client-settings-stage { grid-template-columns: 30px minmax(0, 1fr) 15px; gap: 8px; padding: 16px 10px; } .client-settings-stage-icon { width: 30px; height: 34px; border-radius: 8px; } .client-settings-search-row { align-items: flex-start; flex-direction: column; gap: 12px; padding: 12px; } .client-settings-search-row .toolbar-select { flex: auto; width: 100%; } }
+
+@media (max-width: 760px) { .client-settings-account-card { flex-wrap: wrap; gap: 12px; padding: 16px; } .client-settings-avatar { flex-basis: 44px; height: 44px; border-radius: 14px; border-width: 2px; font-size: 20px; } .client-settings-account-info h2 { font-size: 17px; } .client-settings-account-card > .button { width: 100%; } .client-settings-account-note { align-items: flex-start; padding: 16px; } }

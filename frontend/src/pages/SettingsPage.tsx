@@ -150,24 +150,17 @@ export default function SettingsPage() {
 
       {/* Account tab */}
       {tab === "account" && (
-        <div style={{ display: "grid", gap: 20 }}>
-          <section style={{
-            alignItems: "center", background: "var(--surface, #fff)", border: "1px solid var(--border, #e5e5e5)",
-            borderRadius: 12, display: "flex", gap: 14, padding: 20,
-          }}>
-            <div style={{
-              alignItems: "center", background: "linear-gradient(135deg, var(--accent, #5b8def), color-mix(in srgb, var(--accent, #5b8def) 60%, #9b59b6))",
-              borderRadius: "50%", color: "#fff", display: "grid", fontSize: 18, fontWeight: 700, height: 48, placeItems: "center", width: 48,
-            }}>
+        <div className="client-settings-account">
+          <section className="client-settings-account-card">
+            <div className="client-settings-avatar">
               {(user?.displayName || user?.username || "?").charAt(0).toUpperCase()}
             </div>
-            <div style={{ flex: 1 }}>
-              <strong style={{ fontSize: 15 }}>{user?.displayName || user?.username}</strong>
-              <p style={{ color: "var(--muted, #888)", fontSize: 12, marginTop: 2 }}>
-                {admin ? "管理员" : "成员"}
-              </p>
+            <div className="client-settings-account-info">
+              <span className="client-settings-eyebrow">当前账号</span>
+              <h2>{user?.displayName || user?.username}</h2>
+              <span className="client-settings-role">{admin ? "管理员" : "成员"}</span>
             </div>
-            <button className="button button--quiet" onClick={() => void logout()}>退出登录</button>
+            <button className="button button--quiet" onClick={() => void logout()} type="button">退出登录</button>
           </section>
 
           {admin && (
@@ -244,7 +237,7 @@ export default function SettingsPage() {
               </button>
             </section>
           )}
-          {!admin && <p style={{ color: "var(--muted, #888)", fontSize: 12 }}>外部服务由管理员配置。</p>}
+          {!admin && <div className="client-settings-account-note"><ShieldCheck size={18} aria-hidden="true" /><div><strong>外部服务</strong><p>联网搜索等外部服务由管理员统一配置。</p></div></div>}
         </div>
       )}
 
