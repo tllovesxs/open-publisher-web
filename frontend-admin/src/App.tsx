@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { CheckCircle2, LoaderCircle, LogOut, Plus, RefreshCw, Star, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, LoaderCircle, LogOut, Plus, RefreshCw, Settings2, Star, Trash2, XCircle } from "lucide-react";
 import { api } from "./api";
 import AdminLoginPage from "./AdminLoginPage";
 import { AdminAuthProvider, useAdminAuth } from "./AuthContext";
@@ -61,6 +61,7 @@ interface RagConfig {
   embeddingBaseUrl: string;
   embeddingModel: string;
   rerankBaseUrl: string;
+  rerankModel: string;
   rerankTimeoutSeconds: number;
   embeddingKeyConfigured: boolean;
   source: "db" | "default";
@@ -69,7 +70,6 @@ interface RagConfig {
 
 const VIEWS = [
   { view: "text", title: "文本模型", desc: "用于文章撰写、修改和内容检查。" },
-  { view: "profiles", title: "文本模型方案", desc: "保存不同服务商和模型的配置，按需切换用于写作。" },
   { view: "image", title: "生图模型", desc: "文章配图使用的图像生成模型。" },
   { view: "embedding", title: "资料检索模型", desc: "理解参考资料，帮助写作时找到相关内容。" },
   { view: "rerank", title: "检索排序模型", desc: "优先选出与主题相关的资料，可按需启用。" },
@@ -116,7 +116,7 @@ function AiConfigPage() {
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);
   const [rag, setRag] = useState<RagConfig | null>(null);
-  const [ragForm, setRagForm] = useState({ embeddingBaseUrl: "", embeddingModel: "", rerankBaseUrl: "", rerankTimeoutSeconds: 3 });
+  const [ragForm, setRagForm] = useState({ embeddingBaseUrl: "", embeddingModel: "", rerankBaseUrl: "", rerankModel: "", rerankTimeoutSeconds: 3 });
   const [showEmbeddingForm, setShowEmbeddingForm] = useState(false);
   const [showRerankForm, setShowRerankForm] = useState(false);
   const { logout, user } = useAdminAuth();
@@ -158,7 +158,7 @@ function AiConfigPage() {
       setForm(emptyForm);
       setShowForm(false);
       await load();
-      setMessage("文本模型方案已保存。");
+      setMessage("文本模型配置已保存。");
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(typeof detail === "string" ? connectionError(detail) : "保存失败。");
@@ -433,8 +433,13 @@ function AiConfigPage() {
       setBusyAction(null);
     }
   };
+  const openProfileForm = () => {
+    setEditingProfileId(null);
+    setForm(emptyForm);
+    setShowForm(!showForm);
+  };
   const openRagForm = (kind: "embedding" | "rerank") => {
-    if (rag) setRagForm({ embeddingBaseUrl: rag.embeddingBaseUrl, embeddingModel: rag.embeddingModel, rerankBaseUrl: rag.rerankBaseUrl, rerankTimeoutSeconds: rag.rerankTimeoutSeconds });
+    if (rag) setRagForm({ embeddingBaseUrl: rag.embeddingBaseUrl, embeddingModel: rag.embeddingModel, rerankBaseUrl: rag.rerankBaseUrl, rerankModel: rag.rerankModel, rerankTimeoutSeconds: rag.rerankTimeoutSeconds });
     if (kind === "embedding") setShowEmbeddingForm(true); else setShowRerankForm(true);
   };
   const openEmbeddingForm = () => openRagForm("embedding");
@@ -518,8 +523,8 @@ function AiConfigPage() {
           <p className="muted">{VIEWS.find((v) => v.view === activeView)?.desc}</p>
         </div>
       <ModelPanel id="sec-current" hidden={activeView !== "text"} title="文本模型配置" actions={<>
+            <button className="quiet" onClick={openProfileForm} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
-            <button className="quiet" onClick={() => setActiveView("profiles")} type="button">选择或新增方案</button>
             <button className="quiet" disabled={busy} onClick={() => void discoverModels()} type="button">
               {busyAction === "discoverModels" ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} 获取模型列表
             </button>
@@ -550,8 +555,7 @@ function AiConfigPage() {
                         onClick={() => {
                           setForm((current) => ({ ...current, modelId: model }));
                           setShowForm(true);
-                          setActiveView("profiles");
-                          setNotices(current => ({ ...current, profiles: { message: `已选择 ${model}，补充服务地址后保存方案。` } }));
+                          setNotices(current => ({ ...current, text: { message: `已选择 ${model}，补充服务地址后保存配置。` } }));
                         }}
                         type="button"
                       >
@@ -573,67 +577,60 @@ function AiConfigPage() {
           {status.keyHint && (
             <p className="muted">当前密钥 {status.keyHint}</p>
           )}
+          {showForm && (
+            <form
+              className="admin-form config-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createProfile();
+              }}>
+              <label><span>方案名称</span><input onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="方案名称" required value={form.name} /></label>
+              <label><span>服务地址</span><input onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="服务地址，例如 https://api.openai.com/v1" required value={form.baseUrl} /></label>
+              <label><span>模型名称</span><input onChange={(e) => setForm({ ...form, modelId: e.target.value })} placeholder="模型名称，例如 gpt-4o-mini" required value={form.modelId} /></label>
+              <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) || 120 })} placeholder="等待时限（秒）" type="number" value={form.timeoutSeconds} /></label>
+              <label><span>最大输出 tokens</span><input min={256} max={200000} type="number" value={form.capabilities.maxTokens} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, maxTokens: Number(e.target.value) } })} /></label>
+              <label><span>上下文 tokens</span><input min={1024} max={4000000} type="number" value={form.capabilities.contextWindow} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, contextWindow: Number(e.target.value) } })} /></label>
+              <label className="check-field"><input type="checkbox" checked={form.capabilities.reasoning} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, reasoning: e.target.checked } })} /><span>启用模型思考</span></label>
+              <label><span>思考等级</span><select value={form.capabilities.thinkingLevel} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, thinkingLevel: e.target.value } })}><option value="auto">自动</option><option value="off">关闭</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
+              <label className="check-field"><input type="checkbox" checked={form.capabilities.vision} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, vision: e.target.checked } })} /><span>支持图片理解</span></label>
+              <button className="primary" disabled={busy} type="submit">保存配置</button>
+            </form>
+          )}
+          <div className="profile-list profile-list--embedded">
+            <div className="section-head section-head--compact">
+              <h2>文本模型配置</h2>
+              <button className="quiet" onClick={openProfileForm} type="button"><Plus size={14} /> 新增配置</button>
+            </div>
+            {profiles.map((profile) => (
+              <div className={profile.isDefault ? "profile active" : "profile"} key={profile.id}>
+                <div className="profile-summary">
+                  <strong>{profile.isDefault && <Star color="#f59e0b" size={13} />} {profile.name}{profile.isDefault && <span className="profile-badge">使用中</span>}</strong>
+                  <small>最大输出 {profile.capabilities?.maxTokens ?? 16384} tokens · {profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "使用默认密钥"} · {profile.timeoutSeconds}s</small>
+                </div>
+                <div className="key-editor">
+                  <input autoComplete="new-password" onChange={(e) => setProfileKeyInputs({ ...profileKeyInputs, [profile.id]: e.target.value })} placeholder="输入此配置的访问密钥" type="password" value={profileKeyInputs[profile.id] ?? ""} />
+                  <button className="quiet" disabled={busy} onClick={() => void saveProfileKey(profile.id)} type="button">保存密钥</button>
+                  {profile.keySource === "db" && (
+                    <button className="quiet" disabled={busy} onClick={() => void removeProfileKey(profile.id)} type="button">移除密钥</button>
+                  )}
+                </div>
+                <div className="actions">
+                  <button className="quiet" disabled={busy} onClick={() => { setEditingProfileId(profile.id); setForm({ name: profile.name, provider: profile.provider, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds, capabilities: { ...defaultCapabilities, ...profile.capabilities } }); setShowForm(true); }} type="button">编辑配置</button>
+                  {!profile.isDefault && <button className="quiet" disabled={busy} onClick={() => void activate(profile.id)} type="button">设为默认</button>}
+                  <button aria-label={`删除 ${profile.name}`} className="danger" disabled={busy} onClick={() => void remove(profile.id)} type="button"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+            {profiles.length === 0 && <p className="muted">还没有文本模型配置。</p>}
+          </div>
           </>
         ) : (
           <p className="muted">加载中...</p>
         )}
       </ModelPanel>
 
-      <section className="admin-card" id="sec-profiles" hidden={activeView !== "profiles"}>
-        <div className="section-head">
-          <h2>文本模型方案</h2>
-          <button className="primary" onClick={() => { setEditingProfileId(null); setForm(emptyForm); setShowForm(!showForm); }} type="button">
-            <Plus size={14} /> 新增方案
-          </button>
-        </div>
-
-        {showForm && (
-          <form
-            className="admin-form config-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createProfile();
-            }}>
-            <label><span>方案名称</span><input onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="方案名称" required value={form.name} /></label>
-            <label><span>服务地址</span><input onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="服务地址，例如 https://api.openai.com/v1" required value={form.baseUrl} /></label>
-            <label><span>模型名称</span><input onChange={(e) => setForm({ ...form, modelId: e.target.value })} placeholder="模型名称，例如 gpt-4o-mini" required value={form.modelId} /></label>
-            <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) || 120 })} placeholder="等待时限（秒）" type="number" value={form.timeoutSeconds} /></label>
-            <label><span>最大输出 tokens</span><input min={256} max={200000} type="number" value={form.capabilities.maxTokens} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, maxTokens: Number(e.target.value) } })} /></label>
-            <label><span>上下文 tokens</span><input min={1024} max={4000000} type="number" value={form.capabilities.contextWindow} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, contextWindow: Number(e.target.value) } })} /></label>
-            <label><span>启用模型思考</span><input type="checkbox" checked={form.capabilities.reasoning} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, reasoning: e.target.checked } })} /></label>
-            <label><span>思考等级</span><select value={form.capabilities.thinkingLevel} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, thinkingLevel: e.target.value } })}><option value="auto">自动</option><option value="off">关闭</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
-            <label><span>支持图片理解</span><input type="checkbox" checked={form.capabilities.vision} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, vision: e.target.checked } })} /></label>
-            <button className="primary" disabled={busy} type="submit">保存配置</button>
-          </form>
-        )}
-
-        <div className="profile-list">
-          {profiles.map((profile) => (
-            <div className={profile.isDefault ? "profile active" : "profile"} key={profile.id}>
-              <div className="profile-summary">
-                <strong>{profile.isDefault && <Star color="#f59e0b" size={13} />} {profile.name}{profile.isDefault && <span className="profile-badge">使用中</span>}</strong>
-                <small>最大输出 {profile.capabilities?.maxTokens ?? 16384} tokens · {profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "使用默认密钥"} · {profile.timeoutSeconds}s</small>
-              </div>
-              <div className="key-editor">
-                <input autoComplete="new-password" onChange={(e) => setProfileKeyInputs({ ...profileKeyInputs, [profile.id]: e.target.value })} placeholder="输入此方案的访问密钥" type="password" value={profileKeyInputs[profile.id] ?? ""} />
-                <button className="quiet" disabled={busy} onClick={() => void saveProfileKey(profile.id)} type="button">保存密钥</button>
-                {profile.keySource === "db" && (
-                  <button className="quiet" disabled={busy} onClick={() => void removeProfileKey(profile.id)} type="button">移除密钥</button>
-                )}
-              </div>
-              <div className="actions">
-                <button className="quiet" disabled={busy} onClick={() => { setEditingProfileId(profile.id); setForm({ name: profile.name, provider: profile.provider, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds, capabilities: { ...defaultCapabilities, ...profile.capabilities } }); setShowForm(true); }} type="button">编辑配置</button>
-                {!profile.isDefault && <button className="quiet" disabled={busy} onClick={() => void activate(profile.id)} type="button">设为默认</button>}
-                <button aria-label={`删除 ${profile.name}`} className="danger" disabled={busy} onClick={() => void remove(profile.id)} type="button"><Trash2 size={14} /></button>
-              </div>
-            </div>
-          ))}
-          {profiles.length === 0 && <p className="muted">还没有文本模型方案。</p>}
-        </div>
-      </section>
-
       <ModelPanel id="sec-image" hidden={activeView !== "image"} title="生图模型配置" actions={<>
-            <button className="quiet" onClick={openImageForm} type="button">编辑配置</button>
+            <button className="quiet" onClick={openImageForm} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testImage()} type="button">
               {busyAction === "testImage" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
@@ -687,7 +684,7 @@ function AiConfigPage() {
       </ModelPanel>
 
       <ModelPanel id="sec-embedding" hidden={activeView !== "embedding"} title="资料检索模型配置" actions={<>
-            <button className="quiet" onClick={openEmbeddingForm} type="button">编辑配置</button>
+            <button className="quiet" onClick={openEmbeddingForm} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testRag("embedding")} type="button">
               {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
@@ -724,7 +721,7 @@ function AiConfigPage() {
       </ModelPanel>
 
       <ModelPanel id="sec-rerank" hidden={activeView !== "rerank"} title="检索排序模型配置" actions={<>
-            <button className="quiet" onClick={openRerankForm} type="button">编辑配置</button>
+            <button className="quiet" onClick={openRerankForm} type="button"><Settings2 size={14} /> 模型配置</button>
             <button className="quiet" onClick={() => void load()} type="button"><RefreshCw size={14} /> 刷新</button>
             <button className="primary" disabled={busy} onClick={() => void testRag("rerank")} type="button">
               {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
@@ -734,6 +731,7 @@ function AiConfigPage() {
           <>
             <div className="config-grid">
               <div><small>服务地址</small><strong>{rag.rerankBaseUrl || "未启用"}</strong></div>
+              <div><small>模型</small><strong>{rag.rerankModel || "未指定"}</strong></div>
               <div><small>等待时限</small><strong>{rag.rerankTimeoutSeconds}s</strong></div>
               <div><small>配置方式</small><strong>{rag.source === "db" ? "独立配置" : "默认配置"}</strong></div>
             </div>
@@ -750,6 +748,7 @@ function AiConfigPage() {
                   void saveRag();
                 }}>
                 <label><span>服务地址</span><input onChange={(e) => setRagForm({ ...ragForm, rerankBaseUrl: e.target.value })} placeholder="排序服务地址，例如 http://localhost:8080" value={ragForm.rerankBaseUrl} /></label>
+                <label><span>模型名称</span><input onChange={(e) => setRagForm({ ...ragForm, rerankModel: e.target.value })} placeholder="排序模型名称，例如 bge-reranker-v2-m3" value={ragForm.rerankModel} /></label>
                 <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setRagForm({ ...ragForm, rerankTimeoutSeconds: Number(e.target.value) || 3 })} placeholder="排序等待时限（秒）" type="number" value={ragForm.rerankTimeoutSeconds} /></label>
                 <button className="primary" disabled={busy} type="submit">保存配置</button>
               </form>

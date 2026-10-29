@@ -381,6 +381,7 @@ class RagService:
         """TEI /rerank（bge-reranker）；服务未启动或超时返回 None，跳过重排。"""
         rerank_base = self.settings.rerank_base_url
         rerank_timeout = self.settings.rerank_timeout_seconds
+        rerank_model = ""
         try:
             from app.db.session import SessionLocal
             from app.services.workspace_settings import read_preferences
@@ -388,13 +389,19 @@ class RagService:
             with SessionLocal() as db:
                 saved = read_preferences(db, "admin:rag") or {}
             rerank_base = saved.get("rerankBaseUrl") or rerank_base
+            rerank_model = saved.get("rerankModel") or ""
             rerank_timeout = float(saved.get("rerankTimeoutSeconds") or rerank_timeout)
         except Exception:  # noqa: BLE001
             pass
         base = rerank_base.rstrip("/")
         if not base:
             return None
-        body = json.dumps({"query": query, "texts": texts, "raw_scores": False}).encode()
+        body = json.dumps({
+            "query": query,
+            "texts": texts,
+            "model": rerank_model,
+            "raw_scores": False,
+        }).encode()
         req = urllib.request.Request(
             f"{base}/rerank", data=body,
             headers={"Content-Type": "application/json"},

@@ -51,9 +51,9 @@ body {
 
 .admin-shell {
   display: flex;
-  gap: 20px;
+  gap: 24px;
   margin: 0 auto;
-  max-width: 1080px;
+  max-width: 1320px;
   min-height: 100vh;
   padding: 24px;
 }
@@ -222,6 +222,22 @@ input:focus {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+select {
+  background: rgb(255 255 255 / 80%);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+  padding: 9px 11px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 label { display: grid; gap: 5px; }
 label span { color: var(--muted); font-size: 12px; }
 
@@ -245,6 +261,7 @@ button.primary {
 button.primary:hover { background: var(--accent-hover); }
 
 button.quiet {
+  align-items: center;
   background: rgb(255 255 255 / 60%);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -384,9 +401,29 @@ button:disabled { cursor: default; opacity: 0.55; }
 .key-editor button { flex-shrink: 0; }
 .config-form { padding: 16px; background: var(--surface-muted); border-radius: 12px; }
 .config-form label { min-width: 0; }
-.config-form input { width: 100%; min-width: 0; }
+.config-form input, .config-form select { width: 100%; min-width: 0; }
 .config-form input:first-child, .config-form input:nth-child(2) { grid-column: auto; }
 .config-form button { grid-column: 1 / -1; }
+.check-field {
+  align-items: center;
+  background: rgb(255 255 255 / 65%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  gap: 8px;
+  padding: 9px 11px;
+}
+.check-field input { width: auto; }
+.check-field span { color: var(--ink-soft); }
+.profile-list--embedded {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 14px;
+}
+.section-head--compact h2 {
+  color: var(--muted);
+  font-size: 13px;
+}
 .profile { flex-wrap: wrap; align-items: flex-start; }
 .profile-summary { flex: 1 1 100%; min-width: 0; }
 .profile-summary small { overflow-wrap: anywhere; line-height: 1.6; }

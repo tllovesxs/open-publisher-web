@@ -615,6 +615,7 @@ class RagConfigUpdate(BaseModel):
     embeddingBaseUrl: str = Field(default="", max_length=500)
     embeddingModel: str = Field(min_length=1, max_length=200)
     rerankBaseUrl: str = Field(default="", max_length=500)
+    rerankModel: str = Field(default="", max_length=200)
     rerankTimeoutSeconds: int = Field(default=3, ge=1, le=120)
 
 
@@ -628,6 +629,7 @@ def _rag_out(db: Session) -> dict:
         "embeddingBaseUrl": saved.get("embeddingBaseUrl", ""),
         "embeddingModel": saved.get("embeddingModel", settings.rag_embedding_model),
         "rerankBaseUrl": saved.get("rerankBaseUrl", settings.rerank_base_url),
+        "rerankModel": saved.get("rerankModel", ""),
         "rerankTimeoutSeconds": saved.get("rerankTimeoutSeconds", int(settings.rerank_timeout_seconds)),
         "embeddingKeyConfigured": bool(resolve_llm_config().get("api_key")),
         "source": "db" if saved else "default",
@@ -647,6 +649,7 @@ def update_rag_config(body: RagConfigUpdate, db: Session = Depends(get_db)):
         "embeddingBaseUrl": body.embeddingBaseUrl.strip(),
         "embeddingModel": body.embeddingModel.strip(),
         "rerankBaseUrl": body.rerankBaseUrl.strip(),
+        "rerankModel": body.rerankModel.strip(),
         "rerankTimeoutSeconds": body.rerankTimeoutSeconds,
     })
     return _rag_out(db)
@@ -708,6 +711,7 @@ def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embed
             body = _json.dumps({
                 "query": "连通性测试",
                 "texts": ["片段一", "片段二"],
+                "model": config.get("rerankModel", ""),
                 "raw_scores": False,
             }).encode()
             req = urllib.request.Request(

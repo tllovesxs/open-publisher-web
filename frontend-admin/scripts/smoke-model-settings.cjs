@@ -16,7 +16,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     let saved;
     let savedRag;
     const template = { id: 't1', name: '测试模板', description: '说明', category: '通用', markdown: '# 标题', usageInstructions: '', styleProfile: { tone: '自然', forbiddenPatterns: ['夸大'], custom: '保留' }, structureProfile: { sectionOrder: ['开头', '正文'] }, layoutProfile: {}, fixedBlocks: [{ name: '结尾', content: '谢谢阅读', position: '文末' }], variables: [], isBuiltIn: false };
-    const rag = { embeddingBaseUrl: 'https://embed.example.test', embeddingModel: 'embed', embeddingKeyConfigured: true, rerankBaseUrl: 'https://rank.example.test', rerankTimeoutSeconds: 7, source: 'db' };
+    const rag = { embeddingBaseUrl: 'https://embed.example.test', embeddingModel: 'embed', embeddingKeyConfigured: true, rerankBaseUrl: 'https://rank.example.test', rerankModel: 'ranker', rerankTimeoutSeconds: 7, source: 'db' };
     await page.route(url => url.pathname.startsWith('/api/'), async route => {
       const url = new URL(route.request().url());
       const path = url.pathname;
@@ -47,6 +47,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     await page.goto(process.env.ADMIN_BASE_URL || 'http://localhost:5174');
     assert.equal(await page.getByRole('button', { name: '密钥安全', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: '文本模型方案', exact: true }).count(), 0);
+    await page.getByRole('button', { name: '模型配置', exact: true }).click();
+    assert.equal(await page.locator('.config-form').count(), 1);
     await page.getByRole('button', { name: '测试连接', exact: true }).click();
     await started;
     await page.getByRole('button', { name: '生图模型', exact: true }).click();
@@ -70,11 +73,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(savedRag.embeddingBaseUrl, rag.embeddingBaseUrl);
     assert.equal(savedRag.embeddingModel, rag.embeddingModel);
     assert.equal(savedRag.rerankBaseUrl, 'https://new-rank.example.test');
+    assert.equal(savedRag.rerankModel, 'ranker');
     for (const width of [1245, 600]) {
       await page.setViewportSize({ width, height: 889 });
-      for (const name of ['文本模型', '生图模型', '资料检索模型', '检索排序模型', '文本模型方案']) {
+      for (const name of ['文本模型', '生图模型', '资料检索模型', '检索排序模型']) {
         await page.getByRole('button', { name, exact: true }).click();
         assert.equal(await page.locator('.admin-card:not([hidden])').count(), 1);
+        assert.equal(await page.getByRole('button', { name: '模型配置', exact: true }).count(), 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       }
     }
@@ -90,6 +95,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.deepEqual(saved.styleProfile.forbiddenPatterns, ['夸大']);
     assert.equal(saved.fixedBlocks[0].content, '欢迎交流');
     assert.deepEqual(errors, []);
-    console.log('PASS: scoped async notices, selected-service tests, preserved configuration, five admin views at two widths, template edit/save, no page errors');
+    console.log('PASS: scoped async notices, selected-service tests, preserved configuration, four admin views at two widths, template edit/save, no page errors');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
