@@ -2325,6 +2325,28 @@ p {
   overflow: hidden;
 }
 
+/* 提示、流程栏和正文按内容占高，避免断点中的 1fr 行压扁失败状态。 */
+.article-editor .article-editor__body {
+  grid-template-rows: none;
+  grid-auto-rows: max-content;
+  align-content: start;
+  row-gap: 14px;
+}
+
+.article-editor__body > .workflow-task__failure {
+  align-self: start;
+  max-height: 144px;
+  margin: 0;
+  overflow-y: auto;
+}
+
+.article-editor__body > .workflow-task__failure p {
+  display: block;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: unset;
+}
+
 .article-editor__body > .markdown-workbench {
   min-height: 0;
 }
@@ -9000,9 +9022,13 @@ select optgroup {
 /* 文章运行条：压缩为横向进度芯片，不挤压正文编辑器 */
 .article-run-strip {
   display: flex;
+  min-height: 50px;
+  box-sizing: border-box;
+  align-self: start;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   padding: 8px 10px;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -9012,11 +9038,13 @@ select optgroup {
 
 .article-run-strip .workflow-timeline {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 540px;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  min-height: 30px;
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 0;
   scrollbar-width: thin;
 }

@@ -56,13 +56,43 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
     await page.evaluate(() => window.__emitWriterEvent('run.failed', { message: '模拟断流，正文已保留' }));
     await page.getByText('创作失败：模拟断流，正文已保留', { exact: true }).waitFor();
     assert.equal(await editor.inputValue(), body);
+    const layouts = [];
+    for (const width of [1280, 1158, 800, 390]) {
+      await page.setViewportSize({ width, height: 600 });
+      const layout = await page.evaluate(() => {
+        const bounds = selector => document.querySelector(selector).getBoundingClientRect();
+        const failure = bounds('.article-editor__body > [role="alert"]');
+        const strip = bounds('.article-run-strip');
+        const timeline = bounds('.article-run-strip .workflow-timeline');
+        const main = bounds('.article-editor__main');
+        const icons = [...document.querySelectorAll('.article-run-strip .workflow-timeline__icon')].map(icon => icon.getBoundingClientRect());
+        return {
+          width: innerWidth, failureHeight: failure.height, stripHeight: strip.height,
+          timelineHeight: timeline.height, noOverlap: failure.bottom <= strip.top && strip.bottom <= main.top,
+          iconsUnclipped: icons.every(icon => icon.top >= timeline.top && icon.bottom <= timeline.bottom),
+        };
+      });
+      assert.ok(layout.failureHeight >= 30, JSON.stringify(layout));
+      assert.ok(layout.stripHeight >= 50, JSON.stringify(layout));
+      assert.ok(layout.timelineHeight >= 30, JSON.stringify(layout));
+      assert.ok(layout.noOverlap && layout.iconsUnclipped, JSON.stringify(layout));
+      layouts.push(layout);
+    }
+    await page.setViewportSize({ width: 1158, height: 600 });
+    // 长接口错误也应换行，不能撑宽页面或挤扁流程栏。
+    await page.evaluate(() => window.__emitWriterEvent('run.failed', { message: '模型接口失败：' + 'long-provider-error-'.repeat(50) }));
+    const longError = await page.locator('.article-editor__body > [role="alert"]').evaluate(element => ({
+      scroll: element.scrollWidth, width: element.clientWidth, height: element.getBoundingClientRect().height,
+    }));
+    assert.ok(longError.scroll <= longError.width + 1 && longError.height <= 144, JSON.stringify(longError));
+    if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT });
     await editor.fill('用户主动编辑');
     await page.evaluate(() => window.__emitWriterEvent('agent.message_delta', { stage: 'content', delta: '不应覆盖用户编辑' }));
     // 等两帧，验证新增事件经过 effect 后仍尊重用户编辑。
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await editor.inputValue(), '用户主动编辑');
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ catchUpMs, characters: body.length, reasoningStatus: true, preservedAfterFailure: true, userEditProtected: true, pageErrors: errors }));
+    console.log(JSON.stringify({ catchUpMs, characters: body.length, layouts, longError, reasoningStatus: true, preservedAfterFailure: true, userEditProtected: true, pageErrors: errors }));
   } finally {
     await browser.close();
   }

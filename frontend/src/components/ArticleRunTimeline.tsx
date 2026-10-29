@@ -80,7 +80,7 @@ function ArticleRunTimeline({ completedNodeIds, runFailed = false, visualState =
         const detail = details.get(node.id);
         return (
           <li
-            className={`workflow-timeline__item${state === "running" ? " is-running" : ""}${state === "completed" ? " is-complete" : ""}`}
+            className={`workflow-timeline__item${state === "running" ? " is-running" : ""}${state === "completed" ? " is-complete" : ""}${state === "failed" ? " is-failed" : ""}`}
             key={node.id}
           >
             <span aria-hidden="true" className="workflow-timeline__icon">

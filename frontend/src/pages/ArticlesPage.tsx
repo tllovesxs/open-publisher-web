@@ -858,7 +858,7 @@ export default function ArticlesPage() {
 
         <div className="article-editor__body" style={{ overflowY: "auto", padding: "20px 24px" }}>
           {error && (
-            <div className="workflow-task__failure" role="alert" style={{ marginBottom: 14 }}>
+            <div className="workflow-task__failure" role="alert">
               <p>{error}</p>
             </div>
           )}
