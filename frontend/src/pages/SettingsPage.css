@@ -1,0 +1,37 @@
+.client-settings-card { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); padding: 24px; display: grid; gap: 22px; }
+.client-settings-section-heading { display: flex; align-items: center; gap: 12px; }
+.client-settings-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); flex-shrink: 0; }
+.client-settings-section-heading h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.client-settings-card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.client-settings-default-model { display: grid; gap: 12px; }
+.client-settings-default-model strong, .client-settings-node-label strong { font-size: 13px; font-weight: 600; }
+.client-settings-divider { height: 1px; background: var(--border); }
+.client-settings-section-label { color: var(--muted); font-size: 12px; font-weight: 600; margin-bottom: -8px; }
+.client-settings-model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.client-settings-model-row { display: grid; gap: 9px; min-width: 0; }
+.client-settings-node-label { display: flex; align-items: center; gap: 8px; }
+.client-settings-node-label > span { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.client-settings-card .toolbar-select { min-width: 0; }
+.client-settings-card .toolbar-select__trigger { width: 100%; min-width: 0; }
+.client-settings-card .toolbar-select__trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.client-settings-card .toolbar-select__trigger:disabled { cursor: not-allowed; opacity: .65; }
+.client-settings-footer { display: grid; gap: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.client-settings-footer .button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; }
+.client-settings-theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.client-settings-theme-option { display: grid; gap: 12px; padding: 12px; text-align: left; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: border-color 150ms, background 150ms; }
+.client-settings-theme-option:hover, .client-settings-theme-option.is-active { border-color: var(--accent); background: var(--accent-soft); }
+.client-settings-theme-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.client-settings-theme-option small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.client-settings-theme-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.client-settings-theme-name > svg:last-child:not(:first-child) { margin-left: auto; color: var(--accent); }
+.client-settings-theme-preview { height: 78px; display: flex; overflow: hidden; border: 1px solid #dde1e8; border-radius: 7px; background: #fff; }
+.client-settings-theme-preview > span:first-child { width: 25%; border-right: 1px solid #dde1e8; background: #f0f3f8; }
+.client-settings-theme-preview > span:last-child { display: grid; align-content: center; gap: 7px; padding: 12px; flex: 1; }
+.client-settings-theme-preview i { display: block; height: 5px; background: #e3e8ef; border-radius: 3px; }
+.client-settings-theme-preview i:first-child { width: 65%; background: #84baff; }
+.client-settings-theme-preview i:last-child { width: 80%; }
+.client-settings-theme-preview--dark { background: #20232c; border-color: #3b404c; }
+.client-settings-theme-preview--dark > span:first-child { background: #161922; border-color: #3b404c; }
+.client-settings-theme-preview--dark i { background: #414754; }
+.client-settings-theme-preview--system { background: linear-gradient(110deg, #fff 50%, #20232c 50%); }
+@media (max-width: 600px) { .settings-page { padding: 24px 16px !important; } .settings-page > nav { max-width: 100%; flex-wrap: wrap; } .settings-page > nav button { padding: 7px 10px !important; } .client-settings-card { padding: 18px; } .client-settings-model-grid { grid-template-columns: 1fr; gap: 16px; } .client-settings-theme-options { grid-template-columns: 1fr; } .client-settings-theme-preview { height: 88px; } }

@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
-import { Bell, Database, KeyRound, Layout, Save, Settings2, User } from "lucide-react";
+import { Bell, Check, Database, Layout, Monitor, Moon, Save, Settings2, Sun, User } from "lucide-react";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useThemeSetting } from "../lib/theme";
+import "./SettingsPage.css";
 import { ARTICLE_WORKFLOW_NODES } from "../workflow/articleNodes";
 
-interface Capabilities { contextWindow: number; maxTokens: number; vision: boolean; reasoning: boolean }
-interface Profile { id: string; name: string; modelId: string; capabilities: Capabilities; keyConfigured: boolean }
-interface Preferences { disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null }
+interface Profile { id: string; name: string; isDefault?: boolean }
+interface Preferences { disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null; nodeProfileIds: Record<string, string> }
 interface Integrations { trustedHosts: string[]; publishBridgeUrl: string; tavily?: {keyConfigured:boolean}; github?: {keyConfigured:boolean} }
 
 const TABS = [
   { id: "model", label: "模型", icon: Settings2 },
+  { id: "appearance", label: "外观", icon: Sun },
   { id: "account", label: "账号", icon: User },
   { id: "writing", label: "写作", icon: Layout },
   { id: "data", label: "数据", icon: Database },
@@ -24,7 +25,7 @@ export default function SettingsPage() {
   const { setting, setSetting } = useThemeSetting();
   const [tab, setTab] = useState<string>("model");
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [prefs, setPrefs] = useState<Preferences>({disabledNodeIds:[], webSearchMode:"auto", profileId:null});
+  const [prefs, setPrefs] = useState<Preferences>({disabledNodeIds:[], webSearchMode:"auto", profileId:null, nodeProfileIds:{}});
   const [integrations, setIntegrations] = useState<Integrations>({trustedHosts:[], publishBridgeUrl:""});
   const [keys, setKeys] = useState({tavily:"", github:""});
   const [notice, setNotice] = useState("");
@@ -39,7 +40,11 @@ export default function SettingsPage() {
 
   useEffect(() => { void act(async () => {
     const [p, w] = await Promise.all([api.get<{profiles:Profile[]}>("/settings/profiles"), api.get<Preferences>("/settings/preferences")]);
-    setProfiles(p.data.profiles); setPrefs(w.data);
+    setProfiles(p.data.profiles);
+    const ids = new Set(p.data.profiles.map(profile => profile.id));
+    setPrefs({ ...w.data, profileId: ids.has(w.data.profileId ?? "") ? w.data.profileId : null,
+      nodeProfileIds: Object.fromEntries(Object.entries(w.data.nodeProfileIds ?? {}).filter(([, id]) => ids.has(id))),
+    });
     if (admin) setIntegrations((await api.get<Integrations>("/settings/integrations")).data);
   }, ""); }, [admin]);
 
@@ -49,13 +54,26 @@ export default function SettingsPage() {
     const a = document.createElement("a"); a.href=url; a.download="稿流个人数据.json"; a.click(); URL.revokeObjectURL(url);
   };
 
-  const selectedProfile = profiles.find(p => p.id === prefs.profileId);
+  const modelOptions = profiles.map(p => ({ id: p.id, label: p.name }));
+  const defaultProfile = profiles.find(p => p.id === prefs.profileId) ?? profiles.find(p => p.isDefault) ?? profiles[0];
+  const modelSelect = (label: string, profileId: string | null, onChange: (value: string) => void, inherit = false) => (
+    <ToolbarSelect
+      className="toolbar-select--fill toolbar-select--lg"
+      disabled={busy || profiles.length <= 1}
+      label={label}
+      onChange={onChange}
+      options={profiles.length <= 1
+        ? (modelOptions.length ? modelOptions : [{ id: "", label: "暂无可用模型" }])
+        : [...(inherit ? [{ id: "", label: `跟随默认（${defaultProfile?.name ?? "平台默认"}）` }] : [{ id: "", label: `平台默认（${profiles.find(p => p.isDefault)?.name ?? profiles[0].name}）` }]), ...modelOptions]}
+      value={profiles.length === 1 ? profiles[0].id : profileId ?? ""}
+    />
+  );
 
   return (
     <div className="settings-page" style={{ padding: 32, maxWidth: 720, display: "grid", gap: 0, margin: "0 auto" }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>设置</h1>
       <p style={{ color: "var(--muted, #888)", fontSize: 13, marginBottom: 20 }}>
-        管理写作模型、创作偏好和账号安全
+        管理模型偏好、界面外观和创作设置
       </p>
 
       {/* Tab navigation */}
@@ -95,104 +113,58 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Model tab */}
       {tab === "model" && (
-        <div style={{ display: "grid", gap: 20 }}>
-          <section style={{
-            background: "var(--surface, #fff)", border: "1px solid var(--border, #e5e5e5)",
-            borderRadius: 12, display: "grid", gap: 14, padding: 20,
-          }}>
-            <div>
-              <strong style={{ fontSize: 14 }}>默认写作模型</strong>
-              <p style={{ color: "var(--muted, #888)", fontSize: 12, marginTop: 2 }}>
-                选择你的写作引擎；密钥由管理员统一配置
-              </p>
-            </div>
-            <ToolbarSelect
-              className="toolbar-select--fill toolbar-select--lg"
-              label="默认写作模型"
-              onChange={(value) => setPrefs({ ...prefs, profileId: value || null })}
-              options={[
-                { id: "", label: "平台默认" },
-                ...profiles.map((p) => ({ id: p.id, label: `${p.name} · ${p.modelId}` })),
-              ]}
-              value={prefs.profileId ?? ""}
-            />
-            {selectedProfile && (
-              <div style={{
-                alignItems: "center", background: "var(--surface-muted, #f5f5f5)",
-                borderRadius: 8, display: "flex", flexWrap: "wrap", gap: 14, padding: "10px 12px",
-              }}>
-                <span style={{ alignItems: "center", color: "var(--ink)", display: "flex", fontSize: 12, fontWeight: 600, gap: 4 }}>
-                  <KeyRound size={13} /> {selectedProfile.keyConfigured ? "密钥已配置" : "密钥未配置"}
-                </span>
-                <span style={{ color: "var(--muted, #888)", fontSize: 11 }}>上下文 {selectedProfile.capabilities.contextWindow.toLocaleString()}</span>
-                <span style={{ color: "var(--muted, #888)", fontSize: 11 }}>最大输出 {selectedProfile.capabilities.maxTokens.toLocaleString()}</span>
-                {selectedProfile.capabilities.vision && <span style={{ background: "var(--accent-soft, #ebf4ff)", borderRadius: 4, color: "var(--accent, #5b8def)", fontSize: 10, padding: "2px 6px" }}>图片理解</span>}
-                {selectedProfile.capabilities.reasoning && <span style={{ background: "var(--accent-soft, #ebf4ff)", borderRadius: 4, color: "var(--accent, #5b8def)", fontSize: 10, padding: "2px 6px" }}>推理模型</span>}
+        <section className="client-settings-card">
+          <header className="client-settings-section-heading">
+            <span className="client-settings-icon"><Settings2 size={19} /></span>
+            <div><h2>模型选择</h2><p>为不同创作环节设置默认模型，保存后用于新任务。</p></div>
+          </header>
+          <div className="client-settings-default-model">
+            <div><strong>默认写作模型</strong><p>未单独设置的环节将使用此模型</p></div>
+            {modelSelect("默认写作模型", prefs.profileId, value => setPrefs(p => ({ ...p, profileId: value || null })))}
+          </div>
+          <div className="client-settings-divider" />
+          <div className="client-settings-section-label">各环节默认模型</div>
+          <div className="client-settings-model-grid">
+            {ARTICLE_WORKFLOW_NODES.map((node, index) => (
+              <div className="client-settings-model-row" key={node.id}>
+                <div className="client-settings-node-label"><span>{String(index + 1).padStart(2, "0")}</span><strong>{node.label}</strong></div>
+                {modelSelect(`${node.label}默认模型`, prefs.nodeProfileIds[node.id] ?? "", value => setPrefs(p => {
+                  const next = { ...p.nodeProfileIds };
+                  if (value) next[node.id] = value; else delete next[node.id];
+                  return { ...p, nodeProfileIds: next };
+                }), true)}
               </div>
-            )}
-            <button
-              className="button button--primary"
-              disabled={busy}
-              onClick={() => void act(() => api.put("/settings/preferences", prefs))}
-              style={{ alignItems: "center", display: "flex", fontSize: 14, gap: 6, justifyContent: "center", padding: "10px 16px" }}
-            >
-              <Save size={15} /> 保存模型选择
-            </button>
-          </section>
+            ))}
+          </div>
+          <div className="client-settings-footer">
+            <p>{profiles.length === 0 ? "暂无可用模型，请联系管理员配置。" : profiles.length === 1 ? "管理员仅配置了一个模型，各环节统一使用该模型。" : "模型由管理员统一配置，此处仅保存你的使用偏好。"}</p>
+            <button className="button button--primary" disabled={busy || profiles.length === 0} onClick={() => void act(() => api.put("/settings/preferences", prefs), "模型选择已保存")} type="button"><Save size={15} />保存模型选择</button>
+          </div>
+        </section>
+      )}
 
-          {admin && profiles.length > 0 && (
-            <section style={{ display: "grid", gap: 12 }}>
-              <strong style={{ fontSize: 13, color: "var(--muted, #888)" }}>模型能力配置（管理员）</strong>
-              {profiles.map(p => (
-                <div
-                  key={p.id}
-                  style={{
-                    background: "var(--surface, #fff)", border: "1px solid var(--border, #e5e5e5)",
-                    borderRadius: 10, display: "grid", gap: 10, padding: 14,
-                  }}
-                >
-                  <strong style={{ fontSize: 13 }}>{p.name} · {p.modelId}</strong>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                    {(["contextWindow", "maxTokens"] as const).map(key => (
-                      <label key={key} style={{ color: "var(--muted, #888)", fontSize: 11 }}>
-                        {key === "contextWindow" ? "上下文窗口" : "最大输出长度"}
-                        <input
-                          disabled={!admin}
-                          onChange={e => setProfiles(ps => ps.map(item => item.id === p.id ? {...item, capabilities: {...item.capabilities, [key]: Number(e.target.value)}} : item))}
-                          style={{ borderRadius: 6, border: "1px solid var(--border, #ddd)", fontSize: 13, padding: "6px 8px", width: 120 }}
-                          type="number"
-                          value={p.capabilities[key]}
-                        />
-                      </label>
-                    ))}
-                    {(["vision", "reasoning"] as const).map(key => (
-                      <label key={key} style={{ alignItems: "center", color: "var(--ink)", display: "flex", fontSize: 12, gap: 4 }}>
-                        <input
-                          checked={p.capabilities[key]}
-                          disabled={!admin}
-                          onChange={e => setProfiles(ps => ps.map(item => item.id === p.id ? {...item, capabilities: {...item.capabilities, [key]: e.target.checked}} : item))}
-                          type="checkbox"
-                        />
-                        {key === "vision" ? "图片理解" : "推理模型"}
-                      </label>
-                    ))}
-                  </div>
-                  <button
-                    className="button button--quiet"
-                    disabled={busy}
-                    onClick={() => void act(() => api.patch(`/settings/profiles/${p.id}`, {capabilities: p.capabilities}))}
-                    style={{ fontSize: 12, justifySelf: "start", padding: "6px 12px" }}
-                  >
-                    保存模型能力
-                  </button>
-                </div>
-              ))}
-            </section>
-          )}
-          {!admin && <p style={{ color: "var(--muted, #888)", fontSize: 12 }}>模型服务与访问密钥由管理员统一管理；此处选择仅影响你的写作。</p>}
-        </div>
+      {tab === "appearance" && (
+        <section className="client-settings-card">
+          <header className="client-settings-section-heading">
+            <span className="client-settings-icon"><Sun size={19} /></span>
+            <div><h2>明暗外观</h2><p>选择你喜欢的界面风格，切换后立即生效。</p></div>
+          </header>
+          <div className="client-settings-theme-options" role="group" aria-label="主题模式">
+            {([
+              { id: "light", label: "浅色", detail: "明亮清晰的创作空间", icon: Sun },
+              { id: "dark", label: "深色", detail: "柔和舒适的夜间体验", icon: Moon },
+              { id: "system", label: "跟随系统", detail: "随设备外观自动切换", icon: Monitor },
+            ] as const).map(({ id, label, detail, icon: Icon }) => (
+              <button aria-pressed={setting === id} className={`client-settings-theme-option${setting === id ? " is-active" : ""}`} key={id} onClick={() => setSetting(id)} type="button">
+                <span className={`client-settings-theme-preview client-settings-theme-preview--${id}`} aria-hidden="true"><span /><span><i /><i /><i /></span></span>
+                <span className="client-settings-theme-name"><Icon size={16} />{label}{setting === id && <Check size={15} />}</span>
+                <small>{detail}</small>
+              </button>
+            ))}
+          </div>
+          <p className="client-settings-hint">外观设置自动保存在当前浏览器中。</p>
+        </section>
       )}
 
       {/* Account tab */}
@@ -335,19 +307,6 @@ export default function SettingsPage() {
               value={prefs.webSearchMode}
             />
           </div>
-          <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-            <label style={{ color: "var(--ink)", fontSize: 13, fontWeight: 500 }}>外观</label>
-            <ToolbarSelect
-              label="外观"
-              onChange={(value) => setSetting(value)}
-              options={[
-                { id: "system", label: "跟随系统" },
-                { id: "light", label: "浅色" },
-                { id: "dark", label: "深色" },
-              ]}
-              value={setting}
-            />
-          </div>
           <button
             className="button button--primary"
             disabled={busy}
@@ -379,7 +338,7 @@ export default function SettingsPage() {
               className="button button--quiet"
               disabled={busy}
               onClick={() => void act(async () => {
-                const next = {disabledNodeIds: [], webSearchMode: "auto" as const, profileId: null};
+                const next = {disabledNodeIds: [], webSearchMode: "auto" as const, profileId: null, nodeProfileIds: {}};
                 await api.put("/settings/preferences", next);
                 setPrefs(next);
               })}

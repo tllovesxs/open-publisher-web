@@ -273,11 +273,12 @@ def _model_plan(
     target_count: int,
     material_match_threshold: int,
     required_asset_ids: list[str],
+    config: dict | None = None,
 ) -> tuple[list[dict], str | None] | None:
     """模型驱动规划；不可用/输出不合法时返回 None 以触发规则兜底。"""
     from app.agents.llm_client import LLMClient
 
-    llm = LLMClient()
+    llm = LLMClient(config=config) if config is not None else LLMClient()
     if not llm.api_key_configured:
         return None
     system, user = _visual_model_prompt(
@@ -435,11 +436,18 @@ class VisualService:
         }
 
         if chosen:
+            from app.services.model_profile_service import preferred_profile_id, resolve_llm_profile_config
+            from app.services.workspace_settings import read_preferences
+            prefs = read_preferences(self.db, "user:" + owner_user_id) if owner_user_id else {}
+            model_config = resolve_llm_profile_config(
+                self.db, profile_id=preferred_profile_id(self.db, prefs, "visual"), owner_user_id=owner_user_id,
+            ) if owner_user_id else None
             model_result = _model_plan(
                 blocks, assets,
                 target_count=len(chosen),
                 material_match_threshold=material_match_threshold,
                 required_asset_ids=required_asset_ids,
+                config=model_config,
             )
             if model_result:
                 placements, provider_model = model_result

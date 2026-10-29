@@ -62,6 +62,9 @@ def prevent_visual_planner_network(monkeypatch):
     from app.agents import llm_client
 
     class NoKeyLLM:
+        def __init__(self, **kwargs):
+            pass
+
         api_key_configured = False
 
     monkeypatch.setattr(llm_client, "LLMClient", NoKeyLLM)
@@ -387,3 +390,21 @@ def test_anchor_tracks_exact_paragraph_with_wrapped_lines():
 def test_auto_count_uses_blueprint_utf16_length():
     from app.services.visual_service import auto_image_count
     assert auto_image_count("😀" * 451) == 2
+
+
+def test_visual_planner_uses_owner_node_preference(factory, monkeypatch):
+    from app.models.settings_profile import ModelProfile
+    from app.services.workspace_settings import write_preferences
+    from app.services import visual_service
+    seen = []
+    def capture(*args, **kwargs):
+        seen.append(kwargs["config"]["model"])
+        return None
+    monkeypatch.setattr(visual_service, "_model_plan", capture)
+    with factory() as db:
+        db.add_all([ModelProfile(id="base", name="默认", base_url="https://example.test/v1", model_id="base", is_default=True), ModelProfile(id="visual", name="配图", base_url="https://example.test/v1", model_id="visual")])
+        db.commit()
+        write_preferences(db, "user:u-test", {"profileId": "base", "nodeProfileIds": {"visual": "visual"}})
+        VisualService(db).plan(markdown=MARKDOWN, target_count=1, owner_user_id="u-test")
+        VisualService(db).plan(markdown=MARKDOWN, target_count=1, owner_user_id="u-other")
+    assert seen == ["visual", "base"]

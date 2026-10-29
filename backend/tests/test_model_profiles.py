@@ -145,3 +145,55 @@ def test_resolve_llm_config_prefers_active_profile(profile_engine):
     assert config["api_key"] == ""
     assert config["keySource"] == "none"
     session.close()
+
+
+def test_node_model_preferences_roundtrip_validation_and_user_scope(client):
+    from app.core.auth import require_user
+    first = client.post("/api/settings/profiles", json={"name": "默认模型", "baseUrl": "https://example.test/v1", "modelId": "first"}).json()
+    second = client.post("/api/settings/profiles", json={"name": "审阅模型", "baseUrl": "https://example.test/v1", "modelId": "second"}).json()
+    preferences = {"profileId": first["id"], "nodeProfileIds": {"draft": first["id"], "review": second["id"], "visual": second["id"]}, "webSearchMode": "off", "disabledNodeIds": ["risk"]}
+    assert client.put("/api/settings/preferences", json=preferences).status_code == 200
+    assert client.get("/api/settings/preferences").json() == preferences
+    assert client.put("/api/settings/preferences", json={**preferences, "nodeProfileIds": {"draft": "missing"}}).status_code == 400
+    assert client.put("/api/settings/preferences", json={**preferences, "nodeProfileIds": {"unknown": first["id"]}}).status_code == 422
+    assert client.get("/api/settings/preferences").json() == preferences
+    original = app.dependency_overrides[require_user]
+    app.dependency_overrides[require_user] = lambda: type("OtherUser", (), {"id": "u-other", "role": "user"})()
+    try:
+        assert client.get("/api/settings/preferences").json()["nodeProfileIds"] == {}
+    finally:
+        app.dependency_overrides[require_user] = original
+
+
+def test_preferred_profile_falls_back_after_admin_deletion(profile_engine):
+    from app.services.model_profile_service import preferred_profile_id
+    with sessionmaker(bind=profile_engine)() as db:
+        db.add(ModelProfile(id="default", name="默认", base_url="https://example.test/v1", model_id="default"))
+        db.commit()
+        assert preferred_profile_id(db, {"profileId": "default", "nodeProfileIds": {"draft": "deleted"}}, "draft") == "default"
+        assert preferred_profile_id(db, {"profileId": "deleted"}, "draft") is None
+
+
+def test_article_run_resolves_each_node_and_explicit_override(client, monkeypatch):
+    from app.api import agent_runs
+    from app.agents import llm_client
+    captured = []
+    class CaptureLLM:
+        def __init__(self, config):
+            self.config = config
+    class CaptureWriter:
+        def __init__(self, db, **kwargs):
+            captured.append(kwargs)
+        def start_article_create(self, **kwargs):
+            return {"id": "captured", "status": "pending"}
+    monkeypatch.setattr(llm_client, "LLMClient", CaptureLLM)
+    monkeypatch.setattr(agent_runs, "WriterService", CaptureWriter)
+    profiles = [client.post("/api/settings/profiles", json={"name": name, "baseUrl": "https://example.test/v1", "modelId": name}).json() for name in ["base", "draft", "review"]]
+    client.put("/api/settings/preferences", json={"profileId": profiles[0]["id"], "nodeProfileIds": {"draft": profiles[1]["id"], "review": profiles[2]["id"]}})
+    assert client.post("/api/agent-runs/article-create", json={"articleId": "a", "prompt": "test"}).status_code == 202
+    assert captured[-1]["llm"].config["model"] == "base"
+    assert captured[-1]["node_llms"]["draft"].config["model"] == "draft"
+    assert captured[-1]["node_llms"]["review"].config["model"] == "review"
+    assert client.post("/api/agent-runs/article-create", json={"articleId": "b", "prompt": "test", "profileId": profiles[2]["id"]}).status_code == 202
+    assert captured[-1]["node_llms"] == {}
+    assert captured[-1]["llm"].config["model"] == "review"

@@ -636,3 +636,22 @@ def test_total_deadline_keeps_unflushed_partial_body_without_revision(db, monkey
     assert "".join(e["payload"]["delta"] for e in events if e["type"] == "agent.message_delta") == body
     assert any(e["type"] == "article.checkpointed" and e["payload"].get("recoverableDraft") for e in events)
     assert service.store.read("deadline-tail") is None
+
+
+def test_node_models_reach_worker_and_restore_default(db, monkeypatch):
+    base, outline, draft, review = [FakeLLM() for _ in range(4)]
+    service = WriterService(db, llm=base, node_llms={"outline": outline, "draft": draft, "review": review})
+    seen = []
+    original = WriterService._node_started
+    def capture(self, run_id, node_id):
+        seen.append((node_id, self.llm))
+        return original(self, run_id, node_id)
+    monkeypatch.setattr(WriterService, "_node_started", capture)
+    run = service.start_article_create(article_id="per-node", prompt="test", creation={"webSearchMode": "off"})
+    assert _wait_terminal(RunJournal(db), run["id"])["status"] == "completed"
+    used = dict(seen)
+    assert used["outline"] is outline
+    assert used["draft"] is draft
+    assert used["review"] is review
+    assert used["risk"] is base
+    assert service.llm is base

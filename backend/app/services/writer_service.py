@@ -195,11 +195,13 @@ def _web_search_summary(query: str, api_key: str = "") -> str:
 
 class WriterService:
     def __init__(self, db: Session, llm: LLMClient | None = None,
-                 session_factory: sessionmaker | None = None):
+                 session_factory: sessionmaker | None = None,
+                 node_llms: dict[str, LLMClient] | None = None):
         self.db = db
         self.journal = RunJournal(db)
         self.store = ArticleStore(db)
         self.llm = llm or LLMClient()
+        self.node_llms = node_llms or {}
         # 后台线程必须用独立 Session（请求级 Session 不能跨线程 commit）
         if session_factory is not None:
             self._session_factory = session_factory
@@ -250,7 +252,8 @@ class WriterService:
     def _execute_in_own_session(self, run_id: str, **kwargs) -> None:
         with self._session_factory() as session:
             worker = WriterService(session, llm=self.llm,
-                                   session_factory=self._session_factory)
+                                   session_factory=self._session_factory,
+                                   node_llms=self.node_llms)
             worker._execute(run_id, **kwargs)
 
     def _execute(
@@ -279,9 +282,14 @@ class WriterService:
             if node_id in disabled:
                 self._node_completed(run_id, node_id, {"skipped": True, "reason": "disabled"})
                 return fallback
-            result = action()
-            self._ensure_not_stopping(run_id)
-            return result
+            default_llm = self.llm
+            self.llm = self.node_llms.get(node_id, default_llm)
+            try:
+                result = action()
+                self._ensure_not_stopping(run_id)
+                return result
+            finally:
+                self.llm = default_llm
 
         try:
             self._ensure_not_stopping(run_id)

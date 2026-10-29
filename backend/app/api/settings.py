@@ -502,10 +502,13 @@ def test_image_config():
 from typing import Literal
 from app.services.workspace_settings import read_preferences, write_preferences
 
+WorkflowNodeId = Literal["research", "outline", "draft", "natural-style", "review", "reference-safety", "risk", "visual"]
+
 class WritingPreferences(BaseModel):
     disabledNodeIds: list[Literal["research", "outline", "draft", "natural-style", "review", "reference-safety", "risk", "visual"]] = Field(default_factory=list, max_length=8)
     webSearchMode: Literal["auto", "off"] = "auto"
     profileId: str | None = None
+    nodeProfileIds: dict[WorkflowNodeId, str] = Field(default_factory=dict)
 
 class IntegrationSettings(BaseModel):
     trustedHosts: list[str] = Field(default_factory=list, max_length=30)
@@ -517,7 +520,8 @@ def preferences(db: Session = Depends(get_db), user: AppUser = Depends(require_u
 
 @router.put("/preferences")
 def save_preferences(body: WritingPreferences, db: Session = Depends(get_db), user: AppUser = Depends(require_user)):
-    if body.profileId and db.get(ModelProfile, body.profileId) is None:
+    profile_ids = [body.profileId, *body.nodeProfileIds.values()]
+    if any(profile_id and db.get(ModelProfile, profile_id) is None for profile_id in profile_ids):
         raise HTTPException(status_code=400, detail="模型档案不存在")
     return write_preferences(db, "user:" + user.id, body.model_dump())
 

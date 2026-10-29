@@ -95,11 +95,16 @@ def create_article_run(
     if article and article.get("ownerId") not in (None, user.id):
         raise HTTPException(status_code=404, detail={"code": "ARTICLE_NOT_FOUND"})
     from app.services.workspace_settings import read_preferences
-    from app.services.model_profile_service import resolve_llm_profile_config
+    from app.services.model_profile_service import preferred_profile_id, resolve_llm_profile_config
     from app.agents.llm_client import LLMClient
     prefs = read_preferences(db, "user:" + user.id)
-    config = resolve_llm_profile_config(db, profile_id=body.profileId or prefs.get("profileId"), owner_user_id=user.id)
-    service = WriterService(db, llm=LLMClient(config=config))
+    config = resolve_llm_profile_config(db, profile_id=body.profileId or preferred_profile_id(db, prefs), owner_user_id=user.id)
+    node_llms = {}
+    if not body.profileId:
+        for node_id in (prefs.get("nodeProfileIds") or {}):
+            node_config = resolve_llm_profile_config(db, profile_id=preferred_profile_id(db, prefs, node_id), owner_user_id=user.id)
+            node_llms[node_id] = LLMClient(config=node_config)
+    service = WriterService(db, llm=LLMClient(config=config), node_llms=node_llms)
     creation = {
         "title": body.title,
         "references": body.references,

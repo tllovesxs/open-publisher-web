@@ -128,6 +128,12 @@ def resolve_llm_profile_config(
     return config
 
 
+def preferred_profile_id(db: Session, preferences: dict, node_id: str | None = None) -> str | None:
+    """环节优先于个人默认；管理员删除档案后继续回退可用默认。"""
+    candidates = [(preferences.get("nodeProfileIds") or {}).get(node_id), preferences.get("profileId")]
+    return next((value for value in candidates if value and db.get(ModelProfile, value) is not None), None)
+
+
 def create_profile(
     db: Session,
     *,
