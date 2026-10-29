@@ -6,10 +6,10 @@ import { ConfigurationKeyEditor } from "./ConfigurationKeyEditor";
 
 export type ModelKind = "image" | "embedding" | "rerank";
 export interface ConfigurationManagerHandle { toggleCurrent: () => void; selectedId: () => string | null }
-interface Configuration { id: string; name: string; baseUrl: string; modelId: string; timeoutSeconds: number; keyConfigured?: boolean; keyHint?: string }
+interface Configuration { id: string; name: string; baseUrl: string; modelId: string; timeoutSeconds: number; protocol?: string; keyConfigured?: boolean; keyHint?: string }
 interface Catalog { profiles: Configuration[]; activeId: string | null }
 const labels: Record<ModelKind, string> = { image: "生图模型", embedding: "资料检索模型", rerank: "检索排序模型" };
-const empty = (kind: ModelKind) => ({ apiKey: "", name: "", baseUrl: "", modelId: "", timeoutSeconds: kind === "image" ? 180 : kind === "rerank" ? 3 : 30 });
+const empty = (kind: ModelKind) => ({ protocol: "auto", apiKey: "", name: "", baseUrl: "", modelId: "", timeoutSeconds: kind === "image" ? 180 : 30 });
 function errorMessage(error: unknown): string {
   const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   return typeof detail === "string" ? detail : "操作失败，请检查输入后重试。";
@@ -47,7 +47,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
   const edit = (profile?: Configuration) => {
     if (externalBusy || busy || loading) return;
     setEditing(profile?.id ?? null);
-    setDraft(profile ? { apiKey: "", name: profile.name, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds } : empty(kind));
+    setDraft(profile ? { protocol: profile.protocol ?? "auto", apiKey: "", name: profile.name, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds } : empty(kind));
     setError(""); setMessage(""); setOpen(true);
   };
   useImperativeHandle(ref, () => ({ toggleCurrent: () => {
@@ -84,6 +84,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
         <div><small>服务地址</small><strong>{selected.baseUrl || "沿用文本模型服务地址"}</strong></div>
         <div><small>模型</small><strong>{selected.modelId}</strong></div>
         <div><small>密钥状态</small><strong>{selected.keyConfigured ? "已配置" : "未配置"}</strong></div>
+        {kind !== "image" && <div><small>接口协议</small><strong>{selected.protocol === "tei" ? "HuggingFace TEI" : selected.protocol === "compatible" ? "兼容排序接口" : selected.protocol === "openai" ? "OpenAI 兼容嵌入" : "自动识别"}</strong></div>}
         <div><small>等待时限</small><strong>{selected.timeoutSeconds}s</strong></div>
       </div>
       <ConfigurationKeyEditor key={selected.id} endpoint={`${endpoint}/${selected.id}/key`} configured={selected.keyConfigured} hint={selected.keyHint} onChanged={async () => { await reload(); await onChanged(); }} />
@@ -93,7 +94,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
     {loading && <p className="muted">正在读取配置...</p>}
     {!loading && catalog.profiles.length === 0 && <p className="muted">尚无已保存配置，点击“新增配置”开始。</p>}
     {catalog.profiles.map(profile => <div className={`profile${profile.id === selected?.id ? " selected" : ""}`} key={profile.id}>
-      <button className="profile-summary profile-select" type="button" aria-pressed={profile.id === selected?.id} disabled={externalBusy || busy || loading} onClick={() => { setSelectedId(profile.id); cancel(); }}><strong>{profile.id === catalog.activeId && <Star size={13} />} {profile.name}{profile.id === catalog.activeId && <span className="profile-badge">使用中</span>}</strong><small>{profile.baseUrl || "沿用文本模型服务地址"} · {profile.modelId}{kind !== "embedding" && ` · ${profile.timeoutSeconds}s`}</small></button>
+      <button className="profile-summary profile-select" type="button" aria-pressed={profile.id === selected?.id} disabled={externalBusy || busy || loading} onClick={() => { setSelectedId(profile.id); cancel(); }}><strong>{profile.id === catalog.activeId && <Star size={13} />} {profile.name}{profile.id === catalog.activeId && <span className="profile-badge">使用中</span>}</strong><small>{profile.baseUrl || "沿用文本模型服务地址"} · {profile.modelId}{` · ${profile.timeoutSeconds}s`}</small></button>
       <div className="actions"><button className="quiet" disabled={externalBusy || busy || loading} onClick={() => { setSelectedId(profile.id); edit(profile); }} type="button">编辑配置</button><button className="quiet" disabled={externalBusy || busy || loading || profile.id === catalog.activeId} onClick={() => void mutate(() => api.post(`${endpoint}/${profile.id}/activate`), "默认配置已切换。")} type="button">设为默认</button><button aria-label={`删除配置 ${profile.name}`} className="quiet" disabled={externalBusy || busy || loading || profile.id === catalog.activeId} onClick={() => void mutate(() => api.delete(`${endpoint}/${profile.id}`), "配置已删除。")} type="button"><Trash2 size={14} /></button></div>
     </div>)}
     </div>
@@ -102,8 +103,16 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
       <label><span>方案名称</span><input autoFocus disabled={busy} maxLength={120} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="为配置取一个易于识别的名称" required value={draft.name} /></label>
       <label><span>服务地址</span><input disabled={busy} maxLength={500} onChange={e => setDraft({ ...draft, baseUrl: e.target.value })} placeholder={kind === "embedding" ? "留空沿用文本模型服务地址" : "https://api.example.com/v1"} required={kind !== "embedding"} value={draft.baseUrl} /></label>
       {kind === "image" && <p className="muted config-form-hint">填写 API 服务地址，而非控制台网页。硅基流动：https://api.siliconflow.cn/v1。文章配图使用文生图模型；Qwen-Image-Edit 需要原图，当前流程不支持。</p>}
+      {kind !== "image" && <>
+        <label><span>接口协议</span><select aria-label="接口协议" disabled={busy} value={draft.protocol} onChange={e => setDraft({ ...draft, protocol: e.target.value })}>
+          <option value="auto">自动识别</option>
+          {kind === "embedding" ? <option value="openai">OpenAI 兼容嵌入</option> : <option value="compatible">兼容排序接口（硅基流动 / vLLM）</option>}
+          <option value="tei">HuggingFace TEI</option>
+        </select></label>
+        <p className="muted config-form-hint">{kind === "embedding" ? "请选择 Embedding 模型，例如 Qwen/Qwen3-Embedding-8B。自动模式使用 OpenAI 兼容嵌入；TEI 原生服务请选择 TEI。" : "请选择 Reranker 模型，例如 Qwen/Qwen3-Reranker-8B。自动模式识别硅基流动，其余地址沿用 TEI；其他云端服务请选择兼容排序接口。"} 硅基流动地址：https://api.siliconflow.cn/v1。推荐等待时限 30 秒。</p>
+      </>}
       <label><span>模型名称</span><input disabled={busy} maxLength={200} onChange={e => setDraft({ ...draft, modelId: e.target.value })} placeholder="服务提供方的模型名称" required value={draft.modelId} /></label>
-      {kind !== "embedding" && <label><span>等待时限（秒）</span><input disabled={busy} min={1} max={kind === "rerank" ? 120 : 1800} onChange={e => setDraft({ ...draft, timeoutSeconds: Number(e.target.value) })} required type="number" value={draft.timeoutSeconds} /></label>}
+      <label><span>等待时限（秒）</span><input disabled={busy} min={1} max={kind === "rerank" ? 120 : 1800} onChange={e => setDraft({ ...draft, timeoutSeconds: Number(e.target.value) })} required type="number" value={draft.timeoutSeconds} /></label>
       <label><span>访问密钥（可选）</span><input autoComplete="new-password" disabled={busy} maxLength={4096} minLength={4} onChange={e => setDraft({ ...draft, apiKey: e.target.value })} placeholder={editing ? "留空保留此配置已有密钥" : "仅用于此配置"} type="password" value={draft.apiKey} /></label>
       <p className="muted config-form-hint">密钥随当前配置独立保存。新增配置不会覆盖已有配置。</p>
       <div className="config-form-actions"><button className="quiet" disabled={busy} onClick={cancel} type="button">取消</button><button className="primary" disabled={busy} type="submit">{busy ? "保存中..." : "保存配置"}</button></div>

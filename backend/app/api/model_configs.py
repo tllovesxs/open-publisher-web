@@ -24,6 +24,7 @@ class ConfigurationInput(BaseModel):
     baseUrl: str = Field(default="", max_length=500)
     modelId: str = Field(min_length=1, max_length=200)
     timeoutSeconds: int = Field(default=30, ge=1, le=1800)
+    protocol: Literal["auto", "openai", "compatible", "tei"] = "auto"
     apiKey: str | None = Field(default=None, min_length=4, max_length=4096, repr=False)
 
     @field_validator("name", "baseUrl", "modelId", mode="before")
@@ -46,6 +47,12 @@ def validate_config(kind: str, body: ConfigurationInput) -> None:
     if kind == "image":
         from app.services.image_config_validation import validate_image_generation_config
         validate_image_generation_config(body.baseUrl, body.modelId)
+    if kind in ("embedding", "rerank"):
+        from app.services.retrieval_models import validate_config as validate_retrieval, RetrievalModelError
+        try:
+            validate_retrieval({"base_url": body.baseUrl, "model": body.modelId, "protocol": body.protocol}, kind)
+        except RetrievalModelError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
     if kind == "rerank" and body.timeoutSeconds > 120:
         raise HTTPException(status_code=400, detail="排序等待时限不能超过 120 秒")
 

@@ -86,6 +86,11 @@ const base = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:5184';
    await form.getByLabel('方案名称', { exact: true }).fill('新增-' + kind);
    await form.getByLabel('服务地址', { exact: true }).fill('https://new.test/v1');
    await form.getByLabel('模型名称', { exact: true }).fill('new-model-' + kind);
+   if (kind === 'embedding' || kind === 'rerank') {
+    assert.equal(await form.getByLabel('等待时限（秒）', { exact: true }).inputValue(), '30');
+    await form.getByLabel('接口协议', { exact: true }).selectOption(kind === 'embedding' ? 'tei' : 'compatible');
+    await form.getByLabel('等待时限（秒）', { exact: true }).fill('45');
+   }
    await form.getByRole('button', { name: '保存配置', exact: true }).click();
    const row = panel.locator('.profile').filter({ hasText: '新增-' + kind }); await row.waitFor();
    assert.equal(await panel.locator('.profile').count(), 2);
@@ -97,6 +102,10 @@ const base = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:5184';
    await row.getByRole('button', { name: '编辑配置', exact: true }).click();
    form = panel.getByRole('form'); await form.waitFor();
    assert.equal(await form.getByLabel('模型名称', { exact: true }).inputValue(), 'new-model-' + kind);
+   if (kind === 'embedding' || kind === 'rerank') {
+    assert.equal(await form.getByLabel('接口协议', { exact: true }).inputValue(), kind === 'embedding' ? 'tei' : 'compatible');
+    assert.equal(await form.getByLabel('等待时限（秒）', { exact: true }).inputValue(), '45');
+   }
    await form.getByRole('button', { name: '取消', exact: true }).click();
    if (kind !== 'text') {
     await add.click(); form = panel.getByRole('form'); await form.waitFor();

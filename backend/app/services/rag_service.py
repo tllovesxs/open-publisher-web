@@ -294,25 +294,11 @@ class RagService:
             return {**llm, "model": model, "base_url": base or llm["base_url"], "timeout_seconds": 30}
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
-        config = self._embedding_runtime_config()
-        if not config.get("api_key"):
-            raise RAGUnavailable("未配置嵌入模型 API Key（存于管理端密钥库）")
-        model = config["model"]
-        client = OpenAI(api_key=config["api_key"], base_url=config["base_url"], timeout=config["timeout_seconds"])
-        out: list[list[float]] = []
+        from app.services.retrieval_models import embed, error_detail
         try:
-            for start in range(0, len(texts), 32):
-                batch = texts[start : start + 32]
-                resp = client.embeddings.create(model=model, input=batch)
-                ordered = sorted(resp.data, key=lambda item: item.index)
-                if [item.index for item in ordered] != list(range(len(batch))):
-                    raise RAGUnavailable("嵌入接口返回的向量顺序无效")
-                out.extend([d.embedding for d in ordered])
-        except Exception as exc:  # noqa: BLE001
-            raise RAGUnavailable("嵌入接口调用失败，请检查模型配置或稍后重试") from exc
-        if len(out) != len(texts) or not out or any(not vector for vector in out):
-            raise RAGUnavailable("嵌入接口返回的向量数量或内容无效")
-        return out
+            return embed(self._embedding_runtime_config(), texts, client_factory=OpenAI)
+        except Exception as exc:
+            raise RAGUnavailable(error_detail(exc)) from None
 
     # ---- 写入 / 检索 ----
 
@@ -385,11 +371,12 @@ class RagService:
         return {"hits": hits, "rerankUsed": rerank_used, "candidates": len(candidates)}
 
     def _rerank(self, query: str, texts: list[str]) -> list[tuple[int, float]] | None:
-        """TEI /rerank（bge-reranker）；服务未启动或超时返回 None，跳过重排。"""
+        """Use the same protocol adapter as probes; preserve retrieval on failure."""
         rerank_base = self.settings.rerank_base_url
         rerank_timeout = self.settings.rerank_timeout_seconds
         rerank_model = ""
         rerank_key = ""
+        protocol = "auto"
         try:
             from app.db.session import SessionLocal
             from app.services.workspace_settings import read_preferences
@@ -402,29 +389,18 @@ class RagService:
                 from app.services.model_config_catalog import resolve_rag_config
                 resolved = resolve_rag_config(db, "rerank")
                 rerank_key = resolved["api_key"]
+                protocol = resolved.get("protocol", "auto")
                 rerank_base, rerank_model, rerank_timeout = resolved["base_url"], resolved["model"], resolved["timeout_seconds"]
         except Exception:  # noqa: BLE001
             pass
         base = rerank_base.rstrip("/")
         if not base:
             return None
-        body = json.dumps({
-            "query": query,
-            "texts": texts,
-            "model": rerank_model,
-            "raw_scores": False,
-        }).encode()
-        req = urllib.request.Request(
-            f"{base}/rerank", data=body,
-            headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + rerank_key} if rerank_key else {})},
-        )
+        from app.services.retrieval_models import rerank
+        config = {"base_url": base, "model": rerank_model, "timeout_seconds": rerank_timeout, "api_key": rerank_key, "protocol": protocol}
         try:
-            with urllib.request.urlopen(req, timeout=rerank_timeout) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-            results = payload if isinstance(payload, list) else payload.get("data") or payload.get("results") or []
-            ranked = [(int(r["index"]), float(r["score"])) for r in results]
-            return sorted(ranked, key=lambda x: -x[1]) or None
-        except Exception:  # noqa: BLE001 - 重排失败直接跳过
+            return rerank(config, query, texts)
+        except Exception:  # Keep original retrieval candidates when reranking is unavailable.
             return None
 
     # ---- 上下文组装（引用溯源） ----

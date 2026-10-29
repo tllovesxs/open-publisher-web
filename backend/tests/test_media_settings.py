@@ -92,7 +92,7 @@ def test_rag_test_only_calls_selected_service(client, monkeypatch, target):
     calls = []
     def embed(**kwargs):
         calls.append("embedding")
-        return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
+        return SimpleNamespace(data=[SimpleNamespace(index=i, embedding=[0.1, 0.2]) for i in range(len(kwargs["input"]))])
     monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(embeddings=SimpleNamespace(create=embed)))
     response = MagicMock()
     response.__enter__.return_value.read.return_value = b'[{"index": 0, "score": 1}]'

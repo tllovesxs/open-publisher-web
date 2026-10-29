@@ -28,7 +28,7 @@ def setup():
 
 
 def payload(name, kind):
-    return {"name": name, "baseUrl": "https://example.test/v1", "modelId": name + "-model", "timeoutSeconds": 60 if kind == "image" else 5}
+    return {"name": name, "baseUrl": "https://example.test/v1", "modelId": name + "-model", "timeoutSeconds": 60 if kind == "image" else 5, "protocol": "compatible" if kind == "rerank" else "auto"}
 
 
 @pytest.mark.parametrize("base,model,reason", [
@@ -279,7 +279,7 @@ def test_connection_test_uses_selected_configuration_without_activating_it(setup
     observed = {}
     def create(**kwargs):
         observed["model"] = kwargs.get("model")
-        return NS(data=[NS(embedding=[1.0], index=0, b64_json="test", url=None)])
+        return NS(data=[NS(embedding=[1.0], index=i, b64_json="test", url=None) for i in range(len(kwargs.get("input", [0])))])
     def fake_client(**kwargs):
         observed.update(kwargs)
         return NS(embeddings=NS(create=create), images=NS(generate=create), models=NS(list=lambda: [NS(id="available")]))
@@ -294,7 +294,7 @@ def test_connection_test_uses_selected_configuration_without_activating_it(setup
                 return "正常"
         monkeypatch.setattr(llm_client, "LLMClient", FakeLLM)
     response = MagicMock()
-    response.__enter__.return_value.read.return_value = b'[{"index": 0, "score": 1}]'
+    response.__enter__.return_value.read.return_value = b'{"results": [{"index": 0, "relevance_score": 1}]}'
     def rank(request, timeout):
         observed.update(api_key=request.get_header("Authorization").removeprefix("Bearer "), model=json.loads(request.data)["model"])
         return response
@@ -344,7 +344,7 @@ def test_rag_runtime_sends_active_configuration_credential(setup, monkeypatch, t
         return NS(embeddings=NS(create=embed))
     monkeypatch.setattr(rag_service, "OpenAI", fake_client)
     response = MagicMock()
-    response.__enter__.return_value.read.return_value = b'[{"index": 0, "score": 1}]'
+    response.__enter__.return_value.read.return_value = b'{"results": [{"index": 0, "relevance_score": 1}]}'
     def rank(request, timeout):
         import json
         observed.update(api_key=request.get_header("Authorization").removeprefix("Bearer "), model=json.loads(request.data)["model"])
@@ -376,3 +376,32 @@ def test_text_form_saves_own_credential_and_preserves_it_on_details_edit(setup):
     assert client.delete(root + "/" + profile["id"]).status_code == 204
     with factory() as db:
         assert db.get(AppSecret, sid) is None
+
+
+@pytest.mark.parametrize("kind", ["embedding", "rerank"])
+def test_tei_protocol_and_timeout_used_by_probe_and_runtime(setup, monkeypatch, tmp_path, kind):
+    import json
+    from unittest.mock import MagicMock
+    from app.db import session
+    from app.services.rag_service import RagService
+    from app.services import retrieval_models
+    client, factory = setup
+    monkeypatch.setattr(session, "SessionLocal", factory)
+    root = "/api/settings/model-configs/" + kind
+    profile = client.post(root, json={**payload("local", kind), "protocol": "tei", "baseUrl": "http://tei:8080", "timeoutSeconds": 45}).json()
+    assert profile["protocol"] == "tei"
+    assert client.get(root).json()["profiles"][0]["protocol"] == "tei"
+    seen = []
+    def request(req, timeout):
+        body = json.loads(req.data)
+        seen.append((req.full_url, timeout, req.get_header("Authorization")))
+        result = MagicMock()
+        response = [[0.2, 0.8] for _ in body["inputs"]] if kind == "embedding" else [{"index": i, "score": 1 / (i + 1)} for i in range(len(body["texts"]))]
+        result.__enter__.return_value.read.return_value = json.dumps(response).encode()
+        return result
+    monkeypatch.setattr(retrieval_models.urllib.request, "urlopen", request)
+    tested = client.post("/api/settings/rag/test", params={"target": kind, "profileId": profile["id"]})
+    assert tested.json()[kind]["ok"] is True
+    rag = RagService(index_dir=str(tmp_path))
+    assert (rag._embed(["test"]) if kind == "embedding" else rag._rerank("query", ["test"]))
+    assert seen == [("http://tei:8080/" + ("embed" if kind == "embedding" else "rerank"), 45, None)] * 2

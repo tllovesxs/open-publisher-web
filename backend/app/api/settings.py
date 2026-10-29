@@ -756,72 +756,34 @@ def reset_rag_config(db: Session = Depends(get_db)):
 @router.post("/rag/test", dependencies=[Depends(require_admin)])
 def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embedding", "rerank"] = "all", profileId: str | None = None):
     """分别探测 embedding 与 rerank 链路连通性。"""
-    import json as _json
-    import urllib.request
-
     from app.services.model_config_catalog import resolve_rag_config
+    from app.services.retrieval_models import embed, rerank, error_detail
     if profileId and target == "all":
         raise HTTPException(status_code=400, detail="请选择要测试的模型类型")
-    try:
-        embedding = resolve_rag_config(db, "embedding", profileId if target == "embedding" else None)
-        rerank = resolve_rag_config(db, "rerank", profileId if target == "rerank" else None)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="模型配置不存在") from None
-    config = {"embeddingKeyConfigured": bool(embedding["api_key"]), "embeddingBaseUrl": embedding["base_url"], "embeddingModel": embedding["model"], "rerankBaseUrl": rerank["base_url"], "rerankModel": rerank["model"], "rerankTimeoutSeconds": rerank["timeout_seconds"]}
-    result: dict = {"embedding": {"ok": False}, "rerank": {"ok": False}}
-
-    if target == "rerank":
-        pass
-    elif not config["embeddingKeyConfigured"]:
-        result["embedding"]["detail"] = "未配置此检索模型的访问密钥"
-    else:
-        base_url = embedding["base_url"]
+    result = {"embedding": {"ok": False}, "rerank": {"ok": False}}
+    for kind in ("embedding", "rerank"):
+        if target not in ("all", kind):
+            continue
+        try:
+            config = resolve_rag_config(db, kind, profileId)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="模型配置不存在") from None
         started = time.monotonic()
         try:
-            from openai import OpenAI
-
-            client = OpenAI(api_key=embedding["api_key"], base_url=base_url, timeout=embedding["timeout_seconds"])
-            resp = client.embeddings.create(
-                model=config["embeddingModel"], input=["连通性测试"],
-            )
-            vector = resp.data[0].embedding
-            result["embedding"] = {
-                "ok": True,
-                "model": config["embeddingModel"],
-                "dimensions": len(vector),
-                "latencyMs": int((time.monotonic() - started) * 1000),
-            }
-        except Exception:  # noqa: BLE001
-            result["embedding"] = {"ok": False, "detail": "检索连接失败，请检查服务地址、模型和密钥"}
-
-    base = (config["rerankBaseUrl"] or "").rstrip("/")
-    if target == "embedding":
-        pass
-    elif not base:
-        result["rerank"] = {"ok": False, "detail": "未配置重排服务地址（可留空跳过重排）"}
-    else:
-        started = time.monotonic()
-        try:
-            body = _json.dumps({
-                "query": "连通性测试",
-                "texts": ["片段一", "片段二"],
-                "model": config.get("rerankModel", ""),
-                "raw_scores": False,
-            }).encode()
-            req = urllib.request.Request(
-                f"{base}/rerank", data=body,
-                headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + rerank["api_key"]} if rerank["api_key"] else {})},
-            )
-            with urllib.request.urlopen(req, timeout=max(3, config["rerankTimeoutSeconds"])) as resp:
-                payload = _json.loads(resp.read().decode("utf-8"))
-            ranked = payload if isinstance(payload, list) else payload.get("data") or payload.get("results") or []
-            result["rerank"] = {
-                "ok": bool(ranked),
-                "latencyMs": int((time.monotonic() - started) * 1000),
-            }
-        except Exception:  # noqa: BLE001
-            result["rerank"] = {"ok": False, "detail": "排序连接失败，请检查服务地址、模型和密钥"}
+            if kind == "embedding":
+                vectors = embed(config, ["苹果是一种水果", "今天的天气晴朗"])
+                extra = {"dimensions": len(vectors[0]), "vectors": len(vectors)}
+            else:
+                if not config["base_url"]:
+                    result[kind] = {"ok": False, "detail": "未配置重排服务地址（可留空跳过重排）"}
+                    continue
+                ranked = rerank(config, "苹果水果", ["苹果是一种水果", "汽车发动机维修"])
+                extra = {"results": len(ranked)}
+            result[kind] = {"ok": True, "model": config["model"], "latencyMs": int((time.monotonic() - started) * 1000), **extra}
+        except Exception as exc:
+            result[kind] = {"ok": False, "detail": error_detail(exc)}
     return result
+
 
 @router.get("/data/export")
 def export_my_data(db: Session = Depends(get_db), user: AppUser = Depends(require_user)):

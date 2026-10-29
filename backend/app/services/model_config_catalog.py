@@ -84,7 +84,7 @@ def resolve_rag_config(db: Session, kind: str, profile_id: str | None = None) ->
     llm = resolve_llm_profile_config(db, profile_id=None) if kind == "embedding" else {}
     if profile:
         sid = credential_id(db, kind, profile)
-        return {"model": profile["modelId"], "base_url": profile["baseUrl"] or (llm["base_url"] if kind == "embedding" else ""), "timeout_seconds": profile["timeoutSeconds"], "api_key": (get_secret(db, sid) or "") if sid else ""}
+        return {"model": profile["modelId"], "base_url": profile["baseUrl"] or (llm["base_url"] if kind == "embedding" else ""), "timeout_seconds": profile["timeoutSeconds"], "api_key": (get_secret(db, sid) or "") if sid else "", "protocol": profile.get("protocol", "auto")}
     if profile_id:
         raise ValueError("模型配置不存在")
     # No catalog selection: retain pre-catalog runtime defaults.
