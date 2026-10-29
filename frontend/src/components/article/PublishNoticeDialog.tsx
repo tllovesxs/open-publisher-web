@@ -61,19 +61,18 @@ export function PublishNoticeDialog({ onContinue, onClose, onOpenTutorial }: Pub
 
         <ol style={{ color: "var(--ink)", fontSize: 13, lineHeight: 1.9, margin: "14px 0 0", paddingInlineStart: 20 }}>
           <li>
-            <strong>加载扩展</strong>：Chrome 扩展管理开启「开发者模式」→ 加载已解压的扩展程序
-            → 选择 <code style={{ background: "var(--surface-muted, #f5f5f5)", borderRadius: 4, fontSize: 12, padding: "1px 5px" }}>D:\应用\wechatsync-2.0.9</code>。
+            <strong>加载扩展</strong>：在当前 Chrome / Edge 浏览器安装并启用「文章同步助手」，允许插件访问稿流网站，安装后刷新页面。
           </li>
           <li>
             <strong>登录平台</strong>：点击浏览器工具栏的「文章同步助手」→ 右上角「设置」→ 登录知乎 / 掘金 / 哔哩哔哩 / CSDN / 微信公众号等目标平台。
           </li>
           <li>
-            <strong>同步草稿</strong>：回到稿流文章页点「同步助手」进入全屏纯净稿 → 勾选平台 → 一键同步为各平台草稿（只存草稿，不代发布）。
+            <strong>同步草稿</strong>：回到稿流文章页点「同步发布」→ 刷新平台 → 勾选目标 → 点击「同步到草稿」，完成后打开草稿检查并正式发布。
           </li>
         </ol>
 
         <p style={{ color: "var(--muted, #888)", fontSize: 12, margin: "12px 0 0" }}>
-          完整图文教程（含各平台截图）见「公告」页《如何添加文章同步发布功能》。
+          Web 版通过插件直接同步，无需填写 Token 或开启 CLI / MCP。插件也可通过右键菜单「同步助手 - 提取并编辑文章」处理纯净预览。
         </p>
 
         <footer style={{ alignItems: "center", display: "flex", gap: 10, justifyContent: "space-between", marginTop: 16 }}>

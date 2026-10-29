@@ -1,7 +1,7 @@
-import { Bell, BookOpenText, Images, LayoutTemplate, Moon, PenLine, Send, Settings, Sun, X } from "lucide-react";
+import { Bell, BookOpenText, Images, LayoutTemplate, Moon, PenLine, Settings, Sun, X } from "lucide-react";
 
 // 迁移自蓝本 apps/desktop/src/components/AppNavigation.tsx（团队自有代码），1:1 导航与品牌。
-export type NavKey = "create" | "articles" | "announcements" | "templates" | "media" | "publish" | "settings";
+export type NavKey = "create" | "articles" | "announcements" | "templates" | "media" | "settings";
 
 interface AppNavigationProps {
   active: NavKey;
@@ -24,7 +24,6 @@ const navigation: Array<{
   { id: "announcements", label: "公告", icon: Bell },
   { id: "templates", label: "模板", icon: LayoutTemplate },
   { id: "media", label: "素材库", icon: Images },
-  { id: "publish", label: "发布", icon: Send },
   { id: "settings", label: "设置", icon: Settings },
 ];
 

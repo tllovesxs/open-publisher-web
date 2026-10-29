@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ExternalLink, LoaderCircle, Monitor, Send, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, ExternalLink, LoaderCircle, Monitor, RefreshCw, Send, XCircle } from "lucide-react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { resolveAssetReferences } from "./MarkdownPreview";
+import { prepareSyncPost } from "./syncPost";
 
 interface SyncAccount {
   type: string;
@@ -32,7 +32,7 @@ declare global {
           post: { title: string; content: string; markdown: string; thumb?: string | null };
           accounts: SyncAccount[];
         },
-        onStatus: (task: SyncTaskStatus) => void,
+        onStatus: (task: SyncTaskStatus | { accounts: SyncTaskStatus[] }) => void,
         cb?: (result?: unknown) => void,
       ) => void;
     };
@@ -52,80 +52,98 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /** 文章同步助手发布通道（依赖 wechatsync-2.0.9 浏览器扩展）：
- * 1. 全屏纯净文章视图：页面只渲染标题与正文，扩展抓取/截图不会带出工作台 UI；
+ * 1. 纯净文章预览，与桌面蓝本相同地由用户选择平台并提交草稿；
  * 2. 通过扩展注入的 window.$syncer 读取已登录平台并提交草稿同步任务（只存草稿，不代发布）。 */
 export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialogProps) {
-  const [extStatus, setExtStatus] = useState<"checking" | "missing" | "ready">("checking");
+  const [extStatus, setExtStatus] = useState<"checking" | "missing" | "empty" | "error" | "ready">("checking");
   const [accounts, setAccounts] = useState<SyncAccount[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [tasks, setTasks] = useState<Record<string, SyncTaskStatus>>({});
   const [syncing, setSyncing] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const shellRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const alive = useRef(true);
+  const detecting = useRef(0);
+  const controller = useRef<AbortController | null>(null);
+  const timeout = useRef<number>();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; detecting.current++; controller.current?.abort(); window.clearTimeout(timeout.current); }; }, []);
 
   // 纯净正文：先解析 asset:// 素材引用（与编辑器预览同链路），再净化 HTML，并把站内相对图片地址补全成绝对地址
   const articleHtml = useMemo(() => {
-    const html = DOMPurify.sanitize(marked.parse(resolveAssetReferences(markdown), { async: false }) as string);
+    const html = DOMPurify.sanitize(marked.parse(markdown.replace(/\]\(asset:\/\/([A-Za-z0-9][A-Za-z0-9:_-]{0,255})\)/g, (_, id: string) => `](/api/media/${encodeURIComponent(id)}/raw)`), { async: false }) as string);
     const box = document.createElement("div");
     box.innerHTML = html;
     box.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src");
-      if (src && src.startsWith("/")) img.setAttribute("src", new URL(src, window.location.origin).href);
+      if (src) {
+        const url = new URL(src, window.location.origin);
+        url.searchParams.delete("access_token");
+        img.setAttribute("src", url.href);
+      }
     });
     return box.innerHTML;
   }, [markdown]);
 
-  const thumb = useMemo(() => {
-    const box = document.createElement("div");
-    box.innerHTML = articleHtml;
-    return box.querySelector("img")?.getAttribute("src") ?? null;
-  }, [articleHtml]);
-
-  // 进入全屏：文章独占屏幕，浏览器 UI 也退出视野
-  useEffect(() => {
-    document.documentElement.requestFullscreen?.().catch(() => undefined);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setChromeVisible(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
-    };
-  }, []);
-
-  // 检测扩展注入的 $syncer 桥（wechatsync 在 document_start 注入所有 http/https 页面）
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (typeof window.$syncer?.getAccounts !== "function") {
-        setExtStatus("missing");
-        return;
-      }
-      window.$syncer.getAccounts((list) => {
-        const ready = (list ?? []).filter((item) => item && item.type);
-        setAccounts(ready);
-        setSelected(ready.map((item) => item.type));
-        setExtStatus(ready.length ? "ready" : "missing");
-      });
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const startSync = () => {
+  const refreshAccounts = useCallback(async () => {
+    const request = ++detecting.current;
+    setExtStatus("checking"); setError("");
+    const deadline = Date.now() + 5000;
+    while (!window.$syncer?.getAccounts && Date.now() < deadline && alive.current) await new Promise(resolve => window.setTimeout(resolve, 100));
+    if (!alive.current || request !== detecting.current) return;
     const bridge = window.$syncer;
-    if (!bridge || syncing) return;
-    const picked = accounts.filter((item) => selected.includes(item.type));
+    if (!bridge?.getAccounts || !bridge.addTask) { setExtStatus("missing"); return; }
+    const timer = window.setTimeout(() => { if (alive.current && request === detecting.current) { detecting.current++; setExtStatus("error"); setError("插件未返回平台信息，请检查网站访问权限后重试。"); } }, 20000);
+    try {
+      bridge.getAccounts(list => {
+        window.clearTimeout(timer);
+        if (!alive.current || request !== detecting.current) return;
+        const ready = Array.isArray(list) ? list.filter(item => item && typeof item.type === "string") : [];
+        setAccounts(ready); setSelected([]); setExtStatus(ready.length ? "ready" : "empty");
+      });
+    } catch { window.clearTimeout(timer); setExtStatus("error"); setError("读取插件失败，请刷新页面后重试。"); }
+  }, []);
+  useEffect(() => { void refreshAccounts(); }, [refreshAccounts]);
+
+  const startSync = async () => {
+    const bridge = window.$syncer;
+    if (!bridge || syncing || submitted) return;
+    const picked = accounts.filter(item => selected.includes(item.type));
     if (!picked.length) return;
-    setSyncing(true);
-    setTasks(Object.fromEntries(picked.map((item) => [item.type, { type: item.type, status: "uploading" }])));
-    bridge.addTask(
-      { post: { title, content: articleHtml, markdown, thumb }, accounts: picked },
-      (task) => {
-        if (!task?.type) return;
-        setTasks((current) => ({ ...current, [task.type]: { ...current[task.type], ...task } }));
-      },
-    );
+    setSyncing(true); setError("");
+    controller.current = new AbortController();
+    try {
+      const post = await prepareSyncPost(title, markdown, controller.current.signal);
+      if (!alive.current) return;
+      setSubmitted(true);
+      setTasks(Object.fromEntries(picked.map(item => [item.type, { type: item.type, status: "uploading" }])));
+      timeout.current = window.setTimeout(() => {
+        if (!alive.current) return;
+        setSyncing(false); setError("同步结果尚未确认，请先查看插件同步记录与平台草稿箱，避免重复提交。");
+      }, 11 * 60 * 1000);
+      bridge.addTask({ post, accounts: picked }, update => {
+        if (!alive.current) return;
+        if (!update || typeof update !== "object") return;
+        const batch = "accounts" in update && Array.isArray(update.accounts) ? update.accounts : [update as SyncTaskStatus];
+        setTasks(current => {
+          const next = { ...current };
+          for (const task of batch) if (task && picked.some(item => item.type === task.type)) next[task.type] = { ...next[task.type], ...task };
+          return next;
+        });
+      });
+    } catch (failure) {
+      if (!alive.current) return;
+      setSyncing(false); window.clearTimeout(timeout.current);
+      setError(failure instanceof Error ? failure.message : "无法提交同步，请检查插件后重试。");
+    }
   };
+  useEffect(() => {
+    const values = Object.values(tasks);
+    if (values.length && values.every(task => task.status === "done" || task.status === "failed")) {
+      setSyncing(false); window.clearTimeout(timeout.current);
+    }
+  }, [tasks]);
 
   const toggleAccount = (type: string) => {
     setSelected((current) =>
@@ -135,27 +153,12 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
 
   return (
     <div
+      aria-label="文章同步发布"
+      role="dialog"
+      aria-modal="true"
       className="sync-publish"
       style={{ background: "var(--surface, #fff)", inset: 0, overflowY: "auto", position: "fixed", zIndex: 1300 }}
     >
-      <article
-        id="sync-article"
-        ref={shellRef}
-        style={{
-          boxSizing: "content-box",
-          color: "var(--ink, #222)",
-          fontFamily: "-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif",
-          lineHeight: 1.9,
-          margin: "0 auto",
-          maxWidth: 760,
-          padding: chromeVisible ? "96px 28px 80px" : "48px 28px 80px",
-          transition: "padding 200ms ease",
-        }}
-      >
-        <h1 style={{ fontSize: 28, lineHeight: 1.4, marginBottom: 20 }}>{title}</h1>
-        <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: articleHtml }} />
-      </article>
-
       {chromeVisible && (
         <header
           style={{
@@ -167,15 +170,15 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
             display: "flex",
             flexWrap: "wrap",
             gap: 10,
-            inset: "0 0 auto 0",
+            top: 0,
             padding: "10px 16px",
-            position: "fixed",
+            position: "sticky",
             zIndex: 2,
           }}
         >
           <strong style={{ fontSize: 13 }}>
             <Monitor size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-            同步助手 · 全屏纯净稿
+            文章同步助手 · 同步到平台草稿
           </strong>
 
           {extStatus === "checking" && (
@@ -186,10 +189,14 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
 
           {extStatus === "missing" && (
             <small style={{ color: "var(--warning, #b45309)", maxWidth: 460 }}>
-              未检测到扩展或未登录平台账号。请在当前浏览器安装并启用「文章同步助手」扩展，登录目标平台后刷新本页。
+              未检测到插件。请在当前浏览器安装并启用「文章同步助手」，允许访问此网站后刷新页面。
             </small>
           )}
 
+          {extStatus === "empty" && <small>插件已连接，请先登录目标平台，再刷新平台。</small>}
+          {error && <small role="alert" style={{ color: "var(--danger, #b0434e)" }}>{error}</small>}
+          <button className="button button--quiet" disabled={syncing || submitted || extStatus === "checking"} onClick={() => void refreshAccounts()} type="button"><RefreshCw size={14} /> 刷新平台</button>
+          <a href="https://www.wechatsync.com/" target="_blank" rel="noreferrer">安装插件</a>
           {extStatus === "ready" && (
             <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6 }}>
               {accounts.map((account) => {
@@ -197,6 +204,7 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
                 const task = tasks[account.type];
                 return (
                   <button
+                    disabled={syncing || submitted}
                     aria-pressed={active}
                     key={account.type}
                     onClick={() => toggleAccount(account.type)}
@@ -233,13 +241,13 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
               })}
               <button
                 className="button button--primary"
-                disabled={syncing || !selected.length}
+                disabled={syncing || submitted || !selected.length}
                 onClick={startSync}
                 style={{ alignItems: "center", display: "flex", gap: 6, marginLeft: 6 }}
                 type="button"
               >
                 {syncing ? <LoaderCircle className="spin" size={14} /> : <Send size={14} />}
-                {syncing ? "同步中…" : `同步草稿到 ${selected.length} 个平台`}
+                {syncing ? "同步中…" : submitted ? "已提交同步" : `同步到草稿（${selected.length} 个平台）`}
               </button>
             </div>
           )}
@@ -255,10 +263,28 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
             纯净预览
           </button>
           <button className="button button--quiet" onClick={onClose} type="button">
-            退出全屏
+            返回文章
           </button>
         </header>
       )}
+
+      <article
+        id="sync-article"
+        ref={shellRef}
+        style={{
+          boxSizing: "border-box",
+          color: "var(--ink, #222)",
+          fontFamily: "-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif",
+          lineHeight: 1.9,
+          margin: "0 auto",
+          maxWidth: 760,
+          padding: "32px 24px 80px",
+          transition: "padding 200ms ease",
+        }}
+      >
+        <h1 style={{ fontSize: 28, lineHeight: 1.4, marginBottom: 20 }}>{title}</h1>
+        <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: articleHtml }} />
+      </article>
 
       {/* 每平台进度 / 草稿链接 */}
       {chromeVisible && Object.keys(tasks).length > 0 && (
@@ -280,7 +306,8 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
         >
           {Object.values(tasks).map((task) => {
             const account = accounts.find((item) => item.type === task.type);
-            const link = task.editResp?.draftLink;
+            const rawLink = task.editResp?.draftLink;
+            const link = rawLink && /^https?:\/\//i.test(rawLink) ? rawLink : null;
             return (
               <span key={task.type} style={{ alignItems: "center", display: "inline-flex", gap: 5 }}>
                 <strong>{account?.displayName || account?.title || task.type}</strong>

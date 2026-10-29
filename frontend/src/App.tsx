@@ -19,7 +19,6 @@ const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
 const TemplatesPage = lazy(() => import("./pages/TemplatesPage"));
 const MediaPage = lazy(() => import("./pages/MediaPage"));
 const ProjectsPage = lazy(() => import("./pages/ProjectsPage"));
-const PublishQueuePage = lazy(() => import("./pages/PublishQueuePage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const RevisionsPage = lazy(() => import("./pages/RevisionsPage"));
 const RunPage = lazy(() => import("./pages/RunPage"));
@@ -47,7 +46,6 @@ function Shell() {
     else if (location.pathname.startsWith("/announcements")) setNav("announcements");
     else if (location.pathname.startsWith("/templates")) setNav("templates");
     else if (location.pathname.startsWith("/media")) setNav("media");
-    else if (location.pathname.startsWith("/publish-queue")) setNav("publish");
     else if (location.pathname.startsWith("/settings")) setNav("settings");
     else if (isCreatePathname()) setNav("create");
   }, [location.pathname]);
@@ -72,7 +70,6 @@ function Shell() {
       if (next === "announcements") navigate("/announcements");
       if (next === "templates") navigate("/templates");
       if (next === "media") navigate("/media");
-      if (next === "publish") navigate("/publish-queue");
       if (next === "settings") navigate("/settings");
     },
     [user, navigate],
@@ -89,9 +86,7 @@ function Shell() {
             ? "模板"
             : nav === "media"
               ? "素材库"
-              : nav === "publish"
-                ? "发布"
-                : "设置";
+              : "设置";
 
   return (
     <div className="app-shell">
@@ -141,7 +136,7 @@ function Shell() {
             <Route path="/articles" element={<ArticlesPage />} />
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/media" element={<MediaPage />} />
-            <Route path="/publish-queue" element={<PublishQueuePage />} />
+            <Route path="/publish-queue" element={<Navigate to="/articles" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:projectId/revisions" element={<RevisionsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

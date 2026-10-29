@@ -59,54 +59,42 @@ const embeddedManifest: NoticeManifest = {
       type: "tutorial",
       pinned: false,
       title: "如何添加文章同步发布功能",
-      summary: "安装文章同步助手、复制 Token，并把稿流连接到浏览器中的已登录平台。",
+      summary: "安装文章同步助手，允许网站访问并同步到已登录平台的草稿箱。",
       date: "2026-08-07",
       badge: "发布教程",
-      tags: ["发布", "WechatSync", "Token"],
+      tags: ["发布", "WechatSync", "草稿"],
       path: "docs/integrations/wechatsync-publishing-guide.md",
-      body: `# 稿流发布使用教程
+      body: `# Web 版文章同步发布教程
 
-使用文章同步助手连接稿流后，可以把文章同步到微信公众号、知乎、CSDN 等平台的草稿箱。
+## 1. 安装并启用插件
 
-## 1. 下载插件
+打开[文章同步助手官网](https://www.wechatsync.com/)，在当前 Chrome / Edge 浏览器安装「文章同步助手」。在浏览器扩展管理中允许插件访问稿流网站，安装或调整权限后刷新稿流页面。
 
-打开[文章同步助手官网](https://www.wechatsync.com/?utm_source=extension_about)，下载并安装浏览器插件。
+## 2. 登录目标平台
 
-## 2. 打开插件设置
+在同一个浏览器中登录微信公众号、知乎、CSDN 等需要同步的平台。平台支持范围与登录状态以插件读取的结果为准。
 
-安装完成后，点击浏览器工具栏里的「文章同步助手」，再点击右上角的「设置」。
+## 3. 在文章页同步
 
-![点击文章同步助手右上角的设置](./images/wechatsync-open-settings.png)
+1. 打开文章，检查标题、正文和图片，点击「同步发布」。
+2. 点击「继续发布」，进入文章纯净预览。
+3. 点击「刷新平台」，勾选目标平台后点击「同步到草稿」。
+4. 查看各平台同步进度，完成后点击「查看草稿」检查内容并在平台内正式发布。
 
-## 3. 复制连接信息
+Web 版通过插件注入的网页接口直接同步，无需填写 Token 或开启 CLI / MCP 连接。桌面蓝本的本地桥配置不适用于此网页入口。
 
-在设置中找到「同步桥接」：
+## 4. 插件独立操作
 
-1. 打开「CLI / MCP 连接」开关。
-2. 复制下方显示的 \`Token\`。
-3. 服务器地址保持为 \`ws://localhost:9527\`。
+也可以在「纯净预览」中右键，选择「同步助手 - 提取并编辑文章」，通过插件自己的编辑和同步窗口操作。插件负责平台账号和同步记录。
 
-![打开 CLI MCP 连接并复制 Token](./images/wechatsync-cli-mcp-settings.png)
+## 常见问题
 
-> 截图中的 Token 已隐藏，请复制自己插件中显示的 Token。
+- 未检测到插件：检查是否安装在当前浏览器、是否已启用、是否允许访问当前网站，再刷新页面。
+- 插件已连接但没有平台：先在该浏览器登录目标平台，再点击「刷新平台」。
+- 图片准备失败：检查素材权限及图片大小，修复后重试。
+- 同步失败：按界面提示检查对应平台登录和草稿箱；结果尚未确认时先核验插件记录，避免重复提交。
 
-## 4. 填入稿流
-
-打开稿流，进入「设置 → 平台账号 → 发布连接」，填写：
-
-- 服务器地址：\`ws://localhost:9527\`
-- Token：刚才从插件中复制的 Token
-
-点击「保存并测试」。显示「已连接」后，再点击「刷新状态」，稿流就会显示浏览器中已经登录的平台。
-
-## 5. 同步文章
-
-1. 在稿流的「文章」页面选择文章，点击「发布」。
-2. 勾选需要同步的平台。
-3. 点击「同步到草稿」。
-4. 打开对应平台的草稿箱，检查内容后手动完成最终发布。
-
-如果一直显示「等待插件」，请确认插件中的「CLI / MCP 连接」开关已经打开，然后重新打开插件并在稿流中刷新状态。
+独立模拟发布队列已移除，文章页是同步入口。
 `,
     },
   ],
@@ -227,7 +215,7 @@ export default function AnnouncementsPage() {
         setSelectedId(embeddedManifest.items[0]!.id);
         return;
       }
-      bodyCache.current = {};
+      bodyCache.current = cacheEmbeddedBodies();
       setManifest(normalized);
       setSourceState("remote");
       setSelectedId((current) =>
