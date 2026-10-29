@@ -85,9 +85,13 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
         await page.waitForFunction(() => typeof window.__visualStream?.onmessage === 'function');
         if (options.finishOnOtherPage) await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => typeof window.__visualStream?.onmessage === 'function');
-        await page.evaluate(() => window.__visualStream.onmessage({ data: JSON.stringify({ sequence: 1, type: 'run.completed', payload: {}, runId: 'visual-run', articleId: 'visual-test' }) }));
-        await page.getByRole('dialog', { name: '确认配图方案' }).waitFor();
-        await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent === '确认并继续' && !b.disabled));
+        await page.evaluate(failed => window.__visualStream.onmessage({ data: JSON.stringify({ sequence: 1, type: failed ? 'run.failed' : 'run.completed', payload: failed ? { message: 'LLM 调用失败：Connection error.' } : {}, runId: 'visual-run', articleId: 'visual-test' }) }), Boolean(options.writerConnectionFailure));
+        if (options.writerConnectionFailure) {
+          await page.getByText('创作失败：LLM 调用失败：Connection error.', { exact: true }).waitFor();
+        } else {
+          await page.getByRole('dialog', { name: '确认配图方案' }).waitFor();
+          await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent === '确认并继续' && !b.disabled));
+        }
       }
       return { context, page, editor, calls, errors, attempts, completedImages, changeRemote: () => { article = { ...article, currentRevisionId: 'remote', contentHash: 'remote' }; }, stats: () => ({ applied, planned, maxInflight, generated: [...attempts.values()].reduce((a, b) => a + b, 0) }) };
     }
@@ -188,6 +192,14 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       assert.ok(await t.page.getByRole('button', { name: '确认并继续', exact: true }).isDisabled());
       assert.equal(t.stats().generated, 0);
       reports.push({ scenario: 'save-before-plan-and-dirty-invalidation', ...t.stats() }); await t.context.close();
+    }
+    // Text connection failure must never start visual planning or image generation.
+    {
+      const t = await setup({ writerConnectionFailure: true });
+      assert.deepEqual(t.stats(), { applied: 0, planned: 0, maxInflight: 0, generated: 0 });
+      assert.equal(await t.page.getByRole('dialog', { name: '确认配图方案' }).count(), 0);
+      assert.deepEqual(t.errors, []);
+      reports.push({ scenario: 'writer-connection-failure-no-visual-work', ...t.stats() }); await t.context.close();
     }
     console.log(JSON.stringify(reports));
   } finally { await browser.close(); }

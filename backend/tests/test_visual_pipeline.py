@@ -354,13 +354,12 @@ def test_apply_rejects_inaccessible_or_deleted_material(client, factory, article
 
 
 
-def test_creation_prompt_keeps_images_in_post_save_workflow():
+def test_creation_prompt_retains_original_image_settings():
     from app.services.writer_service import WriterService
-    sections = "\n".join(WriterService._creation_sections({"imagePlan": {"mode": "auto", "targetCount": 0}, "imageAssets": ["selected-material"]}))
-    assert "按篇幅自动确定数量" in sections
-    assert "目标图片数量：0" not in sections
-    assert "不输出图片占位符" in sections
-    assert "正文阶段不插图" in sections
+    sections = "\n".join(WriterService._creation_sections({"imagePlan": {"targetCount": 2}, "imageAssets": ["selected-material"]}))
+    assert "目标图片数量：2" in sections
+    assert "可用素材（仅在匹配时引用，不要杜撰图片内容）" in sections
+    assert "正文保存后的目标图片数量" not in sections
 
 
 def test_generate_api_accepts_blueprint_prompt_length(client, monkeypatch):

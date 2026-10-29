@@ -1187,21 +1187,15 @@ class WriterService:
         asset_ids = creation.get("imageAssets") or []
         if asset_ids:
             lines = [f"- 素材 ID：{asset}" for asset in asset_ids]
-            sections.append("待视觉规划的已选素材（仅用于理解创作语境，正文阶段不插图，不要杜撰图片内容）：\n" + "\n".join(lines))
+            sections.append("可用素材（仅在匹配时引用，不要杜撰图片内容）：\n" + "\n".join(lines))
         input_images = creation.get("inputImages") or []
         if input_images:
             sections.append(f"用户附了 {len(input_images)} 张图片（以多模态消息附加在本次请求中）；如无法读图，请明确说明，不要编造图像内容。")
         image_plan = creation.get("imagePlan")
         if isinstance(image_plan, dict):
             target = image_plan.get("targetCount")
-            mode = image_plan.get("mode", "fixed")
-            if mode == "auto":
-                sections.append("配图方式：正文保存后，由视觉规划按篇幅自动确定数量。")
-            elif mode == "none":
-                sections.append("配图方式：不配图。")
-            elif target is not None:
-                sections.append(f"正文保存后的目标图片数量：{target}")
-            sections.append("配图交由正文保存后的独立视觉流程处理；本轮只写完整正文，不输出图片占位符、生图提示词、素材 ID、模型配置说明或待生成图片链接。")
+            if target is not None:
+                sections.append(f"目标图片数量：{target}")
             image_model_id = str(image_plan.get("imageModelId") or "").strip()
             if image_model_id:
                 sections.append(f"生图模型：{image_model_id}（仅记录用户选择，不影响写作）")

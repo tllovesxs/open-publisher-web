@@ -47,7 +47,7 @@ export interface ArticleCreateContract {
   template?: CreationTemplate | null;
   imageAssets?: string[];
   inputImages?: string[];
-  imagePlan?: { mode?: "none" | "auto" | "fixed"; targetCount: number; imageModelId?: string | null } | null;
+  imagePlan?: { targetCount: number; imageModelId?: string | null } | null;
   webSearchMode?: "auto" | "off" | null;
   taskMode?: string | null;
   disabledNodeIds?: string[];

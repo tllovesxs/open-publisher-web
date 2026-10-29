@@ -109,7 +109,7 @@ export default function CreatePage() {
   const [lengthPreset, setLengthPreset] = useState<LengthPreset>("medium");
   const [customLength, setCustomLength] = useState("3000");
   const [webSearchMode, setWebSearchMode] = useState<"auto" | "off">("auto");
-  const [imagePlanMode, setImagePlanMode] = useState<"auto" | "fixed" | "none">("auto");
+  const [imagePlanMode, setImagePlanMode] = useState<"auto" | "none">("auto");
   const [imageCount, setImageCount] = useState(2);
   const [picker, setPicker] = useState<Picker>(null);
   const [imageCountDraft, setImageCountDraft] = useState("2");
@@ -174,7 +174,7 @@ export default function CreatePage() {
   useEffect(() => {
     const ids = (location.state as { selectedMediaIds?: string[] } | null)?.selectedMediaIds;
     if (Array.isArray(ids) && ids.length > 0) {
-      setSelectedMediaIds(ids.slice(0, 6));
+      setSelectedMediaIds(ids.slice(0, 20));
       navigate("/", { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,7 +184,7 @@ export default function CreatePage() {
   const selectedImageModel = imageModels.find((m) => m.id === selectedImageModelId) ?? null;
   const imageLabel = imagePlanMode === "none"
     ? "不配图"
-    : `${imagePlanMode === "auto" ? "自动 · 按篇幅" : `指定 · ${imageCount} 张`}${selectedImageModel ? ` · ${selectedImageModel.model}` : ""}`;
+    : `自动 · ${imageCount} 张${selectedImageModel ? ` · ${selectedImageModel.model}` : ""}`;
   const selectedProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
   const templateLabel = selectedTemplate?.mode === "reference"
     ? `高保真参考 · ${selectedTemplate.name}`
@@ -277,8 +277,7 @@ export default function CreatePage() {
         imageAssets: selectedMediaIds,
         inputImages,
         imagePlan: {
-          mode: imagePlanMode,
-          targetCount: imagePlanMode === "fixed" ? imageCount : 0,
+          targetCount: imagePlanMode === "auto" ? imageCount : 0,
           imageModelId: selectedImageModelId || null,
         },
         webSearchMode,
@@ -287,11 +286,9 @@ export default function CreatePage() {
         materialMatchThreshold: 40,
       }, title.trim() || topic.trim().slice(0, 80), {
         visualPlan: {
-          mode: imagePlanMode,
-          materialMatchThreshold: 40,
-          enabled: imagePlanMode !== "none"
+          enabled: (imagePlanMode === "auto" || selectedMediaIds.length > 0)
             && !disabledNodes.includes("visual"),
-          targetCount: imagePlanMode === "fixed" ? imageCount : 0,
+          targetCount: imagePlanMode === "auto" ? imageCount : 0,
           imageModelId: selectedImageModelId || null,
           assetIds: selectedMediaIds,
         },
@@ -479,7 +476,7 @@ export default function CreatePage() {
         {picker === "media" && (
           <section aria-label="选择图片素材" aria-modal="true" className="creation-picker__dialog" role="dialog">
             <header>
-              <div><span className="page-kicker">图片参考 · 最多 6 张</span><h2>选择素材库图片</h2></div>
+              <div><span className="page-kicker">图片参考</span><h2>选择素材库图片</h2></div>
               <button aria-label="关闭" className="icon-button" onClick={() => setPicker(null)} type="button"><X size={18} /></button>
             </header>
             <div className="creation-picker__media">
@@ -495,7 +492,7 @@ export default function CreatePage() {
                       onClick={() => setSelectedMediaIds((current) =>
                         current.includes(asset.id)
                           ? current.filter((id) => id !== asset.id)
-                          : current.length < 6 ? [...current, asset.id] : current)}
+                          : [...current, asset.id])}
                       type="button"
                     >
                       <img alt="" src={`/api/media/${asset.id}/raw`} />
@@ -524,14 +521,13 @@ export default function CreatePage() {
                   onChange={setImagePlanMode}
                   options={[
                     { id: "auto" as const, label: "自动" },
-                    { id: "fixed" as const, label: "指定数量" },
                     { id: "none" as const, label: "不配图" },
                   ]}
                   value={imagePlanMode}
                   variant="field"
                 />
               </div>
-              {imagePlanMode !== "none" && (
+              {imagePlanMode === "auto" && (
                 <div className="field">
                   <span>生图模型（可选）</span>
                   <PillSelect
@@ -553,29 +549,29 @@ export default function CreatePage() {
                   )}
                 </div>
               )}
-              {imagePlanMode === "fixed" && (
+              {imagePlanMode === "auto" && (
                 <label className="field">
                   <span>目标图片数量</span>
                   <input
                     aria-label="目标图片数量"
                     max={6}
-                    min={1}
+                    min={0}
                     onBlur={() => setImageCountDraft(String(imageCount))}
                     onChange={(event) => {
                       const raw = event.target.value;
                       setImageCountDraft(raw);
                       const parsed = Number.parseInt(raw, 10);
                       if (!Number.isNaN(parsed)) {
-                        setImageCount(Math.min(6, Math.max(1, parsed)));
+                        setImageCount(Math.min(6, Math.max(0, parsed)));
                       }
                     }}
-                    placeholder={`1-6（当前 ${imageCount}）`}
+                    placeholder={`0-6（当前 ${imageCount}）`}
                     type="number"
                     value={imageCountDraft}
                   />
                 </label>
               )}
-              <small>自动模式按篇幅规划 1–4 张，指定数量最多 6 张；正文保存、方案确认后才开始生图。</small>
+              <small>按你的选择规划文章配图。不选择生图模型时，使用默认模型。</small>
             </div>
           </section>
         )}
