@@ -68,6 +68,14 @@ class LLMClient:
         level = self.capabilities.get("thinkingLevel", "auto")
         if self.model.lower().startswith("glm-"):
             options = {"temperature": temperature, "max_tokens": budget}
+            if re.match(r"^glm-5\.3(?:$|-)", self.model.lower()):
+                # GLM-5.3 强制思考，省略 effort 会默认 max；空档案也必须限定强度，
+                # 否则思考可能耗尽整个输出预算，尚未调用 write_article 就被截断。
+                # 只支持 low/high/max：auto/off 采用最低强度，medium 映射为 high。
+                options["reasoning_effort"] = {
+                    "auto": "low", "off": "low", "low": "low",
+                    "medium": "high", "high": "high", "max": "max",
+                }.get(level, "low")
             # GLM 名称不代表支持关闭思考；部分模型只接受原生思考模式。
             # 未主动启用时不发送 thinking，保留供应商原生行为。
             if (self.capabilities.get("reasoning") and level != "off"

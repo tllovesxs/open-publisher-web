@@ -68,7 +68,53 @@ def test_default_glm_request_works_when_provider_rejects_disabled_thinking(mode)
     assert len(received) == 1
     assert "thinking" not in received[0]
     assert received[0]["max_tokens"] == 16384
+    assert received[0]["reasoning_effort"] == "low"
     assert client.call_count == 1
+
+
+@pytest.mark.parametrize("model", ["GLM-5.3", "GLM-5.3-Flash", "glm-5.3-flashx"])
+@pytest.mark.parametrize("level,effort", [
+    ("auto", "low"), ("off", "low"), ("low", "low"),
+    ("medium", "high"), ("high", "high"), ("max", "max"),
+])
+def test_glm53_maps_only_supported_efforts_and_preserves_explicit_budget(model, level, effort):
+    client = make_client(lambda request: success(json.loads(request.content)))
+    client.model = model
+    client.capabilities.update(thinkingLevel=level, maxTokens=24000)
+    options = client._options(0.7)
+    assert options["reasoning_effort"] == effort
+    assert options["max_tokens"] == 24000
+    assert options.get("extra_body", {}).get("thinking", {}).get("type") != "disabled"
+
+
+@pytest.mark.parametrize("model,capabilities,expected", [
+    ("glm-4.7", {}, {"temperature": 0.7, "max_tokens": 16384}),
+    ("glm-5.2", {}, {"temperature": 0.7, "max_tokens": 16384}),
+    ("glm-5.30", {}, {"temperature": 0.7, "max_tokens": 16384}),
+    ("custom-model", {}, {"temperature": 0.7, "max_tokens": 16384}),
+    ("custom-model", {"reasoning": True, "thinkingLevel": "medium"},
+     {"max_completion_tokens": 16384, "reasoning_effort": "medium"}),
+])
+def test_glm53_effort_fix_does_not_change_other_models(model, capabilities, expected):
+    client = make_client(lambda request: success(json.loads(request.content)))
+    client.model, client.capabilities = model, capabilities
+    assert client._options(0.7) == expected
+
+
+def test_glm53_effort_rejection_does_not_silently_restore_unbounded_thinking():
+    received = []
+
+    def handler(request):
+        received.append(json.loads(request.content))
+        return httpx.Response(400, json={"error": {
+            "message": "reasoning_effort is not supported by this endpoint",
+        }})
+
+    client = make_client(handler, reasoning=False)
+    with pytest.raises(LLMError):
+        invoke(client, "agent")
+    assert len(received) == 1
+    assert received[0]["reasoning_effort"] == "low"
 
 
 @pytest.mark.parametrize("mode", ["agent", "text", "json", "vision"])

@@ -45,6 +45,7 @@ def test_openai_sdk_tool_stream_records_usage_without_exposing_reasoning():
     client._client = OpenAI(api_key="test-only", base_url="https://mock.invalid/v1", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
     events = list(client.stream_chat("system", [{"role": "user", "content": "x"}]))
     assert received[0]["max_tokens"] == 16384
+    assert received[0]["reasoning_effort"] == "low"
     assert "thinking" not in received[0]
     assert events[-1]["usage"]["reasoningTokens"] == 60
     assert events[-1]["finishReason"] == "length"

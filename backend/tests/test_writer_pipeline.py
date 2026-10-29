@@ -486,12 +486,83 @@ def test_glm_options_preserve_native_thinking_and_use_blueprint_budget():
     client.capabilities = {}
     options = client._options(0.7)
     assert options["max_tokens"] == 16384
+    assert options["reasoning_effort"] == "low"
     assert "extra_body" not in options
     client.capabilities = {"reasoning": True, "thinkingLevel": "off"}
     assert "extra_body" not in client._options(0.7)
     client.capabilities = {"maxTokens": 24000, "reasoning": True, "thinkingLevel": "auto"}
     assert client._options(0.7)["extra_body"]["thinking"]["type"] == "enabled"
     assert client._options(0.7)["max_tokens"] == 24000
+
+
+@pytest.mark.parametrize("legacy_request", [True, False])
+def test_glm53_reasoning_only_length_failure_and_corrected_tool_commit(db, legacy_request):
+    """回放这次失败的响应形态，并走 SDK→正文增量→文章保存完整链路。"""
+    import httpx
+    from openai import OpenAI
+    from app.agents.llm_client import LLMClient
+
+    body = "# 标题\n\n完整正文。"
+    arguments = json.dumps({"title": "标题", "markdown": body, "reason": "依据要求"}, ensure_ascii=False)
+    received = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        received.append(payload)
+        chunks = [{"choices": [{"index": 0, "delta": {"reasoning_content": "private reasoning"},
+                                "finish_reason": None}]}]
+        if payload.get("reasoning_effort") == "low":
+            for i, fragment in enumerate([arguments[:-5], arguments[-5:]]):
+                tool = {"index": 0, "function": {"arguments": fragment}}
+                if i == 0:
+                    tool.update(id="write1", type="function")
+                    tool["function"]["name"] = "write_article"
+                chunks.append({"choices": [{"index": 0, "delta": {"tool_calls": [tool]},
+                                            "finish_reason": None}]})
+            finish, output, reasoning = "tool_calls", 60, 10
+        else:
+            finish, output, reasoning = "length", 16384, 16306
+        chunks.extend([
+            {"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]},
+            {"choices": [], "usage": {"prompt_tokens": 2605, "completion_tokens": output,
+                "total_tokens": 2605 + output, "completion_tokens_details": {"reasoning_tokens": reasoning}}},
+        ])
+        data = "".join("data: " + json.dumps(c) + "\n\n" for c in chunks) + "data: [DONE]\n\n"
+        return httpx.Response(200, text=data, headers={"content-type": "text/event-stream"})
+
+    client = object.__new__(LLMClient)
+    client.model, client.capabilities, client.call_count = "GLM-5.3-Flash", {}, 0
+    client._client = OpenAI(api_key="test-only", base_url="https://mock.invalid/v1", max_retries=0,
+                            http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    if legacy_request:
+        client._options = lambda temperature: {"temperature": temperature, "max_tokens": 16384}
+    try:
+        service = WriterService(db, llm=client)
+        run = service.journal.create_run(article_id="glm53-budget", agent_id="writer", operation="article-create")
+        service._execute(run["id"], article_id="glm53-budget", prompt="写一篇短文", tone=None,
+            length_preset="short", custom_length=None, humanize=False, base_revision_id=None,
+            base_content_hash=None, owner_user_id=None, creation={"disabledNodeIds": [
+                "research", "outline", "natural-style", "review", "reference-safety", "risk",
+            ]})
+        events = service.journal.events_after(run["id"], 0)
+        result = service.journal.get_run(run["id"])
+        assert len(received) == 1  # 不在截断后偷偷重试，也不发起生图请求。
+        assert "private reasoning" not in json.dumps(events)
+        deltas = "".join(e["payload"]["delta"] for e in events if e["type"] == "agent.message_delta")
+        metrics = next(e["payload"] for e in events if e["type"] == "agent.message_completed")
+        if legacy_request:
+            assert result["status"] == "failed"
+            assert "尚未返回正文" in result["error"]["message"]
+            assert metrics["usage"]["reasoningTokens"] == 16306
+            assert service.store.read("glm53-budget") is None
+            assert deltas == ""
+        else:
+            assert result["status"] == "completed"
+            assert service.store.read("glm53-budget")["markdown"] == body
+            assert deltas == body
+            assert metrics["finishReason"] == "tool_calls"
+    finally:
+        client._client.close()
 
 
 def test_agent_tiny_tool_fragments_are_batched_without_missing_body(db):
