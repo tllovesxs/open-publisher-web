@@ -10,7 +10,7 @@ import json
 import time
 from collections.abc import Generator
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -193,7 +193,9 @@ def stop_agent_run(
 @router.get("/{run_id}/events")
 def stream_agent_run_events(
     run_id: str,
+    request: Request,
     after: int | None = Query(default=None, ge=0),
+    cursor: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: AppUser = Depends(require_user),
 ):
@@ -210,7 +212,10 @@ def stream_agent_run_events(
         # 必须每轮轮询使用全新会话，否则新建 run 的事件永远不可见。
         from app.db.session import SessionLocal
 
-        after = 0
+        try:
+            after = max(cursor, int(request.headers.get("last-event-id", "0")))
+        except ValueError:
+            after = cursor
         deadline = time.monotonic() + _STREAM_MAX_SECONDS
         yield ": stream connected\n\n"
         while True:
@@ -219,7 +224,7 @@ def stream_agent_run_events(
                 events = journal.events_after(run_id, after)
                 for event in events:
                     after = event["sequence"]
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    yield f"id: {after}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
                 run = journal.get_run(run_id)
             if run and run["status"] in _TERMINAL and not events:
                 yield f"data: {json.dumps({'type': 'stream.end', 'status': run['status']})}\n\n"

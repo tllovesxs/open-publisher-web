@@ -29,6 +29,7 @@ from app.core.config import get_settings
 from app.schemas.writer_results import ReferenceSafetyResult, ReviewResult, RiskResult
 from app.services.article_store import ArticleConflictError, ArticleStore
 from app.services.run_journal import TERMINAL_STATUSES, RunJournal
+from app.services.writer_stream import markdown_prefix
 
 PROMPT_FILES = {
     "system": "writer-system.v1.md",
@@ -399,35 +400,60 @@ class WriterService:
     ) -> dict:
         """蓝本语义的 Agent 工具循环：研究 → write_article 提交即终止。"""
         timeout_seconds = int(getattr(self.llm, "timeout_seconds", 120) or 120)
-        deadline = time.monotonic() + max(180, timeout_seconds * 3)
+        deadline = time.monotonic() + max(180, timeout_seconds * 2)
         tools = self._tool_specs()
         messages: list[dict] = [{"role": "user", "content": user_prompt}]
+        submission_retries = 0
+        force_submission = False
 
         for _iteration in range(_AGENT_MAX_ITERATIONS):
             self._ensure_not_stopping(run_id)
             if time.monotonic() > deadline:
                 raise WriterDeadlineExceeded(
-                    f"模型输出超过 {max(180, timeout_seconds * 3)} 秒 deadline"
+                    f"正文生成超过 {max(180, timeout_seconds * 2)} 秒，请重试或缩短篇幅。"
                 )
 
             assistant_text = ""
             tool_calls: list[dict] = []
             delta_chars = 0
+            streamed_markdown = ""
+            finish_reason = None
+            options = {}
+            if force_submission and isinstance(self.llm, LLMClient):
+                options["tool_choice"] = {"type": "function", "function": {"name": "write_article"}}
             for event in self.llm.stream_chat(
                 system_prompt, messages, tools=tools, temperature=0.7,
+                **options,
             ):
                 self._ensure_not_stopping(run_id)
-                if event.get("type") == "text":
-                    delta = event.get("delta", "")
-                    if delta:
-                        delta_chars += len(delta)
-                        self._append_content_delta(run_id, delta, delta_chars)
+                if time.monotonic() > deadline:
+                    raise WriterDeadlineExceeded(
+                        f"正文生成超过 {max(180, timeout_seconds * 2)} 秒，请重试或缩短篇幅。"
+                    )
+                if event.get("type") == "tool_delta" and event.get("name") == "write_article":
+                    next_markdown = markdown_prefix(event.get("arguments", ""))
+                    if next_markdown.startswith(streamed_markdown):
+                        delta = next_markdown[len(streamed_markdown):]
+                        if delta:
+                            if not streamed_markdown:
+                                self.journal.append(run_id, "article.content_reset", {})
+                            streamed_markdown = next_markdown
+                            delta_chars = len(next_markdown)
+                            self._append_content_delta(run_id, delta, delta_chars)
                 elif event.get("type") == "message":
                     assistant_text = event.get("content") or ""
                     tool_calls = event.get("toolCalls") or []
+                    finish_reason = event.get("finishReason")
             self._ensure_not_stopping(run_id)
+            if finish_reason == "length":
+                self.journal.append(run_id, "article.content_reset", {})
+                raise RuntimeError("模型输出达到长度上限，文章提交被截断。请提高模型配置中的输出上限，或缩短篇幅后重试。")
 
             if not tool_calls:
+                submission_retries += 1
+                if submission_retries >= 2:
+                    raise RuntimeError("模型连续未提交文章，请检查模型是否支持工具调用后重试。")
+                force_submission = True
                 messages.append({"role": "assistant", "content": assistant_text})
                 messages.append({"role": "user", "content": _COMMIT_NUDGE})
                 continue
@@ -460,12 +486,30 @@ class WriterService:
 
                 committed: dict | None = None
                 if tool_name == "write_article":
-                    committed, tool_result, ok = self._commit_via_write_article(
-                        run_id, article_id, arguments,
-                        base_revision_id=base_revision_id,
-                        base_content_hash=base_content_hash,
-                        owner_user_id=owner_user_id,
-                    )
+                    if not arguments:
+                        committed, tool_result, ok = (
+                            None,
+                            "提交被拒绝：工具参数不是完整的 JSON 对象，请重新提交 title、markdown、reason。",
+                            False,
+                        )
+                    else:
+                        committed, tool_result, ok = self._commit_via_write_article(
+                            run_id, article_id, arguments,
+                            base_revision_id=base_revision_id,
+                            base_content_hash=base_content_hash,
+                            owner_user_id=owner_user_id,
+                        )
+                    if ok:
+                        markdown = str(arguments["markdown"]).strip()
+                        if not streamed_markdown:
+                            self.journal.append(run_id, "article.content_reset", {})
+                            self._append_content_delta(run_id, markdown, len(markdown))
+                    else:
+                        self.journal.append(run_id, "article.content_reset", {})
+                        submission_retries += 1
+                        force_submission = True
+                        if submission_retries >= 2:
+                            raise RuntimeError(f"模型连续提交无效文章。{tool_result}")
                 else:
                     ok = True
                     if not self._network_allowed():

@@ -135,6 +135,7 @@ export default function ArticlesPage() {
     consumeCompleted: consumeCompletedVisualApply,
   } = useVisualPlan();
   const userEditedRef = useRef(false);
+  const finalDraftRef = useRef<string | null>(null);
   // F-007 受控打字机：SSE 增量进队列，requestAnimationFrame 逐字渲染，
   // 手动编辑（userEditedRef）立即清空队列，AI 不会覆盖用户输入。
   const typewriterRef = useRef<{ queue: string; frame: number | null }>({ queue: "", frame: null });
@@ -170,13 +171,19 @@ export default function ArticlesPage() {
         cancelTypewriter();
         return;
       }
-      const chunk = s.queue.slice(0, 3);
-      s.queue = s.queue.slice(3);
+      const count = Math.max(1, Math.min(12, Math.ceil(s.queue.length / 120)));
+      const characters = Array.from(s.queue);
+      const chunk = characters.slice(0, count).join("");
+      s.queue = characters.slice(count).join("");
       if (chunk) setDraft((current) => current + chunk);
       if (s.queue.length > 0) {
         s.frame = window.requestAnimationFrame(drain);
       } else {
         s.frame = null;
+        if (finalDraftRef.current !== null && !userEditedRef.current) {
+          setDraft(finalDraftRef.current);
+          finalDraftRef.current = null;
+        }
       }
     };
     state.frame = window.requestAnimationFrame(drain);
@@ -196,6 +203,15 @@ export default function ArticlesPage() {
   const followedRunIdRef = useRef<string | null>(null);
   const lastRunEventSequenceRef = useRef(0);
   useEffect(() => {
+    cancelTypewriter();
+    finalDraftRef.current = null;
+    const hasRunContent = activeRun?.articleId === selected?.articleId
+      && runEvents.some((event) => event.type === "article.content_reset");
+    setDraft(hasRunContent ? "" : selected?.markdown ?? "");
+    userEditedRef.current = false;
+    followedRunIdRef.current = null;
+  }, [selected?.articleId]);
+  useEffect(() => {
     const currentRunId = activeRunForSelected?.runId ?? null;
     if (!currentRunId) {
       followedRunIdRef.current = null;
@@ -204,12 +220,15 @@ export default function ArticlesPage() {
     }
     if (followedRunIdRef.current !== currentRunId) {
       followedRunIdRef.current = currentRunId;
-      lastRunEventSequenceRef.current = events[events.length - 1]?.sequence ?? 0;
-      return;
+      lastRunEventSequenceRef.current = 0;
     }
     for (const event of events) {
       if ((event.sequence ?? 0) <= lastRunEventSequenceRef.current) continue;
       lastRunEventSequenceRef.current = event.sequence ?? lastRunEventSequenceRef.current;
+      if (event.type === "article.content_reset" && !userEditedRef.current) {
+        cancelTypewriter();
+        setDraft("");
+      }
       if (
         event.type === "agent.message_delta"
         && (event.payload as { stage?: string; delta?: string } | undefined)?.stage === "content"
@@ -218,12 +237,10 @@ export default function ArticlesPage() {
         if (delta && !userEditedRef.current) enqueueTypewriter(delta);
       }
       if (event.type === "run.failed") {
-        cancelTypewriter();
         flushTypewriter();
         setError(`创作失败：${String((event.payload as { message?: string } | undefined)?.message ?? "未知错误")}`);
       }
-      if (event.type === "run.completed" || event.type === "run.stopped") {
-        cancelTypewriter();
+      if (event.type === "run.stopped") {
         flushTypewriter();
       }
     }
@@ -298,11 +315,6 @@ export default function ArticlesPage() {
     setSearchParams({}, { replace: true });
   }, [activeRun, searchParams, setSearchParams]);
 
-  useEffect(() => {
-    setDraft(selected?.markdown ?? "");
-    userEditedRef.current = false;
-  }, [selected]);
-
   // 导航离开后重新回到文章页时，从全局 run 监听恢复文章和当前进度。
   useEffect(() => {
     if (!activeRun || activeRun.articleId !== followedRunArticleId) return;
@@ -313,7 +325,6 @@ export default function ArticlesPage() {
         if (cancelled) return;
         setSelected(article);
         setCreating(false);
-        if (!userEditedRef.current) setDraft(article.markdown);
       })
       .catch(() => {
         if (cancelled) return;
@@ -362,7 +373,10 @@ export default function ArticlesPage() {
         ]);
         refreshedArticle = article;
         setSelected(article);
-        if (!userEditedRef.current) setDraft(article.markdown);
+        if (!userEditedRef.current) {
+          if (typewriterRef.current.queue) finalDraftRef.current = article.markdown;
+          else setDraft(article.markdown);
+        }
       } catch {
         void loadArticles();
       }
@@ -417,7 +431,10 @@ export default function ArticlesPage() {
     };
   }, [completedVisualApply, consumeCompletedVisualApply, loadArticles, selected?.articleId]);
 
-  const filtered = articles.filter(
+  const runPlaceholder: ArticleState | null = activeRun && !articles.some((article) => article.articleId === activeRun.articleId)
+    ? { articleId: activeRun.articleId, title: activeRun.title, currentRevisionId: null, contentHash: null, markdown: "", updatedAt: null }
+    : null;
+  const filtered = (runPlaceholder ? [runPlaceholder, ...articles] : articles).filter(
     (a) =>
       !query.trim() ||
       a.title.toLowerCase().includes(query.trim().toLowerCase()),
@@ -573,10 +590,10 @@ export default function ArticlesPage() {
 
   // 统一的正文写入入口：工作台编辑、配图栏与素材库插入都走这里，确保打断运行逻辑一致。
   const handleMarkdownChange = (markdown: string) => {
-    if (running && !userEditedRef.current) {
-      userEditedRef.current = true;
-      void stopRun();
-    }
+    userEditedRef.current = true;
+    finalDraftRef.current = null;
+    cancelTypewriter();
+    if (running) void stopRun();
     setDraft(markdown);
   };
   // 通用竖向分隔条拖拽：按住后水平拖动调整面板宽度，宽度持久化到 localStorage。
@@ -654,7 +671,7 @@ export default function ArticlesPage() {
               }}
               type="button"
             >
-              <span className="article-status article-status--draft">文章</span>
+              <span className="article-status article-status--draft">{article.articleId === activeRun?.articleId ? runStatus === "running" ? <><LoaderCircle className="spin" size={11} /> 生成中</> : runStatus === "failed" ? "生成失败" : runStatus === "stopped" ? "已停止" : "文章" : "文章"}</span>
               <strong>{article.title}</strong>
               <span className="article-list-item__meta">
                 <span>

@@ -59,9 +59,9 @@ export interface StreamHandlers {
   onEnd?: (status: "end" | "timeout" | "error") => void;
 }
 
-function eventSourceUrl(runId: string) {
+function eventSourceUrl(runId: string, after: number) {
   const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
-  return `${base.replace(/\/$/, "")}/agent-runs/${encodeURIComponent(runId)}/events`;
+  return `${base.replace(/\/$/, "")}/agent-runs/${encodeURIComponent(runId)}/events?cursor=${after}`;
 }
 
 export const bridge = {
@@ -86,24 +86,40 @@ export const bridge = {
   },
 
   openRunStream(runId: string, handlers: StreamHandlers = {}) {
-    const source = new EventSource(eventSourceUrl(runId), { withCredentials: true });
-    source.onmessage = (message) => {
-      try {
-        const event = JSON.parse(message.data) as ArticleRunEvent;
-        if (event.type === "stream.end" || event.type === "stream.timeout") {
-          source.close();
-          handlers.onEnd?.(event.type === "stream.end" ? "end" : "timeout");
-          return;
+    let source: EventSource;
+    let closed = false;
+    let sequence = 0;
+    let reconnectTimer: number | undefined;
+    const connect = () => {
+      if (closed) return;
+      source = new EventSource(eventSourceUrl(runId, sequence), { withCredentials: true });
+      source.onmessage = (message) => {
+        try {
+          const event = JSON.parse(message.data) as ArticleRunEvent;
+          if (event.type === "stream.timeout") {
+            source.close();
+            reconnectTimer = window.setTimeout(connect, 500);
+            return;
+          }
+          if (event.type === "stream.end") {
+            source.close();
+            handlers.onEnd?.("end");
+            return;
+          }
+          if (typeof event.sequence === "number") {
+            if (event.sequence <= sequence) return;
+            sequence = event.sequence;
+          }
+          handlers.onEvent?.(event);
+        } catch {
+          // 心跳与不可解析数据交给连接层处理。
         }
-        handlers.onEvent?.(event);
-      } catch {
-        // 心跳与不可解析数据交给连接层处理。
-      }
+      };
+      source.onerror = () => {
+        // EventSource reconnects automatically; the server resumes from Last-Event-ID.
+      };
     };
-    source.onerror = () => {
-      source.close();
-      handlers.onEnd?.("error");
-    };
-    return source;
+    connect();
+    return { close() { closed = true; window.clearTimeout(reconnectTimer); source?.close(); } };
   },
 };

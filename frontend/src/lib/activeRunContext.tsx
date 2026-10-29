@@ -67,7 +67,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const [runStatus, setRunStatus] = useState<ActiveRunStatus | null>("running");
   const [runEvents, setRunEvents] = useState<ArticleRunEvent[]>([]);
   const [completedNodeIds, setCompletedNodeIds] = useState<Set<string>>(new Set());
-  const sourceRef = useRef<EventSource | null>(null);
+  const sourceRef = useRef<{ close: () => void } | null>(null);
   const terminalRef = useRef<ActiveRunStatus | null>(null);
 
   const closeStream = useCallback(() => {
@@ -100,13 +100,14 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
         if (event.type === "run.completed") terminalRef.current = "succeeded";
         if (event.type === "run.failed") terminalRef.current = "failed";
         if (event.type === "run.stopped") terminalRef.current = "stopped";
+        if (terminalRef.current) setRunStatus(terminalRef.current);
       },
       onEnd: (reason) => {
         closeStream();
         setRunStatus((current) => {
           if (reason === "error") return "failed";
           if (current === "succeeded" || current === "failed" || current === "stopped") return current;
-          return terminalRef.current ?? "succeeded";
+          return terminalRef.current ?? "failed";
         });
       },
     });

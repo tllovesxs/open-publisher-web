@@ -139,6 +139,7 @@ class LLMClient:
         *,
         tools: list[dict] | None = None,
         temperature: float = 0.7,
+        tool_choice: dict | str | None = None,
     ) -> Iterator[dict]:
         """Agent 工具循环专用：流式对话，支持 function calling。
 
@@ -157,13 +158,17 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
+            if tool_choice is not None:
+                kwargs["tool_choice"] = tool_choice
         try:
             stream = self._client.chat.completions.create(**kwargs)
             content_parts: list[str] = []
             tool_calls: dict[int, dict] = {}
+            finish_reason = None
             for chunk in stream:
                 if not chunk.choices:
                     continue
+                finish_reason = chunk.choices[0].finish_reason or finish_reason
                 delta = chunk.choices[0].delta
                 content = getattr(delta, "content", None)
                 if content:
@@ -180,12 +185,14 @@ class LLMClient:
                         slot["name"] = fragment.function.name
                     if fragment.function and fragment.function.arguments:
                         slot["arguments"] += fragment.function.arguments
+                    yield {"type": "tool_delta", "index": fragment.index, **slot}
             self.call_count += 1
             ordered = [tool_calls[i] for i in sorted(tool_calls)]
             yield {
                 "type": "message",
                 "content": "".join(content_parts),
                 "toolCalls": ordered,
+                "finishReason": finish_reason,
             }
         except Exception as exc:  # noqa: BLE001 - 统一转为 LLMError
             raise LLMError(f"LLM 调用失败：{exc}") from exc
