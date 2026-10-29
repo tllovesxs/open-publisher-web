@@ -492,3 +492,76 @@ def test_glm_options_preserve_native_thinking_and_use_blueprint_budget():
     client.capabilities = {"maxTokens": 24000, "reasoning": True, "thinkingLevel": "auto"}
     assert client._options(0.7)["extra_body"]["thinking"]["type"] == "enabled"
     assert client._options(0.7)["max_tokens"] == 24000
+
+
+def test_agent_tiny_tool_fragments_are_batched_without_missing_body(db):
+    body = "# 正文\n\n" + "中文😀内容。" * 300
+    arguments = json.dumps({"title": "正文", "markdown": body, "reason": "依据资料"}, ensure_ascii=False)
+    llm = FakeAgentLLM([{
+        "streamEvents": [{"type": "tool_delta", "name": "write_article", "arguments": arguments[:i]}
+                         for i in range(1, len(arguments) + 1)],
+        "toolCalls": [{"id": "write", "name": "write_article", "arguments": arguments}],
+    }])
+    service = WriterService(db, llm=llm)
+    run = service.start_article_create(article_id="batch-tool", prompt="x")
+    assert _wait_terminal(service.journal, run["id"])["status"] == "completed"
+    deltas = [e["payload"] for e in service.journal.events_after(run["id"], 0)
+              if e["type"] == "agent.message_delta"]
+    assert "".join(e["delta"] for e in deltas) == body
+    assert len(deltas) < len(body) // 10
+    assert deltas[-1]["totalChars"] == len(body)
+
+
+def test_thinking_past_old_240_second_limit_can_still_commit(db, monkeypatch):
+    from types import SimpleNamespace
+    from app.services import writer_service
+    clock = [0.0]
+    monkeypatch.setattr(writer_service, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    arguments = json.dumps({"title": "正文", "markdown": "# 正文\n\n完整内容。", "reason": "r"})
+
+    class SlowThinkingLLM(FakeAgentLLM):
+        def stream_chat(self, *args, **kwargs):
+            clock[0] = 250
+            yield {"type": "progress", "phase": "reasoning", "elapsedMs": 250000, "reasoningChars": 100}
+            yield from super().stream_chat(*args, **kwargs)
+
+    service = WriterService(db, llm=SlowThinkingLLM([{
+        "toolCalls": [{"id": "write", "name": "write_article", "arguments": arguments}],
+    }]))
+    run = service.journal.create_run(article_id="long-thinking", agent_id="writer", operation="article-create")
+    service._execute(run["id"], article_id="long-thinking", prompt="x", tone=None,
+                     length_preset="short", custom_length=None, humanize=False,
+                     base_revision_id=None, base_content_hash=None, owner_user_id=None, creation={})
+    assert service.journal.get_run(run["id"])["status"] == "completed"
+    assert service.store.read("long-thinking")["markdown"] == "# 正文\n\n完整内容。"
+    assert any(e["type"] == "agent.progress" for e in service.journal.events_after(run["id"], 0))
+
+
+def test_total_deadline_keeps_unflushed_partial_body_without_revision(db, monkeypatch):
+    from types import SimpleNamespace
+    from app.services import writer_service
+    clock = [0.0]
+    monkeypatch.setattr(writer_service, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    body = "# 未完成\n\n小于批次阈值的尾段"
+    arguments = json.dumps({"markdown": body}, ensure_ascii=False)[:-2]
+
+    class DeadlineLLM:
+        timeout_seconds = 120
+
+        def stream_chat(self, *args, **kwargs):
+            yield {"type": "tool_delta", "name": "write_article", "arguments": arguments}
+            clock[0] = writer_service.get_settings().writer_generation_timeout_seconds + 1
+            yield {"type": "progress", "phase": "responding"}
+
+    service = WriterService(db, llm=DeadlineLLM())
+    run = service.journal.create_run(article_id="deadline-tail", agent_id="writer", operation="article-create")
+    service._execute(run["id"], article_id="deadline-tail", prompt="x", tone=None,
+                     length_preset="short", custom_length=None, humanize=False,
+                     base_revision_id=None, base_content_hash=None, owner_user_id=None, creation={})
+    result = service.journal.get_run(run["id"])
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "WRITER_DEADLINE"
+    events = service.journal.events_after(run["id"], 0)
+    assert "".join(e["payload"]["delta"] for e in events if e["type"] == "agent.message_delta") == body
+    assert any(e["type"] == "article.checkpointed" and e["payload"].get("recoverableDraft") for e in events)
+    assert service.store.read("deadline-tail") is None

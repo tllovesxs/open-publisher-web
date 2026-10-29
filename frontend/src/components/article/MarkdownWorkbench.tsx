@@ -53,6 +53,7 @@ interface MarkdownWorkbenchProps {
   onEditorModeChange: (mode: EditorMode) => void;
   onImageFileDrop?: (file: File) => Promise<ImageInsertion>;
   streaming?: boolean;
+  streamingLabel?: string;
   previewPlatform?: PreviewPlatform;
   onPreviewPlatformChange?: (platform: PreviewPlatform) => void;
   onRequestSelectionRewrite?: (selection: MarkdownSelection) => void;
@@ -176,6 +177,7 @@ export function MarkdownWorkbench({
   onEditorModeChange,
   onImageFileDrop,
   streaming = false,
+  streamingLabel = "正在撰写正文",
   previewPlatform = "general",
   onPreviewPlatformChange,
   onRequestSelectionRewrite,
@@ -654,7 +656,7 @@ export function MarkdownWorkbench({
         <span>{lines} 行</span>
         <span>{characters} 字</span>
         {isDroppingImage && <span className="editor-status__progress" role="status">正在导入图片</span>}
-        {streaming && <span className="editor-status__progress" role="status">正在撰写正文</span>}
+        {streaming && <span className="editor-status__progress" role="status">{streamingLabel}</span>}
         {imageDropError && <span className="editor-status__error" role="alert">{imageDropError}</span>}
       </footer>
     </section>

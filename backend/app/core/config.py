@@ -37,6 +37,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"),
     )
     llm_timeout_seconds: int = 120
+    # HTTP 读取超时衡量流是否停滞，不能直接充当含思考的长文总时限。
+    writer_generation_timeout_seconds: int = Field(default=900, ge=60, le=7200)
 
     # 生图链路：独立于文本 LLM；未显式配置时沿用 LLM 非敏感默认值
     image_base_url: str = Field(

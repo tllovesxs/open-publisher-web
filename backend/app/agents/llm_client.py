@@ -6,6 +6,7 @@ API Key 只来自后端数据库 app_secrets 解密结果，不落仓库。
 
 import json
 import re
+import time
 from collections.abc import Iterator
 
 from openai import BadRequestError, OpenAI
@@ -195,6 +196,11 @@ class LLMClient:
             kwargs["tools"] = tools
             if tool_choice is not None:
                 kwargs["tool_choice"] = tool_choice
+        started = time.monotonic()
+        last_progress = started - 2
+        first_response_ms = None
+        first_tool_ms = None
+        stream = None
         try:
             stream = self._create_completion(**kwargs)
             content_parts: list[str] = []
@@ -212,12 +218,23 @@ class LLMClient:
                     continue
                 finish_reason = chunk.choices[0].finish_reason or finish_reason
                 delta = chunk.choices[0].delta
-                reasoning_chars += len(getattr(delta, "reasoning_content", None) or "")
+                now = time.monotonic()
+                if first_response_ms is None:
+                    first_response_ms = round((now - started) * 1000)
+                reasoning = getattr(delta, "reasoning_content", None) or ""
+                reasoning_chars += len(reasoning)
+                if now - last_progress >= 2:
+                    last_progress = now
+                    yield {"type": "progress", "phase": "reasoning" if reasoning else "responding",
+                           "elapsedMs": round((now - started) * 1000),
+                           "reasoningChars": reasoning_chars}
                 content = getattr(delta, "content", None)
                 if content:
                     content_parts.append(content)
                     yield {"type": "text", "delta": content}
                 for fragment in getattr(delta, "tool_calls", None) or []:
+                    if first_tool_ms is None:
+                        first_tool_ms = round((now - started) * 1000)
                     slot = tool_calls.setdefault(
                         fragment.index,
                         {"id": "", "name": "", "arguments": ""},
@@ -238,9 +255,15 @@ class LLMClient:
                 "finishReason": finish_reason,
                 "usage": usage,
                 "reasoningChars": reasoning_chars,
+                "elapsedMs": round((time.monotonic() - started) * 1000),
+                "firstResponseMs": first_response_ms,
+                "firstToolMs": first_tool_ms,
             }
         except Exception as exc:  # noqa: BLE001 - 统一转为 LLMError
             raise LLMError(f"LLM 调用失败：{exc}") from exc
+        finally:
+            if stream is not None:
+                stream.close()
 
     def complete_json(
         self, system: str, user: str, *, temperature: float = 0.7,

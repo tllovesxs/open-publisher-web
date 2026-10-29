@@ -49,7 +49,7 @@ const JOURNAL_LABELS: Record<string, string> = {
   "run.failed": "任务失败",
   "run.stopped": "任务已停止",
   "agent.message_delta": "正在撰写正文……",
-  "article.checkpointed": "正文初稿已生成（不可变版本）",
+  "article.checkpointed": "已保留正文草稿",
   "revision.committed": "文章已保存新版本",
 
   "rewrite.candidate_ready": "改写候选已生成",
@@ -138,12 +138,13 @@ export default function ArticlesPage() {
   const finalDraftRef = useRef<string | null>(null);
   // F-007 受控打字机：SSE 增量进队列，requestAnimationFrame 逐字渲染，
   // 手动编辑（userEditedRef）立即清空队列，AI 不会覆盖用户输入。
-  const typewriterRef = useRef<{ queue: string; frame: number | null }>({ queue: "", frame: null });
+  const typewriterRef = useRef<{ queue: string; frame: number | null; lastPaint: number | null }>({ queue: "", frame: null, lastPaint: null });
   const cancelTypewriter = () => {
     const state = typewriterRef.current;
     if (state.frame !== null) window.cancelAnimationFrame(state.frame);
     state.queue = "";
     state.frame = null;
+    state.lastPaint = null;
   };
   const flushTypewriter = () => {
     const state = typewriterRef.current;
@@ -165,14 +166,22 @@ export default function ArticlesPage() {
     const state = typewriterRef.current;
     state.queue += delta;
     if (state.frame !== null) return;
-    const drain = () => {
+    const drain = (timestamp: number) => {
       const s = typewriterRef.current;
       if (userEditedRef.current) {
         cancelTypewriter();
         return;
       }
-      const count = Math.max(1, Math.min(12, Math.ceil(s.queue.length / 120)));
+      // 小批平滑显示；积压按时间追赶，避免接收快却逐字播放数十秒。
+      const elapsed = s.lastPaint === null ? 40 : timestamp - s.lastPaint;
+      if (elapsed < 40) {
+        s.frame = window.requestAnimationFrame(drain);
+        return;
+      }
+      s.lastPaint = timestamp;
       const characters = Array.from(s.queue);
+      const rate = Math.max(300, characters.length / 0.16);
+      const count = Math.max(1, Math.ceil(rate * Math.min(elapsed, 100) / 1000));
       const chunk = characters.slice(0, count).join("");
       s.queue = characters.slice(count).join("");
       if (chunk) setDraft((current) => current + chunk);
@@ -180,6 +189,7 @@ export default function ArticlesPage() {
         s.frame = window.requestAnimationFrame(drain);
       } else {
         s.frame = null;
+        s.lastPaint = null;
         if (finalDraftRef.current !== null && !userEditedRef.current) {
           setDraft(finalDraftRef.current);
           finalDraftRef.current = null;
@@ -199,6 +209,25 @@ export default function ArticlesPage() {
   const events: RunEventItem[] = activeRunForSelected ? runEvents : [];
   const completedNodes = activeRunForSelected ? completedNodeIds : new Set<string>();
   const running = Boolean(activeRunForSelected && runStatus === "running");
+  let streamingLabel = "正在准备创作";
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
+    if (event.type === "agent.message_delta") {
+      streamingLabel = "正在撰写正文";
+      break;
+    }
+    if (event.type === "agent.progress") {
+      const seconds = Math.round(Number(event.payload?.elapsedMs ?? 0) / 1000);
+      streamingLabel = event.payload?.phase === "reasoning"
+        ? `模型正在思考 · 已等待 ${seconds} 秒`
+        : "模型正在输出";
+      break;
+    }
+    if (event.type === "node.started") {
+      streamingLabel = `正在执行${articleNodeLabel(String(event.payload?.nodeId ?? ""))}`;
+      break;
+    }
+  }
 
   const followedRunIdRef = useRef<string | null>(null);
   const lastRunEventSequenceRef = useRef(0);
@@ -1005,6 +1034,7 @@ export default function ArticlesPage() {
                     dirty={dirty}
                     saved={Boolean(selected.currentRevisionId)}
                     streaming={running}
+                    streamingLabel={streamingLabel}
                     editorMode={viewMode}
                     markdown={draft}
                     onEditorModeChange={setViewMode}

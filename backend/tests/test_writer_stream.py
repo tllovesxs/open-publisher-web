@@ -51,3 +51,23 @@ def test_openai_sdk_tool_stream_records_usage_without_exposing_reasoning():
     assert events[-1]["reasoningChars"] == len("private reasoning")
     assert "private reasoning" not in str(events)
     assert any(event["type"] == "tool_delta" for event in events)
+    assert any(event["type"] == "progress" and event["phase"] == "reasoning" for event in events)
+    assert events[-1]["firstResponseMs"] is not None
+    assert events[-1]["firstToolMs"] is not None
+
+
+def test_markdown_buffer_flushes_short_tail_and_limits_time_between_updates():
+    from app.services.writer_stream import MarkdownDeltaBuffer
+    clock = [0.0]
+    received = []
+    buffer = MarkdownDeltaBuffer(lambda delta, total: received.append((delta, total)), clock=lambda: clock[0])
+    buffer.update('{"markdown":"短')
+    assert received == []
+    clock[0] = 0.21
+    buffer.update('{"markdown":"短文')
+    assert received == [("短文", 2)]
+    buffer.update('{"markdown":"短文尾段')
+    assert len(received) == 1
+    buffer.flush()
+    buffer.flush()
+    assert received == [("短文", 2), ("尾段", 4)]

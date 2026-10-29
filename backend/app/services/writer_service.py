@@ -29,7 +29,7 @@ from app.core.config import get_settings
 from app.schemas.writer_results import ReferenceSafetyResult, ReviewResult, RiskResult
 from app.services.article_store import ArticleConflictError, ArticleStore
 from app.services.run_journal import TERMINAL_STATUSES, RunJournal
-from app.services.writer_stream import markdown_prefix
+from app.services.writer_stream import MarkdownDeltaBuffer
 
 PROMPT_FILES = {
     "system": "writer-system.v1.md",
@@ -399,8 +399,8 @@ class WriterService:
         owner_user_id: str | None,
     ) -> dict:
         """蓝本语义的 Agent 工具循环：研究 → write_article 提交即终止。"""
-        timeout_seconds = int(getattr(self.llm, "timeout_seconds", 120) or 120)
-        deadline = time.monotonic() + max(180, timeout_seconds * 2)
+        timeout_seconds = get_settings().writer_generation_timeout_seconds
+        deadline = time.monotonic() + timeout_seconds
         tools = self._tool_specs()
         messages: list[dict] = [{"role": "user", "content": user_prompt}]
         submission_retries = 0
@@ -410,49 +410,72 @@ class WriterService:
             self._ensure_not_stopping(run_id)
             if time.monotonic() > deadline:
                 raise WriterDeadlineExceeded(
-                    f"正文生成超过 {max(180, timeout_seconds * 2)} 秒，请重试或缩短篇幅。"
+                    f"正文生成达到 {timeout_seconds} 秒总时限，已有正文已保留。"
                 )
 
             assistant_text = ""
             tool_calls: list[dict] = []
-            delta_chars = 0
             streamed_markdown = ""
             finish_reason = None
+            def emit_delta(delta, total_chars):
+                if total_chars == len(delta):
+                    self.journal.append(run_id, "article.content_reset", {})
+                self._append_content_delta(run_id, delta, total_chars)
+
+            buffer = MarkdownDeltaBuffer(emit_delta)
+            last_stop_check = 0
+            stream_finished = False
             options = {}
             if force_submission and isinstance(self.llm, LLMClient):
                 options["tool_choice"] = {"type": "function", "function": {"name": "write_article"}}
-            for event in self.llm.stream_chat(
-                system_prompt, messages, tools=tools, temperature=0.7,
-                **options,
-            ):
-                self._ensure_not_stopping(run_id)
-                if time.monotonic() > deadline:
-                    raise WriterDeadlineExceeded(
-                        f"正文生成超过 {max(180, timeout_seconds * 2)} 秒，请重试或缩短篇幅。"
-                    )
-                if event.get("type") == "tool_delta" and event.get("name") == "write_article":
-                    next_markdown = markdown_prefix(event.get("arguments", ""))
-                    if next_markdown.startswith(streamed_markdown):
-                        delta = next_markdown[len(streamed_markdown):]
-                        if delta:
-                            if not streamed_markdown:
-                                self.journal.append(run_id, "article.content_reset", {})
-                            streamed_markdown = next_markdown
-                            delta_chars = len(next_markdown)
-                            self._append_content_delta(run_id, delta, delta_chars)
-                elif event.get("type") == "message":
-                    assistant_text = event.get("content") or ""
-                    tool_calls = event.get("toolCalls") or []
-                    finish_reason = event.get("finishReason")
-                    self.journal.append(run_id, "agent.message_completed", {
-                        "model": getattr(self.llm, "model", ""),
-                        "finishReason": finish_reason,
-                        "maxTokens": getattr(self.llm, "capabilities", {}).get("maxTokens", 16384),
-                        "usage": event.get("usage") or {},
-                        "reasoningChars": event.get("reasoningChars", 0),
-                        "textChars": len(assistant_text),
-                        "toolArgumentChars": sum(len(c.get("arguments") or "") for c in tool_calls),
-                        "previewChars": len(streamed_markdown),
+            try:
+                for event in self.llm.stream_chat(
+                    system_prompt, messages, tools=tools, temperature=0.7,
+                    **options,
+                ):
+                    now = time.monotonic()
+                    if now - last_stop_check >= 0.2:
+                        self._ensure_not_stopping(run_id)
+                        last_stop_check = now
+                    if now > deadline:
+                        raise WriterDeadlineExceeded(
+                            f"正文生成达到 {timeout_seconds} 秒总时限，已有正文已保留。"
+                        )
+                    if event.get("type") == "tool_delta" and event.get("name") == "write_article":
+                        buffer.update(event.get("arguments", ""))
+                    elif event.get("type") == "progress":
+                        self.journal.append(run_id, "agent.progress", {
+                            "stage": "draft", "phase": event.get("phase"),
+                            "elapsedMs": event.get("elapsedMs"),
+                            "reasoningChars": event.get("reasoningChars", 0),
+                        })
+                    elif event.get("type") == "message":
+                        buffer.flush()
+                        assistant_text = event.get("content") or ""
+                        tool_calls = event.get("toolCalls") or []
+                        finish_reason = event.get("finishReason")
+                        self.journal.append(run_id, "agent.message_completed", {
+                            "model": getattr(self.llm, "model", ""),
+                            "finishReason": finish_reason,
+                            "maxTokens": getattr(self.llm, "capabilities", {}).get("maxTokens", 16384),
+                            "usage": event.get("usage") or {},
+                            "reasoningChars": event.get("reasoningChars", 0),
+                            "elapsedMs": event.get("elapsedMs"),
+                            "firstResponseMs": event.get("firstResponseMs"),
+                            "firstToolMs": event.get("firstToolMs"),
+                            "textChars": len(assistant_text),
+                            "toolArgumentChars": sum(len(c.get("arguments") or "") for c in tool_calls),
+                            "previewChars": len(buffer.markdown),
+                        })
+                stream_finished = True
+            finally:
+                # 超时、停止、断流都不能丢掉尚未达到批次阈值的正文。
+                buffer.flush()
+                streamed_markdown = buffer.markdown
+                if not stream_finished and streamed_markdown:
+                    self.journal.append(run_id, "article.checkpointed", {
+                        "articleId": article_id, "chars": len(streamed_markdown),
+                        "recoverableDraft": True, "complete": False,
                     })
             self._ensure_not_stopping(run_id)
             if finish_reason == "length":
@@ -693,8 +716,8 @@ class WriterService:
         """调用模型并按批次写入正文增量事件；支持停止和 model deadline。"""
         self._ensure_not_stopping(run_id)
         system_prompt = _load_prompt("system")
-        timeout_seconds = int(getattr(self.llm, "timeout_seconds", 120) or 120)
-        deadline = time.monotonic() + max(5, timeout_seconds)
+        timeout_seconds = get_settings().writer_generation_timeout_seconds
+        deadline = time.monotonic() + timeout_seconds
         checkpointed_chars = 0
 
         stream_complete = getattr(self.llm, "stream_complete", None)
