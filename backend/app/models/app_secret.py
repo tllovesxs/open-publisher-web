@@ -4,6 +4,7 @@
 - ``llm:global``        全局文本 LLM 密钥全局文本模型密钥
 - ``image:global``      全局生图密钥全局生图密钥
 - ``profile:<id>``      模型档案级密钥（ModelProfile.id）
+- ``model-config:<kind>:<id>`` 生图、嵌入和排序的独立配置密钥
 - ``integration:<kind>`` 集成密钥（tavily / github 等）
 
 表里只有 Fernet 密文与掩码尾号，明文永不落库、不下发前端。

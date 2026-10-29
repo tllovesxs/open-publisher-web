@@ -86,7 +86,8 @@ def test_rag_test_only_calls_selected_service(client, monkeypatch, target):
     import openai
     import urllib.request
 
-    monkeypatch.setattr(settings, "_rag_out", lambda db: {"embeddingKeyConfigured": True, "embeddingBaseUrl": "https://example.test/v1", "embeddingModel": "embed", "rerankBaseUrl": "https://example.test", "rerankTimeoutSeconds": 3})
+    from app.services import model_config_catalog
+    monkeypatch.setattr(model_config_catalog, "resolve_rag_config", lambda db, kind, profile_id=None: {"api_key": "test-only", "base_url": "https://example.test/v1", "model": kind, "timeout_seconds": 3})
     monkeypatch.setattr(settings, "resolve_llm_config", lambda: {"api_key": "test-only", "base_url": "https://example.test"})
     calls = []
     def embed(**kwargs):

@@ -43,6 +43,7 @@ class ProfileCreate(BaseModel):
     modelId: str = Field(min_length=1, max_length=200)
     timeoutSeconds: int = Field(default=120, ge=1, le=1800)
     isDefault: bool = False
+    apiKey: str | None = Field(default=None, min_length=4, max_length=4096, repr=False)
 
 
 class ProfileUpdate(BaseModel):
@@ -53,6 +54,7 @@ class ProfileUpdate(BaseModel):
     modelId: str | None = Field(default=None, min_length=1, max_length=200)
     timeoutSeconds: int | None = Field(default=None, ge=1, le=1800)
     isDefault: bool | None = None
+    apiKey: str | None = Field(default=None, min_length=4, max_length=4096, repr=False)
 
 
 class KeyPayload(BaseModel):
@@ -66,6 +68,17 @@ def _owned_profile(db: Session, profile_id: str, user: AppUser) -> ModelProfile 
     del user
     profile = db.get(ModelProfile, profile_id)
     return profile
+
+
+def _save_profile_credential(db: Session, profile_id: str, value: str | None, actor: str) -> None:
+    if value is None:
+        return
+    if len(value.strip()) < 4:
+        raise HTTPException(status_code=400, detail="密钥长度至少 4 位")
+    try:
+        secret_store.set_secret(db, secret_store.profile_secret_id(profile_id), value.strip(), actor=actor, commit=False)
+    except secret_box.SecretBoxError:
+        raise HTTPException(status_code=503, detail="密钥加密服务不可用，请检查主密钥配置") from None
 
 
 def _profile_key_fields(db: Session, profile: ModelProfile) -> dict:
@@ -183,6 +196,7 @@ def create_profile(
             {ModelProfile.is_default: False},
         )
     db.add(profile)
+    _save_profile_credential(db, profile.id, body.apiKey, user.id)
     db.commit()
     db.refresh(profile)
     return _profile_out(profile, db)
@@ -215,6 +229,7 @@ def update_profile(
     for key, column in mapping.items():
         if key in data and data[key] is not None:
             setattr(profile, column, data[key])
+    _save_profile_credential(db, profile.id, body.apiKey, user.id)
     db.commit()
     db.refresh(profile)
     return _profile_out(profile, db)
@@ -247,6 +262,7 @@ def delete_profile(
     if profile is None:
         raise HTTPException(status_code=404, detail="模型档案不存在")
     was_default = profile.is_default
+    secret_store.delete_secret(db, secret_store.profile_secret_id(profile.id), actor=user.id, commit=False)
     db.delete(profile)
     db.commit()
     if was_default:
@@ -356,9 +372,16 @@ def _resolved_llm():
 
 
 @router.post("/model/test", dependencies=[Depends(require_admin)])
-def model_test(db: Session = Depends(get_db)):
-    """发一条最小请求验证连通性（蓝本 model-test-service 语义，走激活 profile）。"""
-    llm = _resolved_llm()
+def model_test(db: Session = Depends(get_db), profileId: str | None = None):
+    """测试指定档案；未指定时保留测试默认档案的兼容行为。"""
+    if profileId:
+        from app.agents.llm_client import LLMClient
+        from app.services.model_profile_service import resolve_llm_profile_config
+        if db.get(ModelProfile, profileId) is None:
+            raise HTTPException(status_code=404, detail="模型档案不存在")
+        llm = LLMClient(config=resolve_llm_profile_config(db, profile_id=profileId))
+    else:
+        llm = _resolved_llm()
     if not llm._api_key or llm._api_key == "sk-not-configured":
         raise HTTPException(
             status_code=501,
@@ -370,7 +393,7 @@ def model_test(db: Session = Depends(get_db)):
             "你是连通性探测器。", "回复两个字：正常", temperature=0,
         ).strip()
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"模型调用失败：{exc}") from None
+        raise HTTPException(status_code=502, detail="模型调用失败，请检查服务地址、模型和访问密钥") from None
     return {
         "ok": True,
         "latencyMs": int((time.monotonic() - started) * 1000),
@@ -381,11 +404,17 @@ def model_test(db: Session = Depends(get_db)):
 
 
 @router.get("/models", dependencies=[Depends(require_admin)])
-def discover_models(db: Session = Depends(get_db)):
-    """拉取 /models 列表（蓝本 model-discovery 语义，走激活 profile）。"""
+def discover_models(db: Session = Depends(get_db), profileId: str | None = None):
+    """使用指定档案的服务地址和密钥获取模型列表。"""
     from openai import OpenAI
 
-    resolved = resolve_llm_config()
+    if profileId:
+        from app.services.model_profile_service import resolve_llm_profile_config
+        if db.get(ModelProfile, profileId) is None:
+            raise HTTPException(status_code=404, detail="模型档案不存在")
+        resolved = resolve_llm_profile_config(db, profile_id=profileId)
+    else:
+        resolved = resolve_llm_config()
     if not resolved["api_key"]:
         raise HTTPException(status_code=501, detail="未配置密钥：请在管理端录入数据库加密密钥")
     client = OpenAI(
@@ -396,7 +425,7 @@ def discover_models(db: Session = Depends(get_db)):
     try:
         models = [m.id for m in client.models.list()]
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"模型列表拉取失败：{exc}") from None
+        raise HTTPException(status_code=502, detail="模型列表拉取失败，请检查服务地址和访问密钥") from None
     return {"models": sorted(models)}
 
 
@@ -443,7 +472,7 @@ def update_image_config(
     from app.services.model_config_catalog import catalog_key, read_catalog
     from app.services.workspace_settings import write_preferences
     catalog = read_catalog(db, "image")
-    profile = {"id": row.id, "name": next((p["name"] for p in catalog["profiles"] if p["id"] == row.id), row.model_id), "baseUrl": row.base_url, "modelId": row.model_id, "timeoutSeconds": row.timeout_seconds}
+    profile = {**next((p for p in catalog["profiles"] if p["id"] == row.id), {"keyMode": "legacy"}), "id": row.id, "name": next((p["name"] for p in catalog["profiles"] if p["id"] == row.id), row.model_id), "baseUrl": row.base_url, "modelId": row.model_id, "timeoutSeconds": row.timeout_seconds}
     profiles = [profile if p["id"] == row.id else p for p in catalog["profiles"]]
     if not any(p["id"] == row.id for p in profiles):
         profiles.append(profile)
@@ -470,13 +499,19 @@ def reset_image_config(db: Session = Depends(get_db)):
 
 
 @router.post("/image/test", dependencies=[Depends(require_admin)])
-def test_image_config():
+def test_image_config(db: Session = Depends(get_db), profileId: str | None = None):
     """生一张最小测试图验证生图链路连通性。"""
     from openai import OpenAI
 
     from app.services.model_profile_service import resolve_image_config
 
-    resolved = resolve_image_config()
+    if profileId:
+        from app.services.model_config_catalog import read_catalog
+        if not any(p["id"] == profileId for p in read_catalog(db, "image")["profiles"]):
+            raise HTTPException(status_code=404, detail="模型配置不存在")
+        resolved = resolve_image_config(db, profile_id=profileId)
+    else:
+        resolved = resolve_image_config()
     if not resolved["api_key"]:
         raise HTTPException(
             status_code=501,
@@ -504,7 +539,7 @@ def test_image_config():
         if result is None:
             raise last_exc if last_exc else RuntimeError("image test failed")
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"生图调用失败：{exc}") from None
+        raise HTTPException(status_code=502, detail="生图调用失败，请检查服务地址、模型和访问密钥") from None
     item = result.data[0] if result.data else None
     if not item or not (item.b64_json or item.url):
         raise HTTPException(status_code=502, detail="生图调用没有返回内容")
@@ -640,6 +675,7 @@ class RagConfigUpdate(BaseModel):
 
 
 def _rag_out(db: Session) -> dict:
+    from app.services.model_config_catalog import resolve_rag_config
     from app.core.config import get_settings
     from app.services.workspace_settings import read_preferences
 
@@ -651,7 +687,7 @@ def _rag_out(db: Session) -> dict:
         "rerankBaseUrl": saved.get("rerankBaseUrl", settings.rerank_base_url),
         "rerankModel": saved.get("rerankModel", ""),
         "rerankTimeoutSeconds": saved.get("rerankTimeoutSeconds", int(settings.rerank_timeout_seconds)),
-        "embeddingKeyConfigured": bool(resolve_llm_config().get("api_key")),
+        "embeddingKeyConfigured": bool(resolve_rag_config(db, "embedding")["api_key"]),
         "source": "db" if saved else "default",
     }
 
@@ -700,26 +736,33 @@ def reset_rag_config(db: Session = Depends(get_db)):
 
 
 @router.post("/rag/test", dependencies=[Depends(require_admin)])
-def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embedding", "rerank"] = "all"):
+def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embedding", "rerank"] = "all", profileId: str | None = None):
     """分别探测 embedding 与 rerank 链路连通性。"""
     import json as _json
     import urllib.request
 
-    config = _rag_out(db)
+    from app.services.model_config_catalog import resolve_rag_config
+    if profileId and target == "all":
+        raise HTTPException(status_code=400, detail="请选择要测试的模型类型")
+    try:
+        embedding = resolve_rag_config(db, "embedding", profileId if target == "embedding" else None)
+        rerank = resolve_rag_config(db, "rerank", profileId if target == "rerank" else None)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="模型配置不存在") from None
+    config = {"embeddingKeyConfigured": bool(embedding["api_key"]), "embeddingBaseUrl": embedding["base_url"], "embeddingModel": embedding["model"], "rerankBaseUrl": rerank["base_url"], "rerankModel": rerank["model"], "rerankTimeoutSeconds": rerank["timeout_seconds"]}
     result: dict = {"embedding": {"ok": False}, "rerank": {"ok": False}}
 
     if target == "rerank":
         pass
     elif not config["embeddingKeyConfigured"]:
-        result["embedding"]["detail"] = "未配置嵌入密钥（复用 LLM 密钥库）"
+        result["embedding"]["detail"] = "未配置此检索模型的访问密钥"
     else:
-        llm = resolve_llm_config()
-        base_url = config["embeddingBaseUrl"] or llm["base_url"]
+        base_url = embedding["base_url"]
         started = time.monotonic()
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=llm["api_key"], base_url=base_url, timeout=30)
+            client = OpenAI(api_key=embedding["api_key"], base_url=base_url, timeout=embedding["timeout_seconds"])
             resp = client.embeddings.create(
                 model=config["embeddingModel"], input=["连通性测试"],
             )
@@ -730,8 +773,8 @@ def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embed
                 "dimensions": len(vector),
                 "latencyMs": int((time.monotonic() - started) * 1000),
             }
-        except Exception as exc:  # noqa: BLE001
-            result["embedding"] = {"ok": False, "detail": str(exc)}
+        except Exception:  # noqa: BLE001
+            result["embedding"] = {"ok": False, "detail": "检索连接失败，请检查服务地址、模型和密钥"}
 
     base = (config["rerankBaseUrl"] or "").rstrip("/")
     if target == "embedding":
@@ -749,7 +792,7 @@ def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embed
             }).encode()
             req = urllib.request.Request(
                 f"{base}/rerank", data=body,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + rerank["api_key"]} if rerank["api_key"] else {})},
             )
             with urllib.request.urlopen(req, timeout=max(3, config["rerankTimeoutSeconds"])) as resp:
                 payload = _json.loads(resp.read().decode("utf-8"))
@@ -758,8 +801,8 @@ def test_rag_config(db: Session = Depends(get_db), target: Literal["all", "embed
                 "ok": bool(ranked),
                 "latencyMs": int((time.monotonic() - started) * 1000),
             }
-        except Exception as exc:  # noqa: BLE001
-            result["rerank"] = {"ok": False, "detail": f"重排服务不可用：{exc}"}
+        except Exception:  # noqa: BLE001
+            result["rerank"] = {"ok": False, "detail": "排序连接失败，请检查服务地址、模型和密钥"}
     return result
 
 @router.get("/data/export")

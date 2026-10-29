@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { CheckCircle2, LoaderCircle, LogOut, Plus, RefreshCw, Settings2, Star, Trash2, XCircle } from "lucide-react";
 import { api } from "./api";
 import { ModelConfigurationManager, type ConfigurationManagerHandle } from "./ModelConfigurationManager";
+import { ConfigurationKeyEditor } from "./ConfigurationKeyEditor";
 import AdminLoginPage from "./AdminLoginPage";
 import { AdminAuthProvider, useAdminAuth } from "./AuthContext";
 
@@ -34,6 +35,7 @@ interface ProfileOut {
 }
 
 const emptyForm = {
+  apiKey: "",
   name: "",
   provider: "custom",
   baseUrl: "",
@@ -41,27 +43,6 @@ const emptyForm = {
   timeoutSeconds: 120,
   capabilities: defaultCapabilities,
 };
-
-interface ImageStatus {
-  baseUrl: string;
-  model: string;
-  keyConfigured: boolean;
-  keySource: "db" | "none";
-  keyHint: string;
-  timeoutSeconds: number;
-  source: "db" | "fallback";
-}
-
-interface RagConfig {
-  embeddingBaseUrl: string;
-  embeddingModel: string;
-  rerankBaseUrl: string;
-  rerankModel: string;
-  rerankTimeoutSeconds: number;
-  embeddingKeyConfigured: boolean;
-  source: "db" | "default";
-}
-
 
 const VIEWS = [
   { view: "text", title: "文本模型", desc: "用于文章撰写、修改和内容检查。" },
@@ -90,7 +71,8 @@ function AiConfigPage() {
   const [configurationRevision, setConfigurationRevision] = useState(0);
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [profiles, setProfiles] = useState<ProfileOut[]>([]);
-  const [image, setImage] = useState<ImageStatus | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const selectedText = profiles.find(p => p.id === selectedTextId) ?? profiles[0];
   const imageManager = useRef<ConfigurationManagerHandle>(null);
   const embeddingManager = useRef<ConfigurationManagerHandle>(null);
   const rerankManager = useRef<ConfigurationManagerHandle>(null);
@@ -107,27 +89,20 @@ function AiConfigPage() {
   const error = notices[activeView]?.error;
   function setMessage(value: string | null) { setNotices(current => ({ ...current, [activeView]: { message: value } })); }
   function setError(value: string | null) { setNotices(current => ({ ...current, [activeView]: value ? { error: value } : { ...current[activeView], error: null } })); }
-  const [llmKeyInput, setLlmKeyInput] = useState("");
-  const [imageKeyInput, setImageKeyInput] = useState("");
-  const [profileKeyInputs, setProfileKeyInputs] = useState<Record<string, string>>({});
   const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
   const [showDiscoveredModels, setShowDiscoveredModels] = useState(false);
-  const [rag, setRag] = useState<RagConfig | null>(null);
 
   const { logout, user } = useAdminAuth();
 
   const load = useCallback(async () => {
     try {
-      const [statusRes, profilesRes, imageRes, ragRes] = await Promise.all([
+      const [statusRes, profilesRes] = await Promise.all([
         api.get<ModelStatus>("/settings/model"),
         api.get<{ profiles: ProfileOut[] }>("/settings/profiles"),
-        api.get<ImageStatus>("/settings/image"),
-        api.get<RagConfig>("/settings/rag"),
       ]);
       setStatus(statusRes.data);
       setProfiles(profilesRes.data.profiles);
-      setImage(imageRes.data);
-      setRag(ragRes.data);
+      setSelectedTextId(current => profilesRes.data.profiles.some(p => p.id === current) ? current : profilesRes.data.profiles[0]?.id ?? null);
       setConfigurationRevision(value => value + 1);
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -160,8 +135,10 @@ function AiConfigPage() {
     setBusyAction("createProfile");
     setError(null);
     try {
-      if (editingProfileId) await api.patch(`/settings/profiles/${editingProfileId}`, form);
-      else await api.post("/settings/profiles", { ...form, isDefault: profiles.length === 0 });
+      const { apiKey, ...fields } = form;
+      const payload = { ...fields, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) };
+      if (editingProfileId) await api.patch(`/settings/profiles/${editingProfileId}`, payload);
+      else await api.post("/settings/profiles", { ...payload, isDefault: profiles.length === 0 });
       setEditingProfileId(null);
       setForm(emptyForm);
       setShowForm(false);
@@ -214,7 +191,7 @@ function AiConfigPage() {
     setError(null);
     setMessage(null);
     try {
-      const res = await api.get<{ models: string[] }>("/settings/models", { timeout: 120000 });
+      const res = await api.get<{ models: string[] }>("/settings/models", { params: { profileId: selectedText?.id }, timeout: 120000 });
       setDiscoveredModels(res.data.models);
       setShowDiscoveredModels(true);
       setMessage(`已发现 ${res.data.models.length} 个模型。`);
@@ -237,7 +214,7 @@ function AiConfigPage() {
     setMessage(null);
     setError(null);
     try {
-      const res = await api.post<{ latencyMs: number; model: string }>("/settings/model/test", null, { timeout: 120000 });
+      const res = await api.post<{ latencyMs: number; model: string }>("/settings/model/test", null, { params: { profileId: selectedText?.id }, timeout: 120000 });
       setMessage(`连接成功：${res.data.model} · ${res.data.latencyMs} 毫秒`);
     } catch (err) {
       if ((err as { code?: string })?.code === "ECONNABORTED") {
@@ -252,30 +229,15 @@ function AiConfigPage() {
     }
   };
 
-  const resetImage = async () => {
-    setBusy(true);
-    setBusyAction("resetImage");
-    setError(null);
-    try {
-      await api.delete<ImageStatus>("/settings/image");
-
-      await load();
-      setMessage("已使用默认配置。");
-    } catch {
-      setError("重置失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
   const testImage = async () => {
+    const profileId = imageManager.current?.selectedId();
+    if (!profileId) { setError("请先新增或选择生图配置。"); return; }
     setBusy(true);
     setBusyAction("testImage");
     setMessage(null);
     setError(null);
     try {
-      const res = await api.post<{ latencyMs: number; model: string }>("/settings/image/test", null, { timeout: 120000 });
+      const res = await api.post<{ latencyMs: number; model: string }>("/settings/image/test", null, { params: { profileId }, timeout: 120000 });
       setMessage(`连接成功：${res.data.model} · ${res.data.latencyMs} 毫秒`);
     } catch (err) {
       if ((err as { code?: string })?.code === "ECONNABORTED") {
@@ -290,135 +252,21 @@ function AiConfigPage() {
     }
   };
 
-  const saveLlmKey = async () => {
-    const value = llmKeyInput.trim();
-    if (value.length < 4) {
-      setError("密钥长度至少 4 位。");
-      return;
-    }
-    setBusy(true);
-    setBusyAction("saveLlmKey");
-    setError(null);
-    try {
-      await api.put(status?.profileId ? `/settings/profiles/${status.profileId}/key` : "/settings/llm/key", { apiKey: value });
-      setLlmKeyInput("");
-      await load();
-      setMessage("当前模型访问密钥已保存。");
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? connectionError(detail) : "密钥保存失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const removeLlmKey = async () => {
-    setBusy(true);
-    setBusyAction("removeLlmKey");
-    setError(null);
-    try {
-      await api.delete(status?.profileId ? `/settings/profiles/${status.profileId}/key` : "/settings/llm/key");
-      await load();
-      setMessage("独立密钥已移除；如有默认密钥，将自动使用。");
-    } catch {
-      setError("密钥删除失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const saveImageKey = async () => {
-    const value = imageKeyInput.trim();
-    if (value.length < 4) {
-      setError("密钥长度至少 4 位。");
-      return;
-    }
-    setBusy(true);
-    setBusyAction("saveImageKey");
-    setError(null);
-    try {
-      await api.put("/settings/image/key", { apiKey: value });
-      setImageKeyInput("");
-      await load();
-      setMessage("生图访问密钥已保存。");
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? connectionError(detail) : "密钥保存失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const removeImageKey = async () => {
-    setBusy(true);
-    setBusyAction("removeImageKey");
-    setError(null);
-    try {
-      await api.delete("/settings/image/key");
-      await load();
-      setMessage("生图密钥已删除，后续调用沿用文本模型密钥。");
-    } catch {
-      setError("密钥删除失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const saveProfileKey = async (id: string) => {
-    const value = (profileKeyInputs[id] ?? "").trim();
-    if (value.length < 4) {
-      setError("密钥长度至少 4 位。");
-      return;
-    }
-    setBusy(true);
-    setBusyAction("saveProfileKey");
-    setError(null);
-    try {
-      await api.put(`/settings/profiles/${id}/key`, { apiKey: value });
-      setProfileKeyInputs({ ...profileKeyInputs, [id]: "" });
-      await load();
-      setMessage("方案访问密钥已保存。");
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(typeof detail === "string" ? connectionError(detail) : "密钥保存失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
-
-  const removeProfileKey = async (id: string) => {
-    setBusy(true);
-    setBusyAction("removeProfileKey");
-    setError(null);
-    try {
-      await api.delete(`/settings/profiles/${id}/key`);
-      await load();
-      setMessage("方案密钥已删除，调用时沿用全局密钥。");
-    } catch {
-      setError("密钥删除失败。");
-    } finally {
-      setBusy(false);
-      setBusyAction(null);
-    }
-  };
   const openProfileForm = () => {
     setNotices(current => ({ ...current, text: {} }));
-    setEditingProfileId(null);
-    setForm(emptyForm);
+    setEditingProfileId(selectedText?.id ?? null);
+    setForm(selectedText ? { apiKey: "", name: selectedText.name, provider: selectedText.provider, baseUrl: selectedText.baseUrl, modelId: selectedText.modelId, timeoutSeconds: selectedText.timeoutSeconds, capabilities: { ...defaultCapabilities, ...selectedText.capabilities } } : emptyForm);
     setShowForm(!showForm);
   };
   const testRag = async (target: "embedding" | "rerank") => {
+    const profileId = (target === "embedding" ? embeddingManager : rerankManager).current?.selectedId();
+    if (!profileId) { setError("请先新增或选择检索模型配置。"); return; }
     setBusy(true);
     setBusyAction("testRag");
     setMessage(null);
     setError(null);
     try {
-      const res = await api.post<Record<string, { ok: boolean; detail?: string; latencyMs?: number }>>("/settings/rag/test?target=" + target, null, { timeout: 120000 });
+      const res = await api.post<Record<string, { ok: boolean; detail?: string; latencyMs?: number }>>("/settings/rag/test?target=" + target, null, { params: { profileId }, timeout: 120000 });
       const result = res.data[target];
       if (result.ok) setMessage("连接成功 · " + (result.latencyMs ?? 0) + " 毫秒");
       else setError(connectionError(result.detail));
@@ -479,11 +327,11 @@ function AiConfigPage() {
         {status ? (
           <>
           <div className="config-grid">
-            <div><small>服务地址</small><strong>{status.baseUrl}</strong></div>
-            <div><small>模型</small><strong>{status.model}</strong></div>
-            <div><small>密钥状态</small><strong>{status.keyConfigured ? "已配置" : "未配置"}</strong></div>
-            <div><small>当前方案</small><strong>{status.profileName ?? "默认配置"}</strong></div>
-            <div><small>等待时限</small><strong>{status.timeoutSeconds}s</strong></div>
+            <div><small>服务地址</small><strong>{selectedText?.baseUrl ?? status.baseUrl}</strong></div>
+            <div><small>模型</small><strong>{selectedText?.modelId ?? status.model}</strong></div>
+            <div><small>密钥状态</small><strong>{(selectedText ? selectedText.keyConfigured : status.keyConfigured) ? "已配置" : "未配置"}</strong></div>
+            <div><small>当前方案</small><strong>{selectedText?.name ?? status.profileName ?? "默认配置"}</strong></div>
+            <div><small>等待时限</small><strong>{selectedText?.timeoutSeconds ?? status.timeoutSeconds}s</strong></div>
           </div>
           {showDiscoveredModels && (
             <div className="admin-form" style={{ marginTop: 12 }}>
@@ -512,16 +360,7 @@ function AiConfigPage() {
               )}
             </div>
           )}
-          <div className="key-editor">
-            <input autoComplete="new-password" onChange={(e) => setLlmKeyInput(e.target.value)} placeholder="输入当前模型的访问密钥" type="password" value={llmKeyInput} />
-            <button className="primary" disabled={busy} onClick={() => void saveLlmKey()} type="button">保存密钥</button>
-            {status.keySource === "db" && (
-              <button className="quiet" disabled={busy} onClick={() => void removeLlmKey()} type="button">移除密钥</button>
-            )}
-          </div>
-          {status.keyHint && (
-            <p className="muted">当前密钥 {status.keyHint}</p>
-          )}
+          {selectedText && <ConfigurationKeyEditor key={selectedText.id} endpoint={`/settings/profiles/${selectedText.id}/key`} configured={selectedText.keyConfigured} hint={selectedText.keyHint} onChanged={load} />}
           {showForm && (
             <form
               aria-label={`${editingProfileId ? "编辑" : "新增"}文本模型配置`}
@@ -534,6 +373,7 @@ function AiConfigPage() {
               <label><span>服务地址</span><input onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="服务地址，例如 https://api.openai.com/v1" required value={form.baseUrl} /></label>
               <label><span>模型名称</span><input onChange={(e) => setForm({ ...form, modelId: e.target.value })} placeholder="模型名称，例如 gpt-4o-mini" required value={form.modelId} /></label>
               <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) || 120 })} placeholder="等待时限（秒）" type="number" value={form.timeoutSeconds} /></label>
+              <label><span>访问密钥（可选）</span><input autoComplete="new-password" disabled={busy} minLength={4} maxLength={4096} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editingProfileId ? "留空保留此配置已有密钥" : "仅用于此配置"} type="password" value={form.apiKey} /></label>
               <label><span>最大输出 tokens</span><input min={256} max={200000} type="number" value={form.capabilities.maxTokens} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, maxTokens: Number(e.target.value) } })} /></label>
               <label><span>上下文 tokens</span><input min={1024} max={4000000} type="number" value={form.capabilities.contextWindow} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, contextWindow: Number(e.target.value) } })} /></label>
               <label className="check-field"><input type="checkbox" checked={form.capabilities.reasoning} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, reasoning: e.target.checked } })} /><span>启用模型思考</span></label>
@@ -548,20 +388,13 @@ function AiConfigPage() {
               <button className="quiet" onClick={() => { setEditingProfileId(null); setForm(emptyForm); setShowForm(true); }} type="button"><Plus size={14} /> 新增配置</button>
             </div>
             {profiles.map((profile) => (
-              <div className={profile.isDefault ? "profile active" : "profile"} key={profile.id}>
-                <div className="profile-summary">
+              <div className={profile.id === selectedText?.id ? "profile selected" : "profile"} key={profile.id}>
+                <button className="profile-summary profile-select" type="button" aria-pressed={profile.id === selectedText?.id} disabled={busy} onClick={() => { setSelectedTextId(profile.id); setShowForm(false); setEditingProfileId(null); setForm(emptyForm); setShowDiscoveredModels(false); setDiscoveredModels([]); setNotices(current => ({ ...current, text: {} })); }}>
                   <strong>{profile.isDefault && <Star color="#f59e0b" size={13} />} {profile.name}{profile.isDefault && <span className="profile-badge">使用中</span>}</strong>
-                  <small>最大输出 {profile.capabilities?.maxTokens ?? 16384} tokens · {profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "使用默认密钥"} · {profile.timeoutSeconds}s</small>
-                </div>
-                <div className="key-editor">
-                  <input autoComplete="new-password" onChange={(e) => setProfileKeyInputs({ ...profileKeyInputs, [profile.id]: e.target.value })} placeholder="输入此配置的访问密钥" type="password" value={profileKeyInputs[profile.id] ?? ""} />
-                  <button className="quiet" disabled={busy} onClick={() => void saveProfileKey(profile.id)} type="button">保存密钥</button>
-                  {profile.keySource === "db" && (
-                    <button className="quiet" disabled={busy} onClick={() => void removeProfileKey(profile.id)} type="button">移除密钥</button>
-                  )}
-                </div>
+                  <small>最大输出 {profile.capabilities?.maxTokens ?? 16384} tokens · {profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "未配置密钥"} · {profile.timeoutSeconds}s</small>
+                </button>
                 <div className="actions">
-                  <button className="quiet" disabled={busy} onClick={() => { setEditingProfileId(profile.id); setForm({ name: profile.name, provider: profile.provider, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds, capabilities: { ...defaultCapabilities, ...profile.capabilities } }); setShowForm(true); }} type="button">编辑配置</button>
+                  <button className="quiet" disabled={busy} onClick={() => { setSelectedTextId(profile.id); setEditingProfileId(profile.id); setForm({ apiKey: "", name: profile.name, provider: profile.provider, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds, capabilities: { ...defaultCapabilities, ...profile.capabilities } }); setShowForm(true); }} type="button">编辑配置</button>
                   {!profile.isDefault && <button className="quiet" disabled={busy} onClick={() => void activate(profile.id)} type="button">设为默认</button>}
                   <button aria-label={`删除 ${profile.name}`} className="danger" disabled={busy} onClick={() => void remove(profile.id)} type="button"><Trash2 size={14} /></button>
                 </div>
@@ -582,39 +415,7 @@ function AiConfigPage() {
               {busyAction === "testImage" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
           </>}>
-        {image ? (
-          <>
-            <div className="config-grid">
-              <div><small>服务地址</small><strong>{image.baseUrl}</strong></div>
-              <div><small>模型</small><strong>{image.model}</strong></div>
-                <div><small>密钥状态</small><strong>{image.keyConfigured ? "已配置" : "未配置"}</strong></div>
-              <div><small>配置方式</small><strong>{image.source === "db" ? "独立配置" : "使用默认配置"}</strong></div>
-              <div><small>等待时限</small><strong>{image.timeoutSeconds}s</strong></div>
-            </div>
-            <div className="key-editor">
-              <input autoComplete="new-password" onChange={(e) => setImageKeyInput(e.target.value)} placeholder="输入生图访问密钥" type="password" value={imageKeyInput} />
-              <button className="primary" disabled={busy} onClick={() => void saveImageKey()} type="button">保存密钥</button>
-              {image.keySource === "db" && (
-                <button className="quiet" disabled={busy} onClick={() => void removeImageKey()} type="button">移除密钥</button>
-              )}
-            </div>
-            {image.keyHint && (
-              <p className="muted">当前生图密钥 {image.keyHint}</p>
-            )}
-            <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">未设置独立密钥时，使用文本模型的访问密钥。</span>
-              <div>
-
-                {image.source === "db" && (
-                  <button className="quiet" disabled={busy} onClick={() => void resetImage()} type="button">使用默认配置</button>
-                )}
-              </div>
-            </div>
-            <ModelConfigurationManager revision={configurationRevision} kind="image" onChanged={load} ref={imageManager} visible={activeView === "image"} />
-          </>
-        ) : (
-          <p className="muted">加载中...</p>
-        )}
+        <ModelConfigurationManager externalBusy={busy} revision={configurationRevision} kind="image" onSelectionChange={() => setNotices(current => ({ ...current, image: {} }))} onChanged={load} ref={imageManager} visible={activeView === "image"} />
       </ModelPanel>
 
       <ModelPanel id="sec-embedding" hidden={activeView !== "embedding"} title="资料检索模型配置" actions={<>
@@ -624,23 +425,7 @@ function AiConfigPage() {
               {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
           </>}>
-        {rag ? (
-          <>
-            <div className="config-grid">
-              <div><small>服务地址</small><strong>{rag.embeddingBaseUrl || "使用文本模型服务地址"}</strong></div>
-              <div><small>模型</small><strong>{rag.embeddingModel}</strong></div>
-              <div><small>密钥状态</small><strong>{rag.embeddingKeyConfigured ? "使用文本模型密钥" : "未配置"}</strong></div>
-            </div>
-
-            <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">使用文本模型的访问密钥，请确认它支持资料检索。</span>
-
-            </div>
-            <ModelConfigurationManager revision={configurationRevision} kind="embedding" onChanged={load} ref={embeddingManager} visible={activeView === "embedding"} />
-          </>
-        ) : (
-          <p className="muted">加载中...</p>
-        )}
+        <ModelConfigurationManager externalBusy={busy} revision={configurationRevision} kind="embedding" onSelectionChange={() => setNotices(current => ({ ...current, embedding: {} }))} onChanged={load} ref={embeddingManager} visible={activeView === "embedding"} />
       </ModelPanel>
 
       <ModelPanel id="sec-rerank" hidden={activeView !== "rerank"} title="检索排序模型配置" actions={<>
@@ -650,24 +435,7 @@ function AiConfigPage() {
               {busyAction === "testRag" ? <LoaderCircle className="spin" size={14} /> : <CheckCircle2 size={14} />} 测试连接
             </button>
           </>}>
-        {rag ? (
-          <>
-            <div className="config-grid">
-              <div><small>服务地址</small><strong>{rag.rerankBaseUrl || "未启用"}</strong></div>
-              <div><small>模型</small><strong>{rag.rerankModel || "未指定"}</strong></div>
-              <div><small>等待时限</small><strong>{rag.rerankTimeoutSeconds}s</strong></div>
-              <div><small>配置方式</small><strong>{rag.source === "db" ? "独立配置" : "默认配置"}</strong></div>
-            </div>
-
-            <div className="section-head" style={{ marginTop: 12 }}>
-              <span className="muted">配置后可提升资料匹配效果；留空时使用原有检索顺序。</span>
-
-            </div>
-            <ModelConfigurationManager revision={configurationRevision} kind="rerank" onChanged={load} ref={rerankManager} visible={activeView === "rerank"} />
-          </>
-        ) : (
-          <p className="muted">加载中...</p>
-        )}
+        <ModelConfigurationManager externalBusy={busy} revision={configurationRevision} kind="rerank" onSelectionChange={() => setNotices(current => ({ ...current, rerank: {} }))} onChanged={load} ref={rerankManager} visible={activeView === "rerank"} />
       </ModelPanel>
 
 {message && <div className="success" role="status">{message}</div>}

@@ -282,16 +282,23 @@ class RagService:
             pass
         return model, base_url
 
+    def _embedding_runtime_config(self) -> dict:
+        from app.db.session import SessionLocal
+        from app.services.model_config_catalog import resolve_rag_config
+        try:
+            with SessionLocal() as db:
+                return resolve_rag_config(db, "embedding")
+        except Exception:  # Missing preference tables retain legacy defaults.
+            llm = resolve_llm_config()
+            model, base = self._embedding_config()
+            return {**llm, "model": model, "base_url": base or llm["base_url"], "timeout_seconds": 30}
+
     def _embed(self, texts: list[str]) -> list[list[float]]:
-        config = resolve_llm_config()
+        config = self._embedding_runtime_config()
         if not config.get("api_key"):
             raise RAGUnavailable("未配置嵌入模型 API Key（存于管理端密钥库）")
-        model, base_override = self._embedding_config()
-        client = OpenAI(
-            api_key=config["api_key"],
-            base_url=base_override or config["base_url"],
-            timeout=30,
-        )
+        model = config["model"]
+        client = OpenAI(api_key=config["api_key"], base_url=config["base_url"], timeout=config["timeout_seconds"])
         out: list[list[float]] = []
         try:
             for start in range(0, len(texts), 32):
@@ -382,15 +389,20 @@ class RagService:
         rerank_base = self.settings.rerank_base_url
         rerank_timeout = self.settings.rerank_timeout_seconds
         rerank_model = ""
+        rerank_key = ""
         try:
             from app.db.session import SessionLocal
             from app.services.workspace_settings import read_preferences
 
             with SessionLocal() as db:
                 saved = read_preferences(db, "admin:rag") or {}
-            rerank_base = saved.get("rerankBaseUrl") or rerank_base
-            rerank_model = saved.get("rerankModel") or ""
-            rerank_timeout = float(saved.get("rerankTimeoutSeconds") or rerank_timeout)
+                rerank_base = saved.get("rerankBaseUrl") or rerank_base
+                rerank_model = saved.get("rerankModel") or ""
+                rerank_timeout = float(saved.get("rerankTimeoutSeconds") or rerank_timeout)
+                from app.services.model_config_catalog import resolve_rag_config
+                resolved = resolve_rag_config(db, "rerank")
+                rerank_key = resolved["api_key"]
+                rerank_base, rerank_model, rerank_timeout = resolved["base_url"], resolved["model"], resolved["timeout_seconds"]
         except Exception:  # noqa: BLE001
             pass
         base = rerank_base.rstrip("/")
@@ -404,7 +416,7 @@ class RagService:
         }).encode()
         req = urllib.request.Request(
             f"{base}/rerank", data=body,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + rerank_key} if rerank_key else {})},
         )
         try:
             with urllib.request.urlopen(req, timeout=rerank_timeout) as resp:

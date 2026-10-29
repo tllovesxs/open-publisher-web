@@ -29,6 +29,7 @@ def set_secret(
     plaintext: str,
     *,
     actor: str | None = None,
+    commit: bool = True,
 ) -> AppSecret:
     """加密入库/更新，并写审计。key_version 自增便于轮换排查。"""
     row = db.get(AppSecret, secret_id)
@@ -41,8 +42,11 @@ def set_secret(
     row.updated_by = actor
     row.updated_at = datetime.now()
     db.add(SecretAudit(secret_id=secret_id, action="set", actor=actor))
-    db.commit()
-    db.refresh(row)
+    if commit:
+        db.commit()
+        db.refresh(row)
+    else:
+        db.flush()
     return row
 
 
@@ -66,12 +70,15 @@ def get_secret_meta(db: Session, secret_id: str) -> dict | None:
     return {"keyHint": row.key_hint, "keyVersion": row.key_version}
 
 
-def delete_secret(db: Session, secret_id: str, *, actor: str | None = None) -> bool:
+def delete_secret(db: Session, secret_id: str, *, actor: str | None = None, commit: bool = True) -> bool:
     """删除秘密并写审计。返回是否真的删了。"""
     row = db.get(AppSecret, secret_id)
     if row is None:
         return False
     db.delete(row)
     db.add(SecretAudit(secret_id=secret_id, action="delete", actor=actor))
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return True

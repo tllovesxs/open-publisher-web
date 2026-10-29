@@ -453,3 +453,11 @@ button:disabled { cursor: default; opacity: 0.55; }
 .config-form-hint { grid-column: 1 / -1; font-size: 12px; line-height: 1.6; }
 .model-config-manager { display: grid; gap: 12px; }
 .model-config-manager .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Viewing a configuration does not change the runtime default. */
+.profile.selected { border-color: var(--accent); background: var(--accent-soft); }
+.profile-select { display: grid; gap: 5px; text-align: left; color: inherit; background: transparent; border: 0; border-radius: 8px; padding: 4px; cursor: pointer; }
+.profile-select:hover { background: rgb(15 23 42 / 4%); }
+.profile-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.profile-select strong { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.configuration-key-editor { display: grid; gap: 8px; }

@@ -52,6 +52,8 @@ def _base_llm_config() -> dict:
 
 
 def _with_db_key(config: dict, db: Session) -> dict:
+    if config.get("api_key"):
+        return config
     meta = get_secret_meta(db, SECRET_ID_LLM_GLOBAL) or {}
     key = get_secret(db, SECRET_ID_LLM_GLOBAL)
     if key:
@@ -221,6 +223,15 @@ def _apply_image_row(config: dict, db: Session, row: ImageConfig | None) -> None
                 "profileId": row.id,
             }
         )
+
+    if row is not None:
+        from app.services.model_config_catalog import read_catalog, credential_id
+        profile = next((p for p in read_catalog(db, "image")["profiles"] if p["id"] == row.id), None)
+        if profile:
+            sid = credential_id(db, "image", profile)
+            meta = get_secret_meta(db, sid) if sid else None
+            config.update({"api_key": (get_secret(db, sid) or "") if sid else "", "keySource": "db" if meta else "none", "keyHint": (meta or {}).get("keyHint", "")})
+            return
 
     image_meta = get_secret_meta(db, SECRET_ID_IMAGE_GLOBAL) or {}
     image_key = get_secret(db, SECRET_ID_IMAGE_GLOBAL)
