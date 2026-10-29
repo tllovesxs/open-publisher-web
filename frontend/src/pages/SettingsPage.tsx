@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, Database, Layout, Monitor, Moon, Save, Settings2, Sun, User } from "lucide-react";
+import { Check, FileCheck2, FilePenLine, Globe, Image, Layout, ListTree, Monitor, Moon, Save, Search, Settings2, ShieldCheck, Sparkles, Sun, User } from "lucide-react";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -16,8 +16,13 @@ const TABS = [
   { id: "appearance", label: "外观", icon: Sun },
   { id: "account", label: "账号", icon: User },
   { id: "writing", label: "写作", icon: Layout },
-  { id: "data", label: "数据", icon: Database },
 ] as const;
+
+const STAGE_ICONS: Record<string, typeof Search> = {
+  research: Search, outline: ListTree, draft: FilePenLine,
+  "natural-style": Sparkles, review: FileCheck2,
+  "reference-safety": Search, risk: ShieldCheck, visual: Image,
+};
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -48,12 +53,6 @@ export default function SettingsPage() {
     if (admin) setIntegrations((await api.get<Integrations>("/settings/integrations")).data);
   }, ""); }, [admin]);
 
-  const exportData = async () => {
-    const result = await api.get("/settings/data/export", {timeout:120000});
-    const url = URL.createObjectURL(new Blob([JSON.stringify(result.data, null, 2)], {type:"application/json"}));
-    const a = document.createElement("a"); a.href=url; a.download="稿流个人数据.json"; a.click(); URL.revokeObjectURL(url);
-  };
-
   const modelOptions = profiles.map(p => ({ id: p.id, label: p.name }));
   const defaultProfile = profiles.find(p => p.id === prefs.profileId) ?? profiles.find(p => p.isDefault) ?? profiles[0];
   const modelSelect = (label: string, profileId: string | null, onChange: (value: string) => void, inherit = false) => (
@@ -70,39 +69,21 @@ export default function SettingsPage() {
   );
 
   return (
-    <div className="settings-page" style={{ padding: 32, maxWidth: 720, display: "grid", gap: 0, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>设置</h1>
-      <p style={{ color: "var(--muted, #888)", fontSize: 13, marginBottom: 20 }}>
-        管理模型偏好、界面外观和创作设置
-      </p>
-
-      {/* Tab navigation */}
-      <nav style={{
-        display: "flex", gap: 4, marginBottom: 24, padding: 3,
-        background: "var(--surface-muted, #f5f5f5)", borderRadius: 10, width: "fit-content",
-      }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            aria-pressed={tab === id}
-            key={id}
-            onClick={() => setTab(id)}
-            style={{
-              alignItems: "center", background: tab === id ? "var(--surface, #fff)" : "transparent",
-              border: tab === id ? "1px solid var(--border, #e5e5e5)" : "1px solid transparent",
-              borderRadius: 8, color: tab === id ? "var(--ink)" : "var(--muted, #888)",
-              cursor: "pointer", display: "flex", fontSize: 13, fontWeight: 500,
-              gap: 6, padding: "7px 14px",
-              boxShadow: tab === id ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
-              transition: "all 150ms ease",
-            }}
-            type="button"
-          >
-            <Icon size={14} />
-            {label}
-          </button>
-        ))}
-      </nav>
-
+    <div className="settings-page">
+      <header className="client-settings-page-heading">
+        <h1>设置</h1>
+        <p>管理模型偏好、界面外观和创作设置</p>
+      </header>
+      <div className="client-settings-layout">
+        <nav className="client-settings-nav" aria-label="设置分类">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <button aria-pressed={tab === id} className={tab === id ? "is-active" : ""} key={id} onClick={() => { setTab(id); setNotice(""); }} type="button">
+              <Icon size={17} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="client-settings-content">
       {notice && (
         <div role="status" style={{
           alignItems: "center", background: "var(--success-soft, #f0fff4)", border: "1px solid var(--success, #48bb78)",
@@ -267,93 +248,37 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Writing tab */}
       {tab === "writing" && (
-        <section style={{
-          background: "var(--surface, #fff)", border: "1px solid var(--border, #e5e5e5)",
-          borderRadius: 12, display: "grid", gap: 14, padding: 20,
-        }}>
-          <div>
-            <strong style={{ fontSize: 14 }}>默认创作流程</strong>
-            <p style={{ color: "var(--muted, #888)", fontSize: 12, marginTop: 2 }}>
-              取消勾选可跳过对应创作步骤
-            </p>
+        <section className="client-settings-card">
+          <header className="client-settings-section-heading">
+            <span className="client-settings-icon"><FilePenLine size={19} aria-hidden="true" /></span>
+            <div><h2>默认创作流程</h2><p>选择需要的创作环节，取消勾选即可跳过。</p></div>
+          </header>
+          <div className="client-settings-writing-grid">
+            {ARTICLE_WORKFLOW_NODES.map((node, index) => {
+              const Icon = STAGE_ICONS[node.id] ?? FilePenLine;
+              const enabled = !prefs.disabledNodeIds.includes(node.id);
+              return (
+                <label className={`client-settings-stage${enabled ? " is-enabled" : ""}`} key={node.id}>
+                  <span className="client-settings-stage-icon" aria-hidden="true"><Icon size={21} strokeWidth={1.7} /></span>
+                  <span className="client-settings-stage-copy"><strong>{node.label}</strong><small>{node.description}</small></span>
+                  <span className="client-settings-stage-number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                  <input aria-label={node.label} checked={enabled} onChange={e => setPrefs(p => ({ ...p, disabledNodeIds: e.target.checked ? p.disabledNodeIds.filter(id => id !== node.id) : [...p.disabledNodeIds, node.id] }))} type="checkbox" />
+                </label>
+              );
+            })}
           </div>
-          {ARTICLE_WORKFLOW_NODES.map(node => (
-            <label key={node.id} style={{ alignItems: "flex-start", cursor: "pointer", display: "flex", gap: 8 }}>
-              <input
-                checked={!prefs.disabledNodeIds.includes(node.id)}
-                onChange={e => setPrefs({...prefs, disabledNodeIds: e.target.checked ? prefs.disabledNodeIds.filter(id => id !== node.id) : [...prefs.disabledNodeIds, node.id]})}
-                style={{ marginTop: 2 }}
-                type="checkbox"
-              />
-              <div>
-                <span style={{ color: "var(--ink)", fontSize: 13, fontWeight: 500 }}>{node.label}</span>
-                <small style={{ color: "var(--muted, #888)", display: "block", fontSize: 11, marginTop: 1 }}>{node.description}</small>
-              </div>
-            </label>
-          ))}
-          <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-            <label style={{ alignItems: "center", color: "var(--ink)", display: "flex", fontSize: 13, fontWeight: 500, gap: 4 }}>
-              <Bell size={13} /> 联网检索
-            </label>
-            <ToolbarSelect
-              label="联网检索"
-              onChange={(value) => setPrefs({ ...prefs, webSearchMode: value })}
-              options={[
-                { id: "auto", label: "自动" },
-                { id: "off", label: "关闭" },
-              ]}
-              value={prefs.webSearchMode}
-            />
+          <div className="client-settings-search-row">
+            <div className="client-settings-search-label"><Globe size={18} aria-hidden="true" /><div><strong>联网检索</strong><p>创作时自动补充相关资料</p></div></div>
+            <ToolbarSelect label="联网检索" onChange={value => setPrefs(p => ({ ...p, webSearchMode: value }))} options={[{ id: "auto", label: "自动" }, { id: "off", label: "关闭" }]} value={prefs.webSearchMode} />
           </div>
-          <button
-            className="button button--primary"
-            disabled={busy}
-            onClick={() => void act(() => api.put("/settings/preferences", prefs))}
-            style={{ alignItems: "center", display: "flex", fontSize: 13, gap: 6, justifyContent: "center", padding: "9px 16px" }}
-          >
-            <Save size={14} /> 保存写作偏好
-          </button>
-        </section>
-      )}
-
-      {/* Data tab */}
-      {tab === "data" && (
-        <section style={{
-          background: "var(--surface, #fff)", border: "1px solid var(--border, #e5e5e5)",
-          borderRadius: 12, display: "grid", gap: 14, padding: 20,
-        }}>
-          <div>
-            <strong style={{ fontSize: 14 }}>安全与个人数据</strong>
-            <p style={{ color: "var(--muted, #888)", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>
-              导出内容不含访问密钥。你的文章、素材、模板和助手会话仅供本人使用；共享内容按原有权限访问。
-            </p>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button className="button button--primary" disabled={busy} onClick={() => void act(exportData, "数据已导出")} style={{ fontSize: 13, padding: "9px 16px" }}>
-              导出个人数据
-            </button>
-            <button
-              className="button button--quiet"
-              disabled={busy}
-              onClick={() => void act(async () => {
-                const next = {disabledNodeIds: [], webSearchMode: "auto" as const, profileId: null, nodeProfileIds: {}};
-                await api.put("/settings/preferences", next);
-                setPrefs(next);
-              })}
-              style={{ fontSize: 13, padding: "9px 16px" }}
-            >
-              重置个人写作偏好
-            </button>
-          </div>
-          <div style={{ display: "grid", gap: 6, paddingTop: 6, borderTop: "1px solid var(--border, #eee)" }}>
-            <a href="/articles" style={{ color: "var(--accent, #5b8def)", fontSize: 13, textDecoration: "none" }}>管理文章与历史版本 →</a>
-            <a href="/media" style={{ color: "var(--accent, #5b8def)", fontSize: 13, textDecoration: "none" }}>管理素材 →</a>
-            <a href="/templates" style={{ color: "var(--accent, #5b8def)", fontSize: 13, textDecoration: "none" }}>管理模板 →</a>
+          <div className="client-settings-footer">
+            <button className="button button--primary" disabled={busy} onClick={() => void act(() => api.put("/settings/preferences", prefs), "写作偏好已保存")} type="button"><Save size={15} />保存写作偏好</button>
           </div>
         </section>
       )}
+        </div>
+      </div>
     </div>
   );
 }
