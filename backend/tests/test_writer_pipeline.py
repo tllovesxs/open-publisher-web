@@ -479,14 +479,16 @@ def test_truncated_tool_stream_keeps_recoverable_body_without_revision(db):
     assert service.store.read("truncated-body") is None
 
 
-def test_glm_options_disable_thinking_and_use_blueprint_budget():
+def test_glm_options_preserve_native_thinking_and_use_blueprint_budget():
     from app.agents.llm_client import LLMClient
     client = object.__new__(LLMClient)
     client.model = "GLM-5.3-Flash"
     client.capabilities = {}
     options = client._options(0.7)
     assert options["max_tokens"] == 16384
-    assert options["extra_body"]["thinking"]["type"] == "disabled"
+    assert "extra_body" not in options
+    client.capabilities = {"reasoning": True, "thinkingLevel": "off"}
+    assert "extra_body" not in client._options(0.7)
     client.capabilities = {"maxTokens": 24000, "reasoning": True, "thinkingLevel": "auto"}
     assert client._options(0.7)["extra_body"]["thinking"]["type"] == "enabled"
     assert client._options(0.7)["max_tokens"] == 24000

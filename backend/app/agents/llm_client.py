@@ -8,7 +8,7 @@ import json
 import re
 from collections.abc import Iterator
 
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 
 from app.core.config import get_settings
 from app.services.model_profile_service import resolve_llm_config
@@ -66,11 +66,40 @@ class LLMClient:
         budget = self.capabilities.get("maxTokens", 16384)
         level = self.capabilities.get("thinkingLevel", "auto")
         if self.model.lower().startswith("glm-"):
-            return {"temperature": temperature, "max_tokens": budget,
-                    "extra_body": {"thinking": {"type": "enabled" if level != "off" and self.capabilities.get("reasoning") else "disabled"}}}
+            options = {"temperature": temperature, "max_tokens": budget}
+            # GLM 名称不代表支持关闭思考；部分模型只接受原生思考模式。
+            # 未主动启用时不发送 thinking，保留供应商原生行为。
+            if (self.capabilities.get("reasoning") and level != "off"
+                    and not getattr(self, "_thinking_rejected", False)):
+                options["extra_body"] = {"thinking": {"type": "enabled"}}
+            return options
         if self.capabilities.get("reasoning"):
             return {"max_completion_tokens": budget, "reasoning_effort": "medium" if level == "auto" else "none" if level == "off" else level}
         return {"temperature": temperature, "max_tokens": budget}
+
+    def _create_completion(self, **kwargs):
+        """仅在请求尚未产生输出且明确拒绝 thinking 时兼容重试一次。"""
+        try:
+            return self._client.chat.completions.create(**kwargs)
+        except BadRequestError as exc:
+            extra = kwargs.get("extra_body") or {}
+            error = exc.body
+            if isinstance(error, dict):
+                error = error.get("error", error)
+            message = (str(error.get("message", "")) if isinstance(error, dict)
+                       else str(error or "")).lower()
+            rejected = any(term in message for term in (
+                "not supported", "unsupported", "does not support",
+                "not support", "unknown parameter", "unrecognized", "不支持",
+            ))
+            if "thinking" not in extra or "thinking" not in message or not rejected:
+                raise
+            self._thinking_rejected = True
+            remaining = {key: value for key, value in extra.items() if key != "thinking"}
+            retry_kwargs = {key: value for key, value in kwargs.items() if key != "extra_body"}
+            if remaining:
+                retry_kwargs["extra_body"] = remaining
+            return self._client.chat.completions.create(**retry_kwargs)
 
     @property
     def api_key_configured(self) -> bool:
@@ -101,7 +130,7 @@ class LLMClient:
         """逐段返回模型输出；JSON 输出仍一次性返回，便于统一解析。"""
         try:
             if json_mode:
-                response = self._client.chat.completions.create(
+                response = self._create_completion(
                     model=self.model,
                     messages=[
                         {"role": "system", "content": system},
@@ -117,7 +146,7 @@ class LLMClient:
                 return
 
             # 只要服务端持续返回增量，长文生成就不会触发单次 HTTP 读超时。
-            stream = self._client.chat.completions.create(
+            stream = self._create_completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system},
@@ -167,7 +196,7 @@ class LLMClient:
             if tool_choice is not None:
                 kwargs["tool_choice"] = tool_choice
         try:
-            stream = self._client.chat.completions.create(**kwargs)
+            stream = self._create_completion(**kwargs)
             content_parts: list[str] = []
             tool_calls: dict[int, dict] = {}
             finish_reason = None
@@ -226,7 +255,7 @@ class LLMClient:
                 *[{"type": "image_url", "image_url": {"url": image}} for image in images],
             ]
             try:
-                response = self._client.chat.completions.create(
+                response = self._create_completion(
                     model=self.model,
                     messages=[
                         {"role": "system", "content": system},
