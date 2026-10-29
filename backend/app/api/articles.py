@@ -142,6 +142,8 @@ class VisualPlanRequest(BaseModel):
 
     targetCount: int = Field(default=2, ge=0, le=6)
     assetIds: list[str] = Field(default_factory=list, max_length=20)
+    requiredAssetIds: list[str] = Field(default_factory=list, max_length=6)
+    mode: str = Field(default="fixed", pattern="^(none|auto|fixed)$")
     materialMatchThreshold: int = Field(default=40, ge=0, le=100)
 
 
@@ -177,17 +179,43 @@ def plan_article_visual(
         raise HTTPException(status_code=404, detail={
             "code": "ARTICLE_NOT_FOUND", "message": "Article was not found", "retryable": False,
         })
-    plan = VisualService(db).plan(
-        markdown=article["markdown"],
-        target_count=body.targetCount,
-        asset_ids=body.assetIds,
-        material_match_threshold=body.materialMatchThreshold,
-    )
+    try:
+        plan = VisualService(db).plan(
+            markdown=article["markdown"], target_count=body.targetCount,
+            asset_ids=body.assetIds, material_match_threshold=body.materialMatchThreshold,
+            owner_user_id=user.id, mode=body.mode, required_asset_ids=body.requiredAssetIds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     return {
         **plan,
         "sourceRevisionId": article["currentRevisionId"],
         "sourceContentHash": article["contentHash"],
     }
+
+
+@router.post("/{article_id}/visual-validate")
+def validate_article_visual(
+    article_id: str, body: VisualApplyRequest,
+    db: Session = Depends(get_db), user: AppUser = Depends(require_user),
+):
+    """确认后、生图前校验全部位置及素材；不调用生图或修改正文。"""
+    from app.services.visual_service import VisualService
+    try:
+        VisualService(db).validate(
+            article_id=article_id, base_revision_id=body.baseRevisionId,
+            base_content_hash=body.baseContentHash,
+            placements=[p.model_dump() for p in body.placements], owner_user_id=user.id,
+        )
+    except ArticleConflictError:
+        raise _conflict() from None
+    except ArticlePermissionError:
+        raise _forbidden() from None
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Article was not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"valid": True}
 
 
 @router.post("/{article_id}/visual-apply")
@@ -222,4 +250,6 @@ def apply_article_visual(
         raise HTTPException(status_code=404, detail={
             "code": "ARTICLE_NOT_FOUND", "message": "Article was not found", "retryable": False,
         }) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     return result

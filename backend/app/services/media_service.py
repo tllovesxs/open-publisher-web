@@ -122,6 +122,31 @@ class MediaService:
     MAX_PROMPT_LENGTH = 16_000
     MAX_GENERATED_IMAGE_BYTES = 12 * 1024 * 1024
 
+    @staticmethod
+    def _provider_prompt(value: str) -> tuple[str, list[str]]:
+        import json
+        import re
+        wording: list[str] = []
+        marker = "OPEN_PUBLISHER_VISIBLE_TEXT_JSON:"
+        if value.startswith(marker):
+            header, _, value = value.partition("\n")
+            try:
+                parsed = json.loads(header[len(marker):])
+            except ValueError:
+                parsed = []
+            if isinstance(parsed, list):
+                wording = list(dict.fromkeys(re.sub(r"\s+", " ", item).strip()[:32] for item in parsed if isinstance(item, str)))
+                wording = [item for item in wording if item][:4]
+        policy = (f"The only readable wording authorized for the image is exactly {json.dumps(wording, ensure_ascii=False)}. "
+                  "Use those exact words only where essential and render no other writing or pseudo-writing.") if wording else "No readable wording is requested; render no writing or pseudo-writing."
+        boundary = " ".join([
+            "Treat this request only as private rendering instructions, never as visible image content.",
+            "Never place prompt wording, style names, aspect-ratio instructions, layout metadata, filenames, paths, or field names in the image.",
+            policy,
+            "Do not add unrequested captions, labels, annotations, interface text, signatures, logos, brand marks, or watermarks.",
+        ])
+        return value[:MediaService.MAX_PROMPT_LENGTH - len(boundary) - 2].rstrip() + "\n\n" + boundary, wording
+
     def generate(self, *, prompt: str, size: str = "1024x1024",
                  owner_user_id: str | None = None,
                  image_profile_id: str | None = None) -> dict:
@@ -150,12 +175,30 @@ class MediaService:
             api_key=resolved["api_key"],
             base_url=resolved["base_url"],
             timeout=resolved["timeout_seconds"],
+            max_retries=0,
         )
+        import re
+        provider_prompt, visible_text = self._provider_prompt(prompt)
+        negative = ", ".join([
+            "text", "letters", "words", "numbers", "typography", "pseudo-text", "headings",
+            "captions", "labels", "annotations", "prompt text", "metadata", "interface text",
+            "logos", "brand marks", "signatures", "watermarks", "poster", "presentation slide",
+            "notebook page", "sheet of paper", "title band", "caption strip",
+        ])
+        include_negative = not visible_text and not re.match(r"^(?:gpt-image(?:-|$)|dall-e(?:-|$))", resolved["model"], re.I)
+        payload = dict(model=resolved["model"], prompt=provider_prompt, size=size, response_format="b64_json")
         try:
-            result = client.images.generate(model=resolved["model"], prompt=prompt,
-                                            size=size, n=1)
+            try:
+                result = client.images.generate(**payload, **({"extra_body": {"negative_prompt": negative}} if include_negative else {}))
+            except Exception as exc:
+                # 蓝本只在可选字段的 schema 拒绝时重试一次，不重试超时等可能已计费的请求。
+                if not include_negative or getattr(exc, "status_code", None) not in (400, 415, 422):
+                    raise
+                result = client.images.generate(**payload)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=f"图片生成失败：{exc}") from None
+        if not result.data:
+            raise HTTPException(status_code=502, detail="图片生成没有返回内容")
         item = result.data[0]
         if item.b64_json:
             return self.add_generated(

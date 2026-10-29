@@ -33,7 +33,7 @@ class MediaUpdateRequest(BaseModel):
 
 class MediaGenerateRequest(BaseModel):
     imageModelId: str | None = Field(default=None, max_length=64)
-    prompt: str = Field(min_length=1, max_length=2000)
+    prompt: str = Field(min_length=1, max_length=16_000)
     size: str = "1024x1024"
 
 

@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ToolbarSelect } from "../ui/ToolbarSelect";
-import { Eye, LoaderCircle, Pencil, Sparkles } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { LoaderCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
+import { useActiveRun } from "../../lib/activeRunContext";
 
 interface VisualPlanPlacement {
   id: string;
@@ -22,6 +22,11 @@ export interface VisualPlanSummary {
   sourceRevisionId: string | null;
   sourceContentHash: string | null;
   imageModelId?: string | null;
+  assetIds?: string[];
+  requiredAssetIds?: string[];
+  materialMatchThreshold?: number;
+  mode?: "none" | "auto" | "fixed";
+  needsConfirmation?: boolean;
 }
 
 interface VisualApplyResult {
@@ -61,6 +66,11 @@ interface StartVisualPlanOptions {
   targetCount?: number;
   assetIds?: string[];
   snapshot?: VisualPlanSnapshot | null;
+  materialMatchThreshold?: number;
+  mode?: "none" | "auto" | "fixed";
+  imageModelId?: string | null;
+  requiredAssetIds?: string[];
+  runKey?: string;
 }
 
 interface VisualPlanContextValue {
@@ -80,543 +90,297 @@ interface VisualPlanContextValue {
   minimizePlan: () => void;
   confirmApply: () => Promise<void>;
   consumeCompleted: () => void;
+  observeEditor: (articleId: string, dirty: boolean) => void;
 }
-
-const STYLE_PRESETS = [
-  { id: "default", label: "默认（手绘扁平）", suffix: "" },
-  { id: "minimal", label: "极简线条", suffix: "极简线条风格、大量留白、单色或双色，画面干净克制。" },
-  { id: "watercolor", label: "水彩插画", suffix: "水彩插画风格、柔和色彩、自然过渡，画面温暖。" },
-  { id: "3d", label: "3D 渲染", suffix: "3D 等距渲染风格、柔和光影、圆角几何，现代感。" },
-  { id: "photo", label: "摄影写实", suffix: "真实摄影风格、自然光、浅景深，画面逼真。" },
-  { id: "flat", label: "扁平几何", suffix: "扁平几何风格、色块构成、极简配色，现代设计感。" },
-] as const;
 
 interface ImageModelOption { id: string; name: string; model: string }
-
+type Decision = Pick<VisualPlanPlacement, "source" | "assetId">;
+const BATCH_SIZE = 4;
+const STALE_MESSAGE = "当前策略已过期：文章在规划后发生修改，请保存正文后重新生成策略。";
 const VisualPlanContext = createContext<VisualPlanContextValue | null>(null);
 
-function useVisualPlanContext(): VisualPlanContextValue {
-  const value = useContext(VisualPlanContext);
-  if (!value) throw new Error("useVisualPlan must be used within VisualPlanProvider");
-  return value;
+function defaultDecisions(plan: VisualPlanSummary, threshold: number): Record<string, Decision> {
+  if (plan.needsConfirmation === false) return Object.fromEntries(plan.placements.map(item => [item.id, { source: item.source, assetId: item.assetId }]));
+  const used = new Set<string>();
+  return Object.fromEntries(plan.placements.map((placement, index) => {
+    const requiredId = plan.requiredAssetIds?.[index];
+    const candidate = requiredId
+      ? placement.candidates.find(item => item.assetId === requiredId)
+      : placement.candidates.find(item => item.score / 10 >= threshold && !used.has(item.assetId));
+    if (candidate) used.add(candidate.assetId);
+    return [placement.id, { source: candidate ? "existing_asset" : "generate", assetId: candidate?.assetId ?? null }];
+  }));
+}
+function errorMessage(error: unknown, fallback: string): string {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail) return String(detail.message);
+  return error instanceof Error ? error.message : fallback;
 }
 
-/** 智能配图任务的全局状态：
- * 确认弹窗和生图进度放在 App 级 Provider，切到其它页面也不会丢失进行中的任务。 */
+/** 与蓝本一致：规划不生图，确认后最多四张并行，全部准备好才提交正文。 */
 export function VisualPlanProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<VisualPlanJob | null>(null);
   const [completed, setCompleted] = useState<CompletedVisualApply | null>(null);
   const [excludedIds, setExcludedIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [promptEdits, setPromptEdits] = useState<Record<string, string>>({});
-  const [styleSelections, setStyleSelections] = useState<Record<string, string>>({});
-  const [previews, setPreviews] = useState<Record<string, string>>({});
-  const [previewing, setPreviewing] = useState<string | null>(null);
-  const [editingPrompts, setEditingPrompts] = useState<Record<string, boolean>>({});
+  const [phase, setPhase] = useState("");
+  const [stale, setStale] = useState(false);
+  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [imageModels, setImageModels] = useState<ImageModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState("");
   const [targetCount, setTargetCount] = useState(2);
   const [dismissed, setDismissed] = useState(false);
-  const [materialMatchThreshold, setMaterialMatchThreshold] = useState(30);
+  const [materialMatchThreshold, setMaterialMatchThreshold] = useState(40);
+  const lock = useRef(false);
+  const dirtyArticles = useRef(new Set<string>());
+  // 失败重试保留成功的图片；更换正文、提示词、模型后不复用。
+  const generated = useRef(new Map<string, string>());
+  const automaticApproval = useRef<VisualPlanSummary | null>(null);
   const navigate = useNavigate();
+  const { activeRun, runStatus } = useActiveRun();
+  const plannedRun = useRef<string | null>(null);
+  const observeEditor = useCallback((articleId: string, dirty: boolean) => {
+    if (dirty) dirtyArticles.current.add(articleId);
+    else dirtyArticles.current.delete(articleId);
+    if (dirty) setStale(current => current || job?.articleId === articleId);
+  }, [job?.articleId]);
 
-  // 加载可选生图模型列表
   useEffect(() => {
     api.get<{ models: ImageModelOption[] }>("/settings/image-models")
-      .then((res) => {
-        const models = res.data.models ?? [];
-        setImageModels(models);
-        if (models.length > 0) setSelectedModel(models[0].id);
-      })
+      .then(res => setImageModels(res.data.models ?? []))
       .catch(() => setImageModels([]));
   }, []);
 
+  const installPlan = (articleId: string, plan: VisualPlanSummary, snapshot: VisualPlanSnapshot | null) => {
+    const threshold = plan.materialMatchThreshold ?? 40;
+    const snapshotMatches = snapshot?.revisionId === plan.sourceRevisionId && snapshot?.contentHash === plan.sourceContentHash;
+    setJob({ articleId, plan, snapshot: snapshotMatches ? snapshot : null });
+    setDecisions(defaultDecisions(plan, threshold));
+    setSelectedModel(plan.imageModelId ?? "");
+    setMaterialMatchThreshold(threshold);
+    setTargetCount(plan.targetCount);
+    setExcludedIds([]);
+    setError(null);
+    setStale(dirtyArticles.current.has(articleId) || Boolean(snapshot && !snapshotMatches));
+    setDismissed(false);
+  };
+  const setPlanForArticle = installPlan;
+
   const startPlan = async (articleId: string, options: StartVisualPlanOptions = {}) => {
-    if (busy) return;
+    if (lock.current) return;
+    if (dirtyArticles.current.has(articleId)) { setError("请先保存正文，再生成配图策略。"); return; }
+    lock.current = true;
     setBusy(true);
+    setPhase("正在规划配图，不会调用生图接口");
     setError(null);
-    setExcludedIds([]);
     setDismissed(false);
     try {
-      const res = await api.post<VisualPlanSummary>(
-        `/articles/${articleId}/visual-plan`,
-        {
-          targetCount: options.targetCount ?? targetCount,
-          assetIds: options.assetIds ?? [],
-          materialMatchThreshold,
-        },
-      );
-      if (res.data.placements.length === 0) {
-        setError("视觉规划认为本文不需要配图。");
-        setJob(null);
-        return;
-      }
-      setJob({
-        articleId,
-        plan: res.data,
-        snapshot: options.snapshot ?? null,
+      const res = await api.post<VisualPlanSummary>(`/articles/${articleId}/visual-plan`, {
+        targetCount: options.targetCount ?? targetCount,
+        assetIds: options.assetIds ?? [],
+        materialMatchThreshold: options.materialMatchThreshold ?? materialMatchThreshold,
+        mode: options.mode ?? "fixed",
+        requiredAssetIds: options.requiredAssetIds ?? [],
       });
-    } catch {
-      setError("配图规划失败，请稍后重试。");
-    } finally {
-      setBusy(false);
+      if (options.runKey) sessionStorage.setItem(options.runKey, "1");
+      if (!res.data.placements.length) { setJob(null); setError("视觉规划认为本文不需要配图。"); return; }
+      installPlan(articleId, { ...res.data, imageModelId: options.imageModelId ?? null }, options.snapshot ?? null);
+    } catch (err) { setError(errorMessage(err, "配图规划失败，请稍后重试。")); }
+    finally { lock.current = false; setBusy(false); }
+  };
+
+  // 与蓝本 App 级编排相同：正文运行完成并落库后规划，切换页面不改变触发时机。
+  useEffect(() => {
+    if (!activeRun?.visualPlan?.enabled || runStatus !== "succeeded" || job || busy || lock.current) return;
+    const runKey = `gaoliu.visual-applied:${activeRun.runId}`;
+    if (plannedRun.current === activeRun.runId || sessionStorage.getItem(runKey)) return;
+    plannedRun.current = activeRun.runId;
+    const options = activeRun.visualPlan;
+    void startPlan(activeRun.articleId, {
+      targetCount: options.targetCount, assetIds: options.assetIds,
+      imageModelId: options.imageModelId, mode: options.mode ?? "fixed",
+      materialMatchThreshold: options.materialMatchThreshold ?? 40, runKey,
+    });
+  }, [activeRun, runStatus, job, busy]);
+
+  const ensureCurrent = async (current: VisualPlanJob) => {
+    const res = await api.get<VisualApplyResult["article"]>(`/articles/${current.articleId}`);
+    if (dirtyArticles.current.has(current.articleId)
+      || res.data.currentRevisionId !== current.plan.sourceRevisionId
+      || res.data.contentHash !== current.plan.sourceContentHash) {
+      setStale(true);
+      throw new Error(STALE_MESSAGE);
     }
+    return { revisionId: res.data.currentRevisionId, contentHash: res.data.contentHash, markdown: res.data.markdown };
   };
 
-  const setPlanForArticle = (
-    articleId: string,
-    plan: VisualPlanSummary,
-    snapshot: VisualPlanSnapshot | null,
-  ) => {
-    setJob({ articleId, plan, snapshot });
-    setExcludedIds([]);
-    setError(null);
-  };
-
-  const getEffectivePrompt = (placementId: string, originalPrompt: string) => {
-    const edited = promptEdits[placementId];
-    const style = STYLE_PRESETS.find((s) => s.id === (styleSelections[placementId] ?? "default"));
-    let prompt = edited ?? originalPrompt;
-    if (style && style.suffix && !prompt.includes(style.suffix)) {
-      prompt = prompt.replace(/风格：.*?(?=。|$)/, `风格：${style.suffix}`);
-      if (prompt.includes(style.suffix)) return prompt;
-      prompt = `${prompt} 风格：${style.suffix}`;
-    }
-    return prompt;
-  };
-
-  const updatePrompt = (placementId: string, value: string) => {
-    setPromptEdits((current) => ({ ...current, [placementId]: value }));
-  };
-
-  const togglePromptEdit = (placementId: string) => {
-    setEditingPrompts((current) => ({ ...current, [placementId]: !current[placementId] }));
-  };
-
-  const updateStyle = (placementId: string, styleId: string) => {
-    setStyleSelections((current) => ({ ...current, [placementId]: styleId }));
-  };
-
-  const generatePreview = async (placementId: string, originalPrompt: string) => {
-    if (previewing) return;
-    setPreviewing(placementId);
-    const prompt = getEffectivePrompt(placementId, originalPrompt);
-    try {
-      const res = await api.post<{ source: string }>("/media/preview", {
-        prompt: prompt.slice(0, 2000),
-        size: "1024x1024",
-        imageModelId: selectedModel || undefined,
-      });
-      setPreviews((current) => ({ ...current, [placementId]: res.data.source }));
-    } catch {
-      setError("预览生成失败，请检查生图模型配置。");
-    } finally {
-      setPreviewing(null);
-    }
-  };
-
-  const togglePlacement = (placementId: string) => {
-    setExcludedIds((current) =>
-      current.includes(placementId)
-        ? current.filter((id) => id !== placementId)
-        : [...current, placementId],
-    );
-  };
-
-  const replan = async (count: number) => {
+  useEffect(() => {
     if (!job || busy) return;
-    setTargetCount(count);
-    setBusy(true);
-    setError(null);
-    setExcludedIds([]);
-    try {
-      const res = await api.post<VisualPlanSummary>(
-        `/articles/${job.articleId}/visual-plan`,
-        { targetCount: count, assetIds: [], materialMatchThreshold },
-      );
-      if (res.data.placements.length === 0) {
-        setError("视觉规划认为本文不需要配图。");
-        return;
-      }
-      setJob({ ...job, plan: res.data });
-    } catch {
-      setError("重新规划失败，请稍后重试。");
-    } finally {
-      setBusy(false);
-    }
-  };
+    let active = true;
+    const check = () => {
+      api.get<VisualApplyResult["article"]>(`/articles/${job.articleId}`).then(res => {
+        if (active && (res.data.currentRevisionId !== job.plan.sourceRevisionId || res.data.contentHash !== job.plan.sourceContentHash)) setStale(true);
+      }).catch(() => { /* 确认时再次严格校验；短暂断网不改变方案。 */ });
+    };
+    check();
+    window.addEventListener("focus", check);
+    const timer = window.setInterval(check, 5000);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", check); };
+  }, [job, busy]);
 
+  const togglePlacement = (id: string) => setExcludedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+  const replan = async (count?: number) => {
+    if (!job || lock.current) return;
+    await startPlan(job.articleId, {
+      targetCount: count ?? (job.plan.mode === "auto" ? 0 : targetCount), assetIds: job.plan.assetIds ?? [],
+      materialMatchThreshold, mode: count === undefined ? job.plan.mode ?? "fixed" : "fixed",
+      imageModelId: selectedModel || null, requiredAssetIds: job.plan.requiredAssetIds ?? [],
+    });
+  };
   const closePlan = () => {
-    if (busy) return;
-    setJob(null);
-    setExcludedIds([]);
-    setError(null);
-    setDismissed(false);
+    if (lock.current) return;
+    setJob(null); setExcludedIds([]); setError(null); setDismissed(false); generated.current.clear();
   };
-
-  // 后台模式：收起弹窗但保留任务，状态由右下角浮条承接。
   const minimizePlan = () => setDismissed(true);
-
-  const resumeVisualPlan = () => {
-    if (!busy && !job && completed) {
-      navigate("/articles");
-      return;
-    }
-    setDismissed(false);
-  };
+  const resumeVisualPlan = () => { if (!job && completed) navigate("/articles"); setDismissed(false); };
 
   const confirmApply = async () => {
     const current = job;
-    if (!current || busy) return;
-    const placements = current.plan.placements.filter(
-      (placement) => !excludedIds.includes(placement.id),
-    ).map((placement) => ({
-      ...placement,
-      generationPrompt: getEffectivePrompt(placement.id, placement.generationPrompt),
-    }));
-    if (!placements.length) {
-      setError("请至少保留一张配图，或关闭方案。");
-      return;
-    }
-    setBusy(true);
-    setError(null);
+    if (!current || lock.current || stale) return;
+    const placements = current.plan.placements.filter(item => !excludedIds.includes(item.id)).map(item => ({ ...item, ...decisions[item.id] }));
+    if (!placements.length) { setError("请至少保留一张配图，或选择暂不配图。"); return; }
+    lock.current = true;
+    setBusy(true); setError(null); setPhase("正在校验正文与配图位置");
     try {
-      let snapshot = current.snapshot;
-      if (!snapshot) {
-        const articleRes = await api.get<VisualApplyResult["article"]>(
-          `/articles/${current.articleId}`,
-        );
-        snapshot = {
-          revisionId: articleRes.data.currentRevisionId,
-          contentHash: articleRes.data.contentHash,
-          markdown: articleRes.data.markdown,
-        };
+      const snapshot = await ensureCurrent(current);
+      const binding = { baseRevisionId: current.plan.sourceRevisionId, baseContentHash: current.plan.sourceContentHash };
+      // 先验证所有锚点及素材权限，避免失效方案触发生图。
+      await api.post(`/articles/${current.articleId}/visual-validate`, { ...binding, placements });
+      let finished = 0;
+      const resolved: VisualPlanPlacement[] = [];
+      for (let offset = 0; offset < placements.length; offset += BATCH_SIZE) {
+        await ensureCurrent(current);
+        const batch = placements.slice(offset, offset + BATCH_SIZE);
+        // 等待本批所有请求结束后再允许重试，避免失败时仍在后台重复生图。
+        const results = await Promise.allSettled(batch.map(async placement => {
+          let assetId = placement.assetId;
+          if (placement.source === "generate") {
+            const key = JSON.stringify([current.articleId, ...Object.values(binding), placement.id, placement.generationPrompt, selectedModel]);
+            assetId = generated.current.get(key) ?? null;
+            if (!assetId) {
+              const res = await api.post<{ id: string }>("/media/generate", {
+                prompt: placement.generationPrompt, size: "1536x1024", imageModelId: selectedModel || null,
+              });
+              if (!res.data.id) throw new Error("生图接口未返回可保存的图片。");
+              assetId = res.data.id;
+              generated.current.set(key, assetId);
+            }
+          }
+          finished += 1;
+          setPhase(`已准备 ${finished}/${placements.length} 张配图 · 每批最多 ${BATCH_SIZE} 张并行`);
+          return { ...placement, source: "existing_asset" as const, assetId };
+        }));
+        const failed = results.find(result => result.status === "rejected");
+        if (failed?.status === "rejected") throw failed.reason;
+        for (const result of results) if (result.status === "fulfilled") resolved.push(result.value);
+        await ensureCurrent(current);
       }
-      const res = await api.post<VisualApplyResult>(
-        `/articles/${current.articleId}/visual-apply`,
-        {
-          baseRevisionId: snapshot.revisionId,
-          baseContentHash: snapshot.contentHash,
-          placements,
-          imageModelId: selectedModel || null,
-        },
-      );
-      if (!res.data.insertedCount) {
-        const reason = res.data.skipped[0]?.reason;
-        setError(reason ? `配图应用失败：${reason}` : "配图应用失败，请稍后重试。");
-        return;
-      }
-      setCompleted({
-        articleId: current.articleId,
-        article: res.data.article,
-        snapshot,
-        insertedCount: res.data.insertedCount,
-        skipped: res.data.skipped,
-      });
-      setJob(null);
-      setExcludedIds([]);
+      setPhase("配图已全部准备好，正在保存正文新版本");
+      const res = await api.post<VisualApplyResult>(`/articles/${current.articleId}/visual-apply`, { ...binding, placements: resolved });
+      if (res.data.insertedCount !== placements.length) throw new Error(res.data.skipped[0]?.reason || "配图未全部插入，请重新生成策略。");
+      setCompleted({ articleId: current.articleId, article: res.data.article, snapshot, insertedCount: res.data.insertedCount, skipped: res.data.skipped });
+      setJob(null); setExcludedIds([]); generated.current.clear();
     } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail || "配图应用失败：文章可能已被修改，请刷新后重试。");
-    } finally {
-      setBusy(false);
-    }
+      if ((err as { response?: { status?: number } }).response?.status === 409) { setStale(true); setError(STALE_MESSAGE); }
+      else setError(errorMessage(err, "配图生成失败；正文未修改，成功生成的图片保留用于重试。"));
+    } finally { lock.current = false; setBusy(false); }
   };
 
-  const consumeCompleted = () => setCompleted(null);
+  useEffect(() => {
+    if (job?.plan.needsConfirmation === false && !busy && !stale && automaticApproval.current !== job.plan) {
+      automaticApproval.current = job.plan;
+      void confirmApply();
+    }
+  }, [job, busy, stale]);
 
+  const activePlacements = job?.plan.placements.filter(item => !excludedIds.includes(item.id)) ?? [];
+  const generatedCount = activePlacements.filter(item => decisions[item.id]?.source === "generate").length;
   return (
-    <VisualPlanContext.Provider
-      value={{
-        busy,
-        error,
-        job,
-        completed,
-        excludedIds,
-        startPlan,
-        setPlanForArticle,
-        togglePlacement,
-        closePlan,
-        minimizePlan,
-        confirmApply,
-        consumeCompleted,
-      }}
-    >
+    <VisualPlanContext.Provider value={{ busy, error, job, completed, excludedIds, startPlan, setPlanForArticle, togglePlacement, closePlan, minimizePlan, confirmApply, consumeCompleted: () => setCompleted(null), observeEditor }}>
       {children}
       {(job || busy || error) && !dismissed && (
         <div className="studio-modal" role="presentation">
           <div className="studio-modal__scrim" />
-          <section
-            aria-label="确认配图方案"
-            aria-modal="true"
-            className="creation-picker__dialog visual-plan-dialog"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            style={{ maxWidth: 600, width: "min(600px, 100%)" }}
-          >
-            <header style={{ alignItems: "center", display: "flex", justifyContent: "space-between", paddingBottom: 14, borderBottom: "1px solid var(--border, #eee)" }}>
-              <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
-                <div style={{
-                  alignItems: "center", background: "linear-gradient(135deg, var(--accent, #5b8def), color-mix(in srgb, var(--accent, #5b8def) 60%, #9b59b6))",
-                  borderRadius: 10, color: "#fff", display: "grid", height: 38, placeItems: "center", width: 38,
-                }}>
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <span style={{ color: "var(--accent, #5b8def)", fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>智能配图</span>
-                  <h2 style={{ fontSize: 17, margin: 0 }}>{job ? `确认配图方案（${job.plan.placements.length} 张）` : busy ? "正在规划配图" : "智能配图"}</h2>
-                </div>
-              </div>
-              <button
-                aria-label="配图任务转后台"
-                className="icon-button"
-                onClick={minimizePlan}
-                title="最小化到后台，稍后从右下角状态条恢复"
-                type="button"
-              >
-                ✕
-              </button>
+          <section aria-label="确认配图方案" aria-modal="true" className="creation-picker__dialog visual-plan-dialog" role="dialog" style={{ maxWidth: 600, width: "min(600px, 100%)" }}>
+            <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div><span className="page-kicker">正文配图方案</span><h2>确认后再开始生成</h2></div>
+              <button aria-label="配图任务转后台" className="icon-button" onClick={minimizePlan} type="button">✕</button>
             </header>
             <div className="visual-plan-dialog__body">
-            {busy && (
-              <div style={{
-                alignItems: "center", display: "flex", gap: 10, marginTop: 4, padding: "12px 14px",
-                border: "1px solid color-mix(in srgb, var(--accent, #5b8def) 18%, transparent)",
-                borderRadius: 10, background: "color-mix(in srgb, var(--accent, #5b8def) 6%, transparent)",
-              }}>
-                <LoaderCircle className="spin" size={18} style={{ color: "var(--accent, #5b8def)", flexShrink: 0 }} />
-                <div>
-                  <div style={{ color: "var(--ink)", fontSize: 13, fontWeight: 600 }}>
-                    {job ? "正在生成配图" : "正在规划配图"}
-                  </div>
-                  <div style={{ color: "var(--muted, #999)", fontSize: 12, marginTop: 2 }}>
-                    {job ? "生成图片并插入正文，切换页面后进度不会丢失。" : "分析正文内容，匹配合适的插图位置，切换页面后进度不会丢失。"}
-                  </div>
-                </div>
+              {busy && <p role="status"><LoaderCircle className="spin" size={16} /> {phase}</p>}
+              {error && <div className="workflow-task__failure" role="alert"><p>{error}</p></div>}
+              {stale && <div className="workflow-task__failure" role="status"><strong>当前策略已过期</strong><p>请保存当前正文后重新生成策略，旧方案不能直接插入。</p></div>}
+              <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>
+              <div className="visual-plan-settings">
+                <label>生图模型 <select aria-label="生图模型" disabled={busy} onChange={event => setSelectedModel(event.target.value)} value={selectedModel}>
+                  <option value="">跟随系统配置（默认）</option>
+                  {imageModels.map(model => <option key={model.id} value={model.id}>{model.name} · {model.model}</option>)}
+                </select></label>
+                <label>配图数量 <select aria-label="配图数量" disabled={busy} value={targetCount} onChange={event => void replan(Number(event.target.value))}>
+                  {[1, 2, 3, 4, 5, 6].map(count => <option key={count} value={count}>{count}</option>)}
+                </select></label>
+                <label className="creation-threshold">素材匹配阈值 <strong>{materialMatchThreshold}%</strong>
+                  <input aria-label="素材匹配阈值" type="range" min={0} max={100} step={5} disabled={busy} value={materialMatchThreshold} onChange={event => {
+                    const value = Number(event.target.value); setMaterialMatchThreshold(value);
+                    if (job) setDecisions(defaultDecisions(job.plan, value));
+                  }} />
+                </label>
+                <small>sketch-notes · 马卡龙配色 · 并发 4 · 预计生图 {generatedCount} 张 · 复用素材 {activePlacements.length - generatedCount} 张</small>
               </div>
-            )}
-            {error && (
-              <div className="workflow-task__failure" role="alert" style={{ marginTop: 10 }}>
-                <p>{error}</p>
-              </div>
-            )}
-            <p style={{ color: "var(--muted, #888)", fontSize: 12, lineHeight: 1.5, marginTop: 10 }}>
-              素材库图片按匹配度自动选用；未达到阈值的位置将调用生图模型生成新图。
-            </p>
-            {imageModels.length > 0 && (
-              <div style={{
-                alignItems: "center", display: "flex", gap: 8, marginTop: 10, padding: "8px 10px",
-                background: "var(--surface-muted, #f5f5f5)", borderRadius: 8,
-              }}>
-                <small style={{ color: "var(--muted, #888)", flexShrink: 0, fontSize: 11 }}>生图模型</small>
-                <ToolbarSelect
-                  className="toolbar-select--fill"
-                  label="生图模型"
-                  onChange={(value) => setSelectedModel(value)}
-                  options={imageModels.map((m) => ({ id: m.id, label: m.name }))}
-                  value={selectedModel}
-                />
-                <button
-                  className="button button--quiet"
-                  onClick={() => window.open("http://localhost:5174", "_blank")}
-                  style={{ fontSize: 11, flexShrink: 0, padding: "3px 8px" }}
-                  title="在管理端添加生图模型"
-                  type="button"
-                >
-                  + 添加
-                </button>
-              </div>
-            )}
-            {imageModels.length === 0 && (
-              <div style={{
-                alignItems: "center", display: "flex", gap: 8, marginTop: 10, padding: "8px 10px",
-                background: "var(--warning-soft, #fff3cd)", borderRadius: 8, border: "1px solid var(--warning, #ffc107)",
-              }}>
-                <small style={{ color: "var(--warning, #856404)", fontSize: 11 }}>
-                  未配置生图模型，请到管理端添加。
-                </small>
-              </div>
-            )}
-            <div style={{
-              alignItems: "center", display: "flex", gap: 8, marginTop: 10, padding: "8px 10px",
-              background: "var(--surface-muted, #f5f5f5)", borderRadius: 8,
-            }}>
-              <small className="visual-count__label">配图数量</small>
-              <div aria-label="配图数量" className="visual-count__segment" role="group">
-                {[1, 2, 3, 4, 5, 6].map((n) => (
-                  <button
-                    aria-pressed={n === targetCount}
-                    className={`visual-count__btn${n === targetCount ? " is-active" : ""}`}
-                    disabled={busy}
-                    key={n}
-                    onClick={() => void replan(n)}
-                    type="button"
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="creation-threshold" style={{ marginTop: 12 }}>
-              <span>
-                素材匹配阈值 <strong>{materialMatchThreshold}%</strong>
-              </span>
-              <input
-                aria-label="素材匹配阈值"
-                disabled={busy}
-                max={100}
-                min={0}
-                onChange={(event) => setMaterialMatchThreshold(Number(event.target.value))}
-                step={5}
-                type="range"
-                value={materialMatchThreshold}
-              />
-              <small>达到此匹配度时优先使用素材库图片；未达到阈值的位置将调用生图模型生成新图。</small>
-            </label>
-            <ol style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              {job?.plan.placements.map((placement) => {
-                const isExcluded = excludedIds.includes(placement.id);
-                const isEditing = editingPrompts[placement.id];
-                const effectivePrompt = getEffectivePrompt(placement.id, placement.generationPrompt);
-                const previewSrc = previews[placement.id];
-                const isPreviewing = previewing === placement.id;
-                return (
-                  <li
-                    key={placement.id}
-                    style={{
-                      border: `1px solid ${isExcluded ? "var(--border, #ddd)" : "color-mix(in srgb, var(--accent, #5b8def) 30%, transparent)"}`,
-                      borderRadius: 12, padding: "12px 14px",
-                      opacity: isExcluded ? 0.5 : 1,
-                      background: isExcluded ? "var(--surface-muted, #fafafa)" : "color-mix(in srgb, var(--accent, #5b8def) 3%, transparent)",
-                      transition: "all 200ms ease",
-                    }}
-                  >
-                    <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
-                      <strong style={{ flex: 1, minWidth: 0 }}>{placement.anchorHeading ?? "文章正文"}</strong>
-                      <span className="field-tag">
-                        {placement.source === "existing_asset" ? "使用素材库" : "AI 生成"}
-                      </span>
+              <ol className="visual-plan-placements">
+                {job?.plan.placements.map((placement, index) => {
+                  const decision = decisions[placement.id];
+                  const excluded = excludedIds.includes(placement.id);
+                  const candidate = placement.candidates.find(item => item.assetId === decision?.assetId);
+                  return <li key={placement.id} style={{ opacity: excluded ? 0.5 : 1 }}>
+                    <strong>配图 {index + 1} · {placement.anchorHeading ?? "文章正文"}</strong>
+                    <p>{placement.selectionReason}</p><blockquote>{placement.anchorExcerpt}</blockquote>
+                    <div role="radiogroup" aria-label={`配图 ${index + 1} 来源`}>
+                      <label><input type="radio" name={`visual-source-${placement.id}`} checked={decision?.source === "existing_asset"} disabled={busy || !placement.candidates.length} onChange={() => setDecisions(current => ({ ...current, [placement.id]: { source: "existing_asset", assetId: placement.candidates[0]?.assetId ?? null } }))} />使用素材</label>
+                      <label><input type="radio" name={`visual-source-${placement.id}`} checked={decision?.source !== "existing_asset"} disabled={busy} onChange={() => setDecisions(current => ({ ...current, [placement.id]: { source: "generate", assetId: null } }))} />AI 生图</label>
                     </div>
-                    <small style={{ display: "block", marginTop: 4 }}>
-                      {placement.selectionReason}｜alt：{placement.alt}
-                    </small>
-
-                    {/* 风格选择 + 提示词编辑 + 预览按钮 */}
-                    {placement.source === "generate" && !isExcluded && (
-                      <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                        <div style={{ alignItems: "center", display: "flex", gap: 6 }}>
-                          <small className="muted" style={{ flexShrink: 0 }}>风格</small>
-                          <ToolbarSelect
-                            className="toolbar-select--fill"
-                            label="风格"
-                            onChange={(value) => updateStyle(placement.id, value)}
-                            options={STYLE_PRESETS.map((s) => ({ id: s.id, label: s.label }))}
-                            value={styleSelections[placement.id] ?? "default"}
-                          />
-                          <button
-                            aria-label={isEditing ? "收起提示词" : "编辑提示词"}
-                            className="button button--quiet"
-                            disabled={busy}
-                            onClick={() => togglePromptEdit(placement.id)}
-                            style={{ padding: "4px 8px" }}
-                            title={isEditing ? "收起提示词" : "编辑提示词"}
-                            type="button"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            className="button button--quiet"
-                            disabled={busy || isPreviewing}
-                            onClick={() => void generatePreview(placement.id, placement.generationPrompt)}
-                            style={{ alignItems: "center", display: "flex", gap: 4, padding: "4px 8px" }}
-                            type="button"
-                          >
-                            {isPreviewing ? <LoaderCircle className="spin" size={13} /> : <Eye size={13} />}
-                            {isPreviewing ? "生成中…" : "预览"}
-                          </button>
-                        </div>
-
-                        {isEditing && (
-                          <textarea
-                            onChange={(e) => updatePrompt(placement.id, e.target.value)}
-                            placeholder="输入生图提示词…"
-                            rows={3}
-                            style={{ fontSize: 12, lineHeight: 1.5, padding: "6px 8px", resize: "vertical", width: "100%" }}
-                            value={promptEdits[placement.id] ?? placement.generationPrompt}
-                          />
-                        )}
-
-                        {!isEditing && (
-                          <small className="muted" style={{ cursor: "pointer", display: "-webkit-box", overflow: "hidden", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, fontSize: 11 }} onClick={() => togglePromptEdit(placement.id)}>
-                            {effectivePrompt}
-                          </small>
-                        )}
-
-                        {previewSrc && (
-                          <img
-                            alt={`预览：${placement.alt}`}
-                            src={previewSrc}
-                            style={{ borderRadius: 8, maxHeight: 200, objectFit: "cover", width: "100%" }}
-                          />
-                        )}
-                      </div>
-                    )}
-
-                    <div style={{ alignItems: "center", display: "flex", gap: 8, marginTop: 8 }}>
-                      <button
-                        className="button button--quiet"
-                        disabled={busy}
-                        onClick={() => togglePlacement(placement.id)}
-                        type="button"
-                      >
-                        {isExcluded ? "保留这张" : "不插入这张"}
-                      </button>
-                      {isExcluded && <small className="muted">确认应用时会跳过此位置。</small>}
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
+                    {decision?.source === "existing_asset" && <div>
+                      <select aria-label={`配图 ${index + 1} 素材`} disabled={busy} value={decision.assetId ?? ""} onChange={event => setDecisions(current => ({ ...current, [placement.id]: { source: "existing_asset", assetId: event.target.value } }))}>
+                        {placement.candidates.map(item => <option key={item.assetId} value={item.assetId}>{item.description || item.assetId} · {Math.round(item.score / 10)}%</option>)}
+                      </select>
+                      <img alt={placement.alt} src={`/api/media/${encodeURIComponent(decision.assetId ?? "")}/raw`} />
+                      {candidate && <small>{Math.round(candidate.score / 10)}% 匹配 · {candidate.description}</small>}
+                    </div>}
+                    {decision?.source === "generate" && <small className="muted">确认后生成这张正文配图，尺寸 1536 × 1024。</small>}
+                    <button className="button button--quiet" type="button" disabled={busy} onClick={() => togglePlacement(placement.id)}>{excluded ? "保留这张" : "不插入这张"}</button>
+                  </li>;
+                })}
+              </ol>
             </div>
-            <footer style={{ borderTop: "1px solid var(--border, #eee)", display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14, paddingTop: 14 }}>
-              <button className="button button--quiet" disabled={busy} onClick={job ? closePlan : undefined} style={{ padding: "8px 18px" }} type="button">
-                取消
-              </button>
-              <button
-                className="button button--primary"
-                disabled={busy || !job}
-                onClick={() => void confirmApply()}
-                style={{ alignItems: "center", background: "linear-gradient(135deg, var(--accent, #5b8def), color-mix(in srgb, var(--accent, #5b8def) 70%, #9b59b6))", border: "none", display: "flex", gap: 6, padding: "8px 18px" }}
-                type="button"
-              >
-                {busy ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
-                {busy ? (job ? "生成中…" : "规划中…") : "确认并插入配图"}
-              </button>
+            <footer className="visual-plan-footer">
+              <button className="button button--quiet" disabled={busy} onClick={closePlan} type="button">暂不配图</button>
+              <button className="button button--quiet" disabled={busy || !job} onClick={() => void replan()} type="button">重新生成策略</button>
+              <button className="button button--primary" disabled={busy || !job || stale} onClick={() => void confirmApply()} type="button">{busy ? "处理中…" : "确认并继续"}</button>
             </footer>
           </section>
         </div>
       )}
-      {dismissed && (busy || job || completed || error) && (
-        <button className="visual-plan-chip" onClick={resumeVisualPlan} type="button">
-          {busy && <LoaderCircle className="spin" size={14} />}
-          <span>
-            {busy
-              ? job
-                ? "智能配图 · 正在生成配图…"
-                : "智能配图 · 正在规划配图…"
-              : job
-                ? "配图方案已就绪 · 点击继续"
-                : completed
-                  ? `配图完成：已插入 ${completed.insertedCount} 张 · 点击查看`
-                  : "配图任务失败 · 点击查看"}
-          </span>
-        </button>
-      )}
+      {dismissed && (busy || job || completed || error) && <button className="visual-plan-chip" onClick={resumeVisualPlan} type="button">
+        {busy && <LoaderCircle className="spin" size={14} />}<span>{busy ? phase : job ? "配图方案已就绪 · 点击继续" : completed ? `配图完成：已插入 ${completed.insertedCount} 张 · 点击查看` : "配图任务失败 · 点击查看"}</span>
+      </button>}
     </VisualPlanContext.Provider>
   );
 }
 
 export function useVisualPlan() {
-  return useVisualPlanContext();
+  const value = useContext(VisualPlanContext);
+  if (!value) throw new Error("useVisualPlan must be used within VisualPlanProvider");
+  return value;
 }

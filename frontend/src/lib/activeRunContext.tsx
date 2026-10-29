@@ -13,6 +13,8 @@ import { useAuth } from "../auth/AuthContext";
 export type ActiveRunStatus = "running" | "succeeded" | "failed" | "stopped";
 
 export interface ActiveRunVisualPlan {
+  materialMatchThreshold?: number;
+  mode?: "none" | "auto" | "fixed";
   enabled: boolean;
   targetCount: number;
   imageModelId: string | null;

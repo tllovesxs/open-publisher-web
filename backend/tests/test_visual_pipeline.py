@@ -91,11 +91,11 @@ def _add_asset(factory, *, asset_id: str, alt: str) -> None:
 
 
 def test_plan_matches_asset_and_generates_prompts(factory, article):
-    _add_asset(factory, asset_id="a-arch", alt="产品架构流程图：服务组成与数据流")
+    _add_asset(factory, asset_id="a-arch", alt="系统由三个服务组成，流程从采集到渲染。")
     with factory() as db:
         service = VisualService(db)
         plan = service.plan(
-            markdown=MARKDOWN, target_count=2, asset_ids=["a-arch"],
+            markdown="## 产品架构\n\n系统由三个服务组成，流程从采集到渲染。\n\n## 数据对比\n\n导出速度差异明显。", target_count=2, asset_ids=["a-arch"], material_match_threshold=30,
         )
 
     assert plan["targetCount"] == 2
@@ -104,10 +104,11 @@ def test_plan_matches_asset_and_generates_prompts(factory, article):
     assert architecture["source"] == "existing_asset"
     assert architecture["assetId"] == "a-arch"
     assert architecture["candidates"][0]["assetId"] == "a-arch"
+    assert architecture["candidates"][0]["score"] == 355
     for placement in plan["placements"]:
         assert placement["anchorHeading"]
         assert placement["generationPrompt"]
-        assert "文字" in placement["generationPrompt"]
+        assert "No readable wording" in placement["generationPrompt"]
 
 
 def test_plan_without_assets_all_generate(factory, article):
@@ -177,9 +178,10 @@ def test_apply_inserts_assets_and_commits_revision(factory, article):
             **placements[0], "source": "generate",
             "generationPrompt": "一幅极简示意图",
         }
+        placements[1] = {**placements[1], "source": "existing_asset", "assetId": "a-1"}
         generated: dict = {}
 
-        def fake_generate(*, prompt: str, size: str = "1024x1024", image_profile_id: str | None = None):
+        def fake_generate(*, prompt: str, size: str = "1024x1024", image_profile_id: str | None = None, owner_user_id: str | None = None):
             generated["prompt"] = prompt
             return {
                 "id": "gen-1", "name": "生成图", "alt": prompt[:200],
@@ -234,7 +236,7 @@ def test_visual_plan_api_returns_hash_binding(client, article):
 
 
 def test_visual_apply_api_creates_new_revision(client, factory, article, monkeypatch):
-    def fake_generate(self, *, prompt: str, size: str = "1024x1024", image_profile_id: str | None = None):
+    def fake_generate(self, *, prompt: str, size: str = "1024x1024", image_profile_id: str | None = None, owner_user_id: str | None = None):
         return {
             "id": "gen-api", "name": "生成图", "alt": prompt[:200],
             "usageHint": "AI 生成", "mime": "image/png",
@@ -261,3 +263,128 @@ def test_visual_apply_api_creates_new_revision(client, factory, article, monkeyp
     state = client.get("/api/articles/article-visual").json()
     assert state["currentRevisionId"] == body["article"]["currentRevisionId"]
 
+
+
+@pytest.mark.parametrize("length, expected", [(900, 1), (901, 2), (2000, 2), (2001, 3), (3800, 3), (3801, 4)])
+def test_auto_count_matches_blueprint(length, expected):
+    from app.services.visual_service import auto_image_count
+    assert auto_image_count("字" * length) == expected
+
+
+def test_blueprint_similarity_and_paragraph_filter():
+    from app.services.visual_service import _similarity, _tokens, split_markdown_blocks
+    assert _tokens("中 ab c 中文测试") == {"中", "ab", "中文", "文测", "测试", "中文测", "文测试"}
+    assert _similarity("alpha beta gamma", "alpha beta") == 691
+    blocks = split_markdown_blocks("# 标题\n\n正文一。\n\n```md\n伪正文\n```\n\n![图](asset://x)\n\n| 表格 |\n\n- 列表\n\n> 引用\n\n正文二。")
+    assert [b.text for b in blocks] == ["正文一。", "正文二。"]
+
+
+def test_plan_only_selected_accessible_assets(factory, article):
+    _add_asset(factory, asset_id="shared", alt="背景")
+    _add_asset(factory, asset_id="private", alt="背景")
+    with factory() as db:
+        db.get(MediaAsset, "private").owner_user_id = "other-user"
+        db.commit()
+        plan = VisualService(db).plan(markdown=MARKDOWN, target_count=2, asset_ids=["private", "shared"], owner_user_id="u-test")
+        assert plan["assetIds"] == ["shared"]
+        assert all(c["assetId"] == "shared" for p in plan["placements"] for c in p["candidates"])
+        empty = VisualService(db).plan(markdown=MARKDOWN, target_count=2, owner_user_id="u-test")
+        assert all(not p["candidates"] for p in empty["placements"])
+
+
+def test_required_asset_survives_top_five_and_skips_redundant_confirmation(factory):
+    for i in range(6):
+        _add_asset(factory, asset_id=f"asset-{i}", alt="完全不同" if i == 5 else "alpha beta")
+    with factory() as db:
+        plan = VisualService(db).plan(markdown="# 标题\n\nalpha beta", target_count=0, mode="none", asset_ids=[f"asset-{i}" for i in range(6)], required_asset_ids=["asset-5"])
+    assert plan["targetCount"] == 1
+    assert plan["needsConfirmation"] is False
+    assert plan["placements"][0]["assetId"] == "asset-5"
+    assert any(c["assetId"] == "asset-5" for c in plan["placements"][0]["candidates"])
+
+
+def test_preflight_checks_all_anchors_before_any_image(factory, article):
+    with factory() as db:
+        service = VisualService(db)
+        service.media.generate = lambda **kwargs: pytest.fail("Invalid plan must not call image model")
+        placements = service.plan(markdown=MARKDOWN, target_count=2)["placements"]
+        placements[1] = {**placements[1], "anchorHeading": "missing", "anchorExcerpt": "missing"}
+        with pytest.raises(ValueError, match="锚点"):
+            service.apply(article_id=article["articleId"], base_revision_id=article["currentRevisionId"], base_content_hash=article["contentHash"], placements=placements)
+        assert ArticleStore(db).read(article["articleId"])["currentRevisionId"] == article["currentRevisionId"]
+
+
+def test_apply_failure_does_not_insert_partial_article(factory, article):
+    with factory() as db:
+        service = VisualService(db)
+        placements = service.plan(markdown=MARKDOWN, target_count=2)["placements"]
+        calls = []
+        def fake_generate(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 2:
+                raise RuntimeError("mock provider failed")
+            return {"id": "generated-first"}
+        service.media.generate = fake_generate
+        with pytest.raises(RuntimeError):
+            service.apply(article_id=article["articleId"], base_revision_id=article["currentRevisionId"], base_content_hash=article["contentHash"], placements=placements, owner_user_id="u-test")
+        assert all(c["size"] == "1536x1024" and c["owner_user_id"] == "u-test" for c in calls)
+        assert ArticleStore(db).read(article["articleId"])["markdown"] == article["markdown"]
+
+
+def test_validation_endpoint_is_read_only_and_rejects_stale(client, article, monkeypatch):
+    from app.services.media_service import MediaService
+    monkeypatch.setattr(MediaService, "generate", lambda *args, **kwargs: pytest.fail("validation must not generate"))
+    plan = client.post("/api/articles/article-visual/visual-plan", json={"mode": "auto", "targetCount": 0}).json()
+    body = {"baseRevisionId": article["currentRevisionId"], "baseContentHash": article["contentHash"], "placements": plan["placements"]}
+    assert client.post("/api/articles/article-visual/visual-validate", json=body).json() == {"valid": True}
+    body["baseRevisionId"] = "stale"
+    assert client.post("/api/articles/article-visual/visual-validate", json=body).status_code == 409
+    assert client.get("/api/articles/article-visual").json()["markdown"] == article["markdown"]
+
+
+def test_apply_rejects_inaccessible_or_deleted_material(client, factory, article):
+    _add_asset(factory, asset_id="other-image", alt="测试")
+    with factory() as db:
+        db.get(MediaAsset, "other-image").owner_user_id = "other-user"
+        db.commit()
+    placement = client.post("/api/articles/article-visual/visual-plan", json={"targetCount": 1}).json()["placements"][0]
+    for asset_id in ["other-image", "deleted-image"]:
+        body = {"baseRevisionId": article["currentRevisionId"], "baseContentHash": article["contentHash"], "placements": [{**placement, "source": "existing_asset", "assetId": asset_id}]}
+        assert client.post("/api/articles/article-visual/visual-apply", json=body).status_code == 400
+
+
+
+def test_creation_prompt_keeps_images_in_post_save_workflow():
+    from app.services.writer_service import WriterService
+    sections = "\n".join(WriterService._creation_sections({"imagePlan": {"mode": "auto", "targetCount": 0}, "imageAssets": ["selected-material"]}))
+    assert "按篇幅自动确定数量" in sections
+    assert "目标图片数量：0" not in sections
+    assert "不输出图片占位符" in sections
+    assert "正文阶段不插图" in sections
+
+
+def test_generate_api_accepts_blueprint_prompt_length(client, monkeypatch):
+    from app.services.media_service import MediaService
+    seen = []
+    monkeypatch.setattr(MediaService, "generate", lambda self, **kwargs: seen.append(kwargs) or {"id": "mock"})
+    res = client.post("/api/media/generate", json={"prompt": "p" * 4000, "size": "1536x1024", "imageModelId": "chosen-profile"})
+    assert res.status_code == 201
+    assert len(seen[0]["prompt"]) == 4000
+    assert seen[0]["owner_user_id"] == "u-test"
+    assert seen[0]["image_profile_id"] == "chosen-profile"
+
+
+
+def test_anchor_tracks_exact_paragraph_with_wrapped_lines():
+    from app.services.visual_service import _match_block, split_markdown_blocks
+    markdown = "## 同一小节\n\n第一段不应插图。\n\n第二段开头，\n换行但属于同一段。\n\n第三段。"
+    placement = {"anchorHeading": "同一小节", "anchorExcerpt": "第二段开头， 换行但属于同一段。"}
+    blocks = split_markdown_blocks(markdown)
+    assert _match_block(placement, blocks).text.startswith("第二段开头")
+    assert VisualService._anchor_line(markdown.splitlines(), placement) == 5
+    assert VisualService._anchor_line(markdown.splitlines(), {**placement, "anchorExcerpt": "已不存在的段落"}) is None
+
+
+def test_auto_count_uses_blueprint_utf16_length():
+    from app.services.visual_service import auto_image_count
+    assert auto_image_count("😀" * 451) == 2

@@ -10246,3 +10246,16 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
   color: var(--muted);
   font-size: 11px;
 }
+
+/* 蓝本配图确认：设置与逐图决策在独立滚动区，窄屏可换行。 */
+.visual-plan-settings, .visual-plan-placements { display: grid; gap: 12px; margin-top: 12px; }
+.visual-plan-settings label { display: grid; gap: 6px; }
+.visual-plan-dialog select { max-width: 100%; min-width: 0; padding: 6px 8px; }
+.visual-plan-placements { padding-left: 0; list-style: none; }
+.visual-plan-placements > li { display: grid; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; overflow-wrap: anywhere; }
+.visual-plan-placements p, .visual-plan-placements blockquote { margin: 0; }
+.visual-plan-placements blockquote { border-left: 2px solid var(--border); padding-left: 10px; color: var(--muted); }
+.visual-plan-placements [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: 16px; }
+.visual-plan-placements [role="radiogroup"] label { display: flex; align-items: center; gap: 5px; }
+.visual-plan-placements img { display: block; max-width: 100%; max-height: 180px; object-fit: contain; margin: 8px 0; border-radius: 8px; }
+.visual-plan-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }

@@ -16,7 +16,7 @@ import { SyncPublishDialog } from "../components/article/SyncPublishDialog";
 import { PublishNoticeDialog, publishNoticeMutedToday } from "../components/article/PublishNoticeDialog";
 import { MarkdownWorkbench, type ImageInsertion, type MarkdownSelection, type PreviewPlatform } from "../components/article/MarkdownWorkbench";
 import { ArticleImagePane, type ArticleFigure } from "../components/article/ArticleImagePane";
-import { useVisualPlan, type VisualPlanSummary } from "../components/article/VisualPlanProvider";
+import { useVisualPlan } from "../components/article/VisualPlanProvider";
 import ArticleRunTimeline from "../components/ArticleRunTimeline";
 import { articleNodeLabel } from "../workflow/articleNodes";
 import { insertMarkdownAtLine, moveMarkdownSpanToLine, removeMarkdownSpan } from "../components/article/articleMarkdown";
@@ -131,10 +131,13 @@ export default function ArticlesPage() {
     busy: visualBusy,
     completed: completedVisualApply,
     startPlan: startVisualPlanJob,
-    setPlanForArticle: setVisualPlanForArticle,
     consumeCompleted: consumeCompletedVisualApply,
+    observeEditor: observeVisualEditor,
   } = useVisualPlan();
   const userEditedRef = useRef(false);
+  useEffect(() => {
+    if (selected) observeVisualEditor(selected.articleId, userEditedRef.current && draft !== selected.markdown);
+  }, [selected, draft, observeVisualEditor]);
   const finalDraftRef = useRef<string | null>(null);
   // F-007 受控打字机：SSE 增量进队列，requestAnimationFrame 逐字渲染，
   // 手动编辑（userEditedRef）立即清空队列，AI 不会覆盖用户输入。
@@ -372,56 +375,22 @@ export default function ArticlesPage() {
     };
   }, [activeRun, followedRunArticleId]);
 
-  // 全局监听收到完成事件后，这里负责把最终文章刷新进编辑器。
-  // 创作页选择的配图参数随全局 run 传过来，避免离开创作页后丢失自动配图步骤。
+  // 正文完成后立即刷新编辑器；视觉规划由 App 级 Provider 独立接续。
   useEffect(() => {
     if (runStatus !== "succeeded" || !activeRun || activeRun.articleId !== followedRunArticleId) return;
-    const visualPlan = activeRun.visualPlan;
-    const visualKey = `gaoliu.visual-applied:${activeRun.runId}`;
+    let cancelled = false;
     void (async () => {
-      let pendingVisualPlan: VisualPlanSummary | null = null;
-      let refreshedArticle: ArticleState | null = null;
-      if (visualPlan?.enabled && !sessionStorage.getItem(visualKey)) {
-        sessionStorage.setItem(visualKey, "1");
-        try {
-          const plan = await api.post<VisualPlanSummary>(
-            `/articles/${activeRun.articleId}/visual-plan`,
-            { targetCount: visualPlan.targetCount, assetIds: visualPlan.assetIds },
-          );
-          if (plan.data.placements.length > 0) {
-            pendingVisualPlan = { ...plan.data, imageModelId: visualPlan.imageModelId };
-          }
-        } catch {
-          setError("自动配图规划失败；正文已正常保存。");
-        }
-      }
       try {
-        const [article] = await Promise.all([
-          bridge.getArticle(activeRun.articleId),
-          loadArticles(),
-        ]);
-        refreshedArticle = article;
+        const [article] = await Promise.all([bridge.getArticle(activeRun.articleId), loadArticles()]);
+        if (cancelled) return;
         setSelected(article);
         if (!userEditedRef.current) {
           if (typewriterRef.current.queue) finalDraftRef.current = article.markdown;
           else setDraft(article.markdown);
         }
-      } catch {
-        void loadArticles();
-      }
-      // 文章已加载进编辑器后，弹出确认框让用户审核方案再真正生图。
-      if (pendingVisualPlan && refreshedArticle) {
-        setVisualPlanForArticle(
-          activeRun.articleId,
-          pendingVisualPlan,
-          {
-            revisionId: refreshedArticle.currentRevisionId,
-            contentHash: refreshedArticle.contentHash,
-            markdown: refreshedArticle.markdown,
-          },
-        );
-      }
+      } catch { if (!cancelled) void loadArticles(); }
     })();
+    return () => { cancelled = true; };
   }, [activeRun, followedRunArticleId, loadArticles, runStatus]);
 
   // 全局配图任务完成后，回到文章页时仍能刷新正文并保留撤销快照。
@@ -549,14 +518,24 @@ export default function ArticlesPage() {
     if (!selected || visualBusy) return;
     setError(null);
     setVisualResultNote(null);
-    await startVisualPlanJob(selected.articleId, {
-      targetCount: 2,
-      assetIds: [],
-      snapshot: {
-        revisionId: selected.currentRevisionId,
-        contentHash: selected.contentHash,
-        markdown: selected.markdown,
-      },
+    let article = selected;
+    // 蓝本以持久化正文为规划输入，先把用户的编辑落为当前版本。
+    if (draft !== selected.markdown) {
+      try {
+        const res = await api.post<ArticleState>("/articles", {
+          articleId: selected.articleId, baseRevisionId: selected.currentRevisionId,
+          baseContentHash: selected.contentHash, title: selected.title, markdown: draft,
+          reason: "配图规划前保存正文",
+        });
+        article = res.data;
+        setSelected(article);
+        observeVisualEditor(article.articleId, false);
+        void loadArticles();
+      } catch { setError("配图规划前保存失败，请刷新文章后重试。"); return; }
+    }
+    await startVisualPlanJob(article.articleId, {
+      targetCount: 0, mode: "auto", assetIds: [],
+      snapshot: { revisionId: article.currentRevisionId, contentHash: article.contentHash, markdown: article.markdown },
     });
   };
 
