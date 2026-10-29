@@ -61,7 +61,7 @@ function ModelPanel({ id, hidden, title, actions, children }: { id: string; hidd
 
 function connectionError(detail: unknown): string {
   if (typeof detail !== "string") return "连接失败，请检查服务地址、模型名称和访问密钥。";
-  if (/控制台|图片编辑模型|硅基流动服务地址|服务商拒绝生图参数|生图接口或模型不存在|生图调用失败/.test(detail)) return detail;
+  if (/检索接口|检索服务|嵌入接口|嵌入向量|排序接口|模型类型不匹配|未配置此检索|所选接口协议|控制台|图片编辑模型|硅基流动服务地址|服务商拒绝生图参数|生图接口或模型不存在|生图调用失败/.test(detail)) return detail;
   if (/401|403|api.?key|unauthorized|访问验证失败/i.test(detail)) return "访问验证失败，请检查密钥及模型使用权限。";
   if (/404|does not support|not found/i.test(detail)) return "当前服务不支持所选模型，请检查服务地址和模型名称。";
   if (/timeout|timed out|超时/i.test(detail)) return "服务响应超时，请稍后重试。";
@@ -291,9 +291,11 @@ function AiConfigPage() {
     <div className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          <span className="brand-mark">OP</span>
+          <span className="brand-mark" aria-hidden="true">
+            <img alt="" src="/gaoliu-mark.svg" />
+          </span>
           <div>
-            <strong>Open Publisher</strong>
+            <strong>稿流</strong>
             <small>管理控制台</small>
           </div>
         </div>
