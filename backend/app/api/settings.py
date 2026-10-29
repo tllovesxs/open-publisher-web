@@ -29,7 +29,8 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 class ModelCapabilities(BaseModel):
     contextWindow: int = Field(default=128000, ge=1024, le=4000000)
-    maxTokens: int = Field(default=8192, ge=256, le=200000)
+    maxTokens: int = Field(default=16384, ge=256, le=200000)
+    thinkingLevel: Literal["auto", "off", "low", "medium", "high"] = "auto"
     vision: bool = False
     reasoning: bool = False
 
@@ -82,7 +83,7 @@ def _profile_key_fields(db: Session, profile: ModelProfile) -> dict:
 def _profile_out(profile: ModelProfile, db: Session) -> dict:
     key = _profile_key_fields(db, profile)
     return {
-        "capabilities": profile.capabilities or ModelCapabilities().model_dump(),
+        "capabilities": ModelCapabilities(**(profile.capabilities or {})).model_dump(),
         "id": profile.id,
         "name": profile.name,
         "provider": profile.provider,

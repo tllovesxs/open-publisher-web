@@ -63,9 +63,14 @@ class LLMClient:
         )
 
     def _options(self, temperature):
+        budget = self.capabilities.get("maxTokens", 16384)
+        level = self.capabilities.get("thinkingLevel", "auto")
+        if self.model.lower().startswith("glm-"):
+            return {"temperature": temperature, "max_tokens": budget,
+                    "extra_body": {"thinking": {"type": "enabled" if level != "off" and self.capabilities.get("reasoning") else "disabled"}}}
         if self.capabilities.get("reasoning"):
-            return {"max_completion_tokens": self.capabilities.get("maxTokens", 8192), "reasoning_effort":"medium"}
-        return {"temperature":temperature, "max_tokens": self.capabilities.get("maxTokens", 8192)}
+            return {"max_completion_tokens": budget, "reasoning_effort": "medium" if level == "auto" else "none" if level == "off" else level}
+        return {"temperature": temperature, "max_tokens": budget}
 
     @property
     def api_key_configured(self) -> bool:
@@ -155,6 +160,7 @@ class LLMClient:
             "messages": request_messages,
             **self._options(temperature),
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
         if tools:
             kwargs["tools"] = tools
@@ -165,11 +171,19 @@ class LLMClient:
             content_parts: list[str] = []
             tool_calls: dict[int, dict] = {}
             finish_reason = None
+            usage = {}
+            reasoning_chars = 0
             for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    raw = chunk.usage
+                    details = getattr(raw, "completion_tokens_details", None)
+                    usage = {"inputTokens": raw.prompt_tokens, "outputTokens": raw.completion_tokens,
+                             "reasoningTokens": getattr(details, "reasoning_tokens", None)}
                 if not chunk.choices:
                     continue
                 finish_reason = chunk.choices[0].finish_reason or finish_reason
                 delta = chunk.choices[0].delta
+                reasoning_chars += len(getattr(delta, "reasoning_content", None) or "")
                 content = getattr(delta, "content", None)
                 if content:
                     content_parts.append(content)
@@ -193,6 +207,8 @@ class LLMClient:
                 "content": "".join(content_parts),
                 "toolCalls": ordered,
                 "finishReason": finish_reason,
+                "usage": usage,
+                "reasoningChars": reasoning_chars,
             }
         except Exception as exc:  # noqa: BLE001 - 统一转为 LLMError
             raise LLMError(f"LLM 调用失败：{exc}") from exc

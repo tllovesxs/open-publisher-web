@@ -15,7 +15,11 @@ interface ModelStatus {
   profileName: string | null;
 }
 
+interface Capabilities { maxTokens: number; contextWindow: number; reasoning: boolean; vision: boolean; thinkingLevel: string; }
+const defaultCapabilities: Capabilities = { maxTokens: 16384, contextWindow: 128000, reasoning: false, vision: false, thinkingLevel: "auto" };
+
 interface ProfileOut {
+  capabilities?: Capabilities;
   id: string;
   name: string;
   provider: string;
@@ -34,6 +38,7 @@ const emptyForm = {
   baseUrl: "",
   modelId: "",
   timeoutSeconds: 120,
+  capabilities: defaultCapabilities,
 };
 
 interface ImageStatus {
@@ -94,6 +99,7 @@ function AiConfigPage() {
   const [showImageForm, setShowImageForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ view: string; name: string } | null>(null);
   const [activeView, setActiveView] = useState("text");
@@ -146,7 +152,9 @@ function AiConfigPage() {
     setBusyAction("createProfile");
     setError(null);
     try {
-      await api.post("/settings/profiles", { ...form, isDefault: profiles.length === 0 });
+      if (editingProfileId) await api.patch(`/settings/profiles/${editingProfileId}`, form);
+      else await api.post("/settings/profiles", { ...form, isDefault: profiles.length === 0 });
+      setEditingProfileId(null);
       setForm(emptyForm);
       setShowForm(false);
       await load();
@@ -574,7 +582,7 @@ function AiConfigPage() {
       <section className="admin-card" id="sec-profiles" hidden={activeView !== "profiles"}>
         <div className="section-head">
           <h2>文本模型方案</h2>
-          <button className="primary" onClick={() => setShowForm(!showForm)} type="button">
+          <button className="primary" onClick={() => { setEditingProfileId(null); setForm(emptyForm); setShowForm(!showForm); }} type="button">
             <Plus size={14} /> 新增方案
           </button>
         </div>
@@ -590,6 +598,11 @@ function AiConfigPage() {
             <label><span>服务地址</span><input onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="服务地址，例如 https://api.openai.com/v1" required value={form.baseUrl} /></label>
             <label><span>模型名称</span><input onChange={(e) => setForm({ ...form, modelId: e.target.value })} placeholder="模型名称，例如 gpt-4o-mini" required value={form.modelId} /></label>
             <label><span>等待时限（秒）</span><input min={1} onChange={(e) => setForm({ ...form, timeoutSeconds: Number(e.target.value) || 120 })} placeholder="等待时限（秒）" type="number" value={form.timeoutSeconds} /></label>
+            <label><span>最大输出 tokens</span><input min={256} max={200000} type="number" value={form.capabilities.maxTokens} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, maxTokens: Number(e.target.value) } })} /></label>
+            <label><span>上下文 tokens</span><input min={1024} max={4000000} type="number" value={form.capabilities.contextWindow} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, contextWindow: Number(e.target.value) } })} /></label>
+            <label><span>启用模型思考</span><input type="checkbox" checked={form.capabilities.reasoning} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, reasoning: e.target.checked } })} /></label>
+            <label><span>思考等级</span><select value={form.capabilities.thinkingLevel} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, thinkingLevel: e.target.value } })}><option value="auto">自动</option><option value="off">关闭</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
+            <label><span>支持图片理解</span><input type="checkbox" checked={form.capabilities.vision} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, vision: e.target.checked } })} /></label>
             <button className="primary" disabled={busy} type="submit">保存配置</button>
           </form>
         )}
@@ -599,7 +612,7 @@ function AiConfigPage() {
             <div className={profile.isDefault ? "profile active" : "profile"} key={profile.id}>
               <div className="profile-summary">
                 <strong>{profile.isDefault && <Star color="#f59e0b" size={13} />} {profile.name}{profile.isDefault && <span className="profile-badge">使用中</span>}</strong>
-                <small>{profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "使用默认密钥"} · {profile.timeoutSeconds}s</small>
+                <small>最大输出 {profile.capabilities?.maxTokens ?? 16384} tokens · {profile.baseUrl} · {profile.modelId} · {profile.keyConfigured ? `密钥已配置 ${profile.keyHint}` : "使用默认密钥"} · {profile.timeoutSeconds}s</small>
               </div>
               <div className="key-editor">
                 <input autoComplete="new-password" onChange={(e) => setProfileKeyInputs({ ...profileKeyInputs, [profile.id]: e.target.value })} placeholder="输入此方案的访问密钥" type="password" value={profileKeyInputs[profile.id] ?? ""} />
@@ -609,6 +622,7 @@ function AiConfigPage() {
                 )}
               </div>
               <div className="actions">
+                <button className="quiet" disabled={busy} onClick={() => { setEditingProfileId(profile.id); setForm({ name: profile.name, provider: profile.provider, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds, capabilities: { ...defaultCapabilities, ...profile.capabilities } }); setShowForm(true); }} type="button">编辑配置</button>
                 {!profile.isDefault && <button className="quiet" disabled={busy} onClick={() => void activate(profile.id)} type="button">设为默认</button>}
                 <button aria-label={`删除 ${profile.name}`} className="danger" disabled={busy} onClick={() => void remove(profile.id)} type="button"><Trash2 size={14} /></button>
               </div>

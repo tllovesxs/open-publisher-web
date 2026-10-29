@@ -199,10 +199,13 @@ class FakeAgentLLM:
         self.call_count += 1
         for delta in turn.get("textDeltas", []):
             yield {"type": "text", "delta": delta}
+        for event in turn.get("streamEvents", []):
+            yield event
         yield {
             "type": "message",
             "content": turn.get("content"),
             "toolCalls": turn.get("toolCalls", []),
+            "finishReason": turn.get("finishReason"),
         }
 
 
@@ -452,3 +455,38 @@ def test_invalid_risk_response_reports_unknown_without_losing_article(db):
     assert risk["level"] == "unknown"
     assert risk["skipped"] is True
     assert service.store.read("invalid-risk") is not None
+
+
+def test_truncated_tool_stream_keeps_recoverable_body_without_revision(db):
+    body = "# 草稿\n\n尚未完成的正文"
+    raw = json.dumps({"title": "草稿", "markdown": body}, ensure_ascii=False)[:-2]
+    llm = FakeAgentLLM([{
+        "textDeltas": ["收到，现在提交文章。"],
+        "streamEvents": [{"type": "tool_delta", "name": "write_article", "arguments": raw}],
+        "finishReason": "length",
+    }])
+    service = WriterService(db, llm=llm)
+    run = service.start_article_create(article_id="truncated-body", prompt="x")
+    journal = RunJournal(db)
+    assert _wait_terminal(journal, run["id"])["status"] == "failed"
+    events = journal.events_after(run["id"], 0)
+    deltas = [e["payload"]["delta"] for e in events if e["type"] == "agent.message_delta"]
+    assert "".join(deltas) == body
+    last_delta = max(e["sequence"] for e in events if e["type"] == "agent.message_delta")
+    assert not any(e["type"] == "article.content_reset" and e["sequence"] > last_delta for e in events)
+    assert any(e["type"] == "article.checkpointed" and e["payload"].get("recoverableDraft") for e in events)
+    assert any(e["type"] == "agent.message_completed" and e["payload"]["finishReason"] == "length" for e in events)
+    assert service.store.read("truncated-body") is None
+
+
+def test_glm_options_disable_thinking_and_use_blueprint_budget():
+    from app.agents.llm_client import LLMClient
+    client = object.__new__(LLMClient)
+    client.model = "GLM-5.3-Flash"
+    client.capabilities = {}
+    options = client._options(0.7)
+    assert options["max_tokens"] == 16384
+    assert options["extra_body"]["thinking"]["type"] == "disabled"
+    client.capabilities = {"maxTokens": 24000, "reasoning": True, "thinkingLevel": "auto"}
+    assert client._options(0.7)["extra_body"]["thinking"]["type"] == "enabled"
+    assert client._options(0.7)["max_tokens"] == 24000

@@ -48,6 +48,7 @@ interface MarkdownWorkbenchProps {
   markdown: string;
   onMarkdownChange: (markdown: string) => void;
   dirty: boolean;
+  saved?: boolean;
   editorMode: EditorMode;
   onEditorModeChange: (mode: EditorMode) => void;
   onImageFileDrop?: (file: File) => Promise<ImageInsertion>;
@@ -170,6 +171,7 @@ export function MarkdownWorkbench({
   markdown,
   onMarkdownChange,
   dirty,
+  saved = true,
   editorMode,
   onEditorModeChange,
   onImageFileDrop,
@@ -646,7 +648,7 @@ export function MarkdownWorkbench({
       <footer className="editor-status">
         <span>
           <i className={`status-dot${dirty ? " is-dirty" : " is-saved"}`} />
-          {dirty ? "有未保存修改" : "已保存"}
+          {dirty ? "有未保存修改" : saved ? "已保存" : "尚未保存版本"}
         </span>
         <span>{previewPlatform === "general" ? "Markdown" : `平台预览 · ${previewPlatform}`}</span>
         <span>{lines} 行</span>

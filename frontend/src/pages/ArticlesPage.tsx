@@ -820,7 +820,7 @@ export default function ArticlesPage() {
                   type="button"
                 >
                   {saving ? <LoaderCircle className="spin" size={16} /> : <Save size={16} />}
-                  {saving ? "保存中" : dirty ? "保存新版本" : "已保存"}
+                  {saving ? "保存中" : dirty ? "保存新版本" : selected.currentRevisionId ? "已保存" : "尚未保存"}
                 </button>
               </>
             )}
@@ -991,7 +991,7 @@ export default function ArticlesPage() {
               <div className="field__head" style={{ padding: "0 2px" }}>
                 <label htmlFor="a-markdown">正文（Markdown）</label>
                 <span className="field-tag">
-                  修订 {selected.currentRevisionId?.slice(0, 8)}
+                  {selected.currentRevisionId ? `修订 ${selected.currentRevisionId.slice(0, 8)}` : "待生成完整版本"}
                 </span>
               </div>
               {visualResultNote && (
@@ -1003,6 +1003,8 @@ export default function ArticlesPage() {
                 <div className="article-editor__workbench">
                   <MarkdownWorkbench
                     dirty={dirty}
+                    saved={Boolean(selected.currentRevisionId)}
+                    streaming={running}
                     editorMode={viewMode}
                     markdown={draft}
                     onEditorModeChange={setViewMode}

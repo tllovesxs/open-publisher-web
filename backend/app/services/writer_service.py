@@ -444,10 +444,23 @@ class WriterService:
                     assistant_text = event.get("content") or ""
                     tool_calls = event.get("toolCalls") or []
                     finish_reason = event.get("finishReason")
+                    self.journal.append(run_id, "agent.message_completed", {
+                        "model": getattr(self.llm, "model", ""),
+                        "finishReason": finish_reason,
+                        "maxTokens": getattr(self.llm, "capabilities", {}).get("maxTokens", 16384),
+                        "usage": event.get("usage") or {},
+                        "reasoningChars": event.get("reasoningChars", 0),
+                        "textChars": len(assistant_text),
+                        "toolArgumentChars": sum(len(c.get("arguments") or "") for c in tool_calls),
+                        "previewChars": len(streamed_markdown),
+                    })
             self._ensure_not_stopping(run_id)
             if finish_reason == "length":
-                self.journal.append(run_id, "article.content_reset", {})
-                raise RuntimeError("模型输出达到长度上限，文章提交被截断。请提高模型配置中的输出上限，或缩短篇幅后重试。")
+                self.journal.append(run_id, "article.checkpointed", {
+                    "articleId": article_id, "chars": len(streamed_markdown),
+                    "recoverableDraft": bool(streamed_markdown), "complete": False,
+                })
+                raise RuntimeError("模型输出达到长度上限，未保存完整版本。已生成的正文保留为待恢复草稿；请调整输出上限或思考设置后重试。" if streamed_markdown else "模型输出达到长度上限，尚未返回正文。请调整模型的输出上限或思考设置后重试。")
 
             if not tool_calls:
                 submission_retries += 1

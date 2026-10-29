@@ -61,7 +61,10 @@ function ArticleRunTimeline({ completedNodeIds, runFailed = false, visualState =
       if (detail?.level === "high" || detail?.level === "unknown" || detail?.recheckRequired) return "warning";
       return "completed";
     }
-    if (runFailed) return "failed";
+    if (runFailed) {
+      if (!currentAssigned) { currentAssigned = true; return "failed"; }
+      return "pending";
+    }
     if (stopped) return "pending";
     if (!currentAssigned) {
       currentAssigned = true;
