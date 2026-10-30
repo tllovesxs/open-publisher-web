@@ -133,7 +133,11 @@
 .gl-faq { margin-top: 148px; display: grid; grid-template-columns: .83fr 1.17fr; gap: 64px; }
 .gl-faq h2 { max-width: 10em; }
 .gl-faq details + details { margin-top: 12px; }
-.gl-faq summary { cursor: pointer; font-size: 20px; line-height: 1.65; padding: 22px 30px 22px 0; }
+.gl-faq summary { cursor: pointer; font-size: 20px; line-height: 1.65; padding: 22px 30px 22px 0; text-underline-offset: 7px; text-decoration-color: var(--gl-accent); transition: color .16s, text-decoration-color .16s; }
+.gl-faq summary:hover, .gl-faq summary:focus-visible { color: var(--gl-accent); text-decoration: underline; }
+.gl-faq details[open] > summary { color: var(--gl-accent); }
+.gl-faq summary::marker { color: var(--gl-muted); }
+.gl-faq details[open] > summary::marker { color: var(--gl-accent); }
 .gl-faq details:first-child summary { padding-top: 0; }
 .gl-faq details p { color: var(--gl-muted); padding-bottom: 24px; }
 .gl-close { margin-top: 120px; padding-block: 56px; display: flex; gap: 32px; align-items: center; justify-content: space-between; }
