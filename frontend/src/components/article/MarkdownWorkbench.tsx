@@ -319,9 +319,12 @@ export function MarkdownWorkbench({
       }
       return;
     }
-    // 素材库拖入：优先插入媒体 Markdown（光标处），文件拖入走导入。
+    // 素材库与新上传配图：按实际落点插入，文件拖入走导入。
     const mediaMarkdown = event.dataTransfer.getData("text/x-media-markdown");
     if (mediaMarkdown) {
+      const editor = editorRef.current;
+      const offset = editor ? caretOffsetFromPoint(editor, event.clientX, event.clientY) : null;
+      if (editor && offset !== null) editor.setSelectionRange(offset, offset);
       userCaretRef.current = true;
       insertAtSelection(mediaMarkdown);
       return;
@@ -344,8 +347,9 @@ export function MarkdownWorkbench({
       node = doc.caretRangeFromPoint(event.clientX, event.clientY)?.startContainer ?? null;
     }
     const element = node instanceof Element ? node : node?.parentElement ?? null;
-    const block = element?.closest<HTMLElement>("[data-md-line]");
-    if (!block) return null;
+    const block = (element && pane.contains(element) ? element.closest<HTMLElement>("[data-md-line]") : null)
+      ?? (event.target as HTMLElement).closest<HTMLElement>("[data-md-line]");
+    if (!block || !pane.contains(block)) return markdown.split("\n").length + 1;
     const startLine = Number(block.dataset.mdLine);
     const endLine = Number(block.dataset.mdEnd);
     if (!Number.isFinite(startLine)) return null;
@@ -555,7 +559,7 @@ export function MarkdownWorkbench({
               className={isDropTarget ? "is-drop-target" : undefined}
               onChange={(event) => onMarkdownChange(event.target.value)}
               onDragEnter={(event) => {
-                if (event.dataTransfer.types.includes("Files") || event.dataTransfer.types.includes("application/x-opw-figure")) {
+                if (["Files", "application/x-opw-figure", "text/x-media-markdown"].some((type) => event.dataTransfer.types.includes(type))) {
                   event.preventDefault();
                   setIsDropTarget(true);
                 }

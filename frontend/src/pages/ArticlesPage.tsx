@@ -440,7 +440,7 @@ export default function ArticlesPage() {
       dataUrl,
       alt: file.name.replace(/\.[^.]+$/, ""),
     });
-    return { alt: file.name.replace(/\.[^.]+$/, ""), src: `/api/media/${res.data.id}/raw` };
+    return { alt: file.name.replace(/\.[^.]+$/, ""), src: `asset://${res.data.id}` };
   };
 
   // 蓝本 CreatePage 资料文件夹导入的 Web 等价：选文本资料（.md/.txt），并入创作要求

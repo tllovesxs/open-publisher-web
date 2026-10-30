@@ -131,6 +131,9 @@ export function ArticleImagePane({
 
   useEffect(() => {
     setFailedFigureKeys(new Set());
+    const insertedSources = new Set(extractArticleFigures(markdown)
+      .flatMap((figure) => figure.kind === "image" ? [figure.src] : []));
+    setUploads((current) => current.filter((asset) => !insertedSources.has(asset.src)));
   }, [markdown]);
 
   const markFailedFigure = (figure: ArticleFigure) => {
@@ -204,7 +207,7 @@ export function ArticleImagePane({
       onDrop={(event) => {
         event.preventDefault();
         setIsDropping(false);
-        void importFiles(Array.from(event.dataTransfer.files));
+        if (event.dataTransfer.files.length) void importFiles(Array.from(event.dataTransfer.files));
       }}
     >
       <header className="article-figures__head">
@@ -245,15 +248,17 @@ export function ArticleImagePane({
                   {visibleFigures.map((figure, index) => (
                     <figure
                       className={`article-figures__item${menuFor === index ? " is-menu-open" : ""}`}
-                                            draggable
+                      draggable={canInsert}
                       onDragStart={(event) => {
+                        if (!canInsert) { event.preventDefault(); return; }
                         // 拖拽移动配图：载荷带原文位置，编辑器按落点行调用 onMoveFigure。
                         event.dataTransfer.setData(
                           "application/x-opw-figure",
                           JSON.stringify({ kind: figure.kind, span: figure.span }),
                         );
                         event.dataTransfer.effectAllowed = "move";
-                      }}key={`figure-${figure.span.start}`}
+                      }}
+                      key={`figure-${figure.span.start}`}
                       onMouseLeave={() => setMenuFor((current) => (current === index ? null : current))}
                     >
                       {figure.kind === "image" ? (
@@ -266,6 +271,7 @@ export function ArticleImagePane({
                         >
                           <img
                             alt={figure.alt || `配图 ${index + 1}`}
+                            draggable={false}
                             onError={() => markFailedFigure(figure)}
                             src={figure.src}
                           />
@@ -328,16 +334,27 @@ export function ArticleImagePane({
                 </p>
                 {visibleUploads.length === 0 ? (
                   <p className="article-figures__empty">
-                    拖入或上传的图片会先列在这里，点「插入」输入行号后写入正文对应行。
+                    拖入或上传的图片会先列在这里，可拖入正文，或点「插入」指定行号。
                   </p>
                 ) : (
                   <div className="article-figures__grid">
                     {visibleUploads.map((asset, index) => (
-                      <figure className="article-figures__item" key={`${asset.src}-${index}`}>
+                      <figure
+                        className="article-figures__item"
+                        draggable={canInsert}
+                        key={`${asset.src}-${index}`}
+                        onDragStart={(event) => {
+                          if (!canInsert) { event.preventDefault(); return; }
+                          event.dataTransfer.setData("text/x-media-markdown", `![${asset.alt}](${asset.src})`);
+                          event.dataTransfer.effectAllowed = "copy";
+                        }}
+                        title="拖入正文插入图片"
+                      >
                         <img
                           alt={asset.alt}
+                          draggable={false}
                           onError={() => markFailedUpload(asset)}
-                          src={asset.src}
+                          src={resolveAssetReferences(`](${asset.src})`).slice(2, -1)}
                         />
                         <figcaption title={asset.alt}>{asset.alt}</figcaption>
                         {canInsert && (
