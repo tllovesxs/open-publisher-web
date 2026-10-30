@@ -93,7 +93,7 @@ def build():
     def footer(canvas, doc):
         canvas.setFont(font_name, 8)
         canvas.setFillColor(colors.HexColor("#63758a"))
-        canvas.drawString(20*mm, 12*mm, "稿流 | 2026-10-30 | 推文创作与发布工作台")
+        canvas.drawString(20*mm, 12*mm, "稿流 | 推文创作与发布工作台")
         canvas.drawRightString(190*mm, 12*mm, str(doc.page))
     SimpleDocTemplate(str(OUTPUT), pagesize=(210*mm, 297*mm), rightMargin=20*mm,
         leftMargin=20*mm, topMargin=18*mm, bottomMargin=21*mm, title="稿流技术方案",
