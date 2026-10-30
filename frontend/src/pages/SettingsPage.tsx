@@ -62,18 +62,17 @@ export default function SettingsPage() {
     if (admin) setIntegrations((await api.get<Integrations>("/settings/integrations")).data);
   }, ""); }, [admin]);
 
-  const modelOptions = profiles.map(p => ({ id: p.id, label: p.name }));
   const defaultProfile = profiles.find(p => p.id === prefs.profileId) ?? profiles.find(p => p.isDefault) ?? profiles[0];
-  const modelSelect = (label: string, profileId: string | null, onChange: (value: string) => void, inherit = false) => (
+  const modelSelect = (label: string, profileId: string | null, onChange: (value: string) => void, inherit = false, models = profiles, defaultId?: string | null) => (
     <ToolbarSelect
       className="toolbar-select--fill toolbar-select--lg"
-      disabled={busy || profiles.length <= 1}
+      disabled={busy || models.length <= 1}
       label={label}
       onChange={onChange}
-      options={profiles.length <= 1
-        ? (modelOptions.length ? modelOptions : [{ id: "", label: "暂无可用模型" }])
-        : [...(inherit ? [{ id: "", label: `跟随默认（${defaultProfile?.name ?? "平台默认"}）` }] : [{ id: "", label: `平台默认（${profiles.find(p => p.isDefault)?.name ?? profiles[0].name}）` }]), ...modelOptions]}
-      value={profiles.length === 1 ? profiles[0].id : profileId ?? ""}
+      options={models.length <= 1
+        ? (models.length ? models.map(model => ({ id: model.id, label: model.name })) : [{ id: "", label: "暂无可用模型" }])
+        : [{ id: "", label: inherit ? `跟随默认（${defaultProfile?.name ?? "平台默认"}）` : `平台默认（${(models.find(model => model.id === defaultId) ?? models.find(model => model.isDefault) ?? models[0]).name}）` }, ...models.map(model => ({ id: model.id, label: model.name }))]}
+      value={models.length === 1 ? models[0].id : profileId ?? ""}
     />
   );
 
@@ -129,16 +128,12 @@ export default function SettingsPage() {
           </div>
           <div className="client-settings-divider" />
           <div className="client-settings-section-label">其他模型</div>
-          <div className="client-settings-model-grid">
+          <div className="client-settings-extra-models">
             {EXTRA_MODELS.map(({ kind, field, label, description, icon: Icon }) => {
               const catalog = catalogs[kind];
-              const platform = catalog.models.find(model => model.id === catalog.defaultId);
               return <div className="client-settings-model-row" key={kind}>
                 <div className="client-settings-node-label"><Icon size={16} aria-hidden="true" /><strong>{label}</strong></div>
-                <ToolbarSelect className="toolbar-select--fill toolbar-select--lg" label={label}
-                  disabled={busy || catalog.models.length === 0} value={prefs[field] ?? ""}
-                  onChange={value => setPrefs(current => ({ ...current, [field]: value || null }))}
-                  options={catalog.models.length ? [{ id: "", label: `平台默认（${platform?.name ?? "自动选择"}）` }, ...catalog.models.map(model => ({id:model.id,label:model.name}))] : [{id:"",label:"暂无可用模型，请联系管理员"}]} />
+                {modelSelect(label, prefs[field], value => setPrefs(current => ({ ...current, [field]: value || null })), false, catalog.models, catalog.defaultId)}
                 <p>{description}{kind === "embedding" ? "。更换向量模型后，已有资料需重新建立索引。" : "。"}</p>
               </div>;
             })}

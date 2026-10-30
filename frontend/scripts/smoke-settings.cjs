@@ -42,7 +42,17 @@ const stages = ['资料整理', '大纲规划', '正文撰写', '自然表达', 
       assert.equal(await page.getByRole('button', { name: '默认写作模型', exact: true }).isDisabled(), count <= 1);
       assert.equal(await page.getByRole('button', { name: '保存模型选择', exact: true }).isDisabled(), false);
       for (const [kind,label] of [['image','生图模型'],['embedding','资料检索模型（向量）'],['rerank','检索排序模型']]) {
-        assert.equal(await page.getByRole('button', {name:label,exact:true}).isDisabled(), catalogs[kind].models.length === 0);
+        const select = page.getByRole('button', {name:label,exact:true});
+        const models = catalogs[kind].models;
+        assert.equal(await select.isDisabled(), models.length <= 1);
+        assert.equal(await select.innerText(), models.length === 0 ? '暂无可用模型' : models.length === 1 ? models[0].name : '平台默认（' + models[0].name + '）');
+      }
+      const extraRows = await page.locator('.client-settings-extra-models .client-settings-model-row').evaluateAll(rows => rows.map(row => { const box = row.getBoundingClientRect(); return { x: box.x, y: box.y, width: box.width, bottom: box.bottom }; }));
+      assert.equal(extraRows.length, 3);
+      for (let index = 1; index < extraRows.length; index++) {
+        assert.equal(extraRows[index].x, extraRows[0].x);
+        assert.equal(extraRows[index].width, extraRows[0].width);
+        assert.ok(extraRows[index].y >= extraRows[index - 1].bottom);
       }
       if (count === 2) {
         for (const [kind,label] of [['image','生图模型'],['embedding','资料检索模型（向量）'],['rerank','检索排序模型']]) {
