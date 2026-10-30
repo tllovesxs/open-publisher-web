@@ -10362,6 +10362,10 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
 .template-outline-nav a { display: flex; align-items: center; gap: 9px; padding: 10px 8px; border-left: 2px solid var(--border); color: var(--muted); font-size: 11px; text-decoration: none; }
 .template-outline-nav a > span { opacity: .6; font-size: 9px; }
 .template-outline-nav a.is-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.template-main { grid-template-columns: minmax(0,1fr) 174px; }
+.template-outline-nav { gap: 8px; padding: 30px 14px; }
+.template-outline-nav a { gap: 11px; min-height: 48px; padding: 12px 10px; border-left-width: 3px; font-size: 13px; }
+.template-outline-nav a > span { font-size: 10px; }
 .template-savebar { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 28px; border-top: 1px solid var(--border); background: var(--surface); }
 .template-savebar > div { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
 .template-dirty-dot { width: 7px; height: 7px; border-radius: 50%; background: #df9b34; }
