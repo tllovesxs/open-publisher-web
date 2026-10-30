@@ -119,7 +119,7 @@ export default function LandingPage() {
           <div className="gl-demo-toolbar"><div className="gl-tabs" role="tablist" aria-label="创作示例阶段">{STAGES.map((title, index) => <button type="button" role="tab" id={`gl-tab-${index}`} aria-controls={`gl-panel-${index}`} aria-selected={index === stage} tabIndex={index === stage ? 0 : -1} ref={el => { tabs.current[index] = el; }} onKeyDown={event => handleTabKey(event, index)} onClick={() => select(index)} key={title}>{title}</button>)}</div>
             <button className="gl-play" type="button" disabled={reduced} onClick={() => setPlaying(value => !value)} aria-label={reduced ? "已跟随系统减少动态效果" : playing ? "暂停示例" : "播放示例"} aria-pressed={playing}>{playing ? <Pause size={15} /> : <Play size={15} />}<span>{reduced ? "静态" : playing ? "暂停" : "播放"}</span></button>
           </div>
-          <div className="gl-demo-panels" data-ui="article-output">{STAGES.map((_, index) => <div role="tabpanel" hidden={stage !== index} id={`gl-panel-${index}`} aria-labelledby={`gl-tab-${index}`} tabIndex={0} className="gl-output" key={index}><StageOutput stage={index} /></div>)}</div>
+          <div className="gl-demo-panels" data-ui="article-output">{STAGES.map((_, index) => <div role="tabpanel" hidden={stage !== index} id={`gl-panel-${index}`} aria-labelledby={`gl-tab-${index}`} tabIndex={0} className={`gl-output${stage === index ? " gl-output--active" : ""}`} key={index}><StageOutput stage={index} /></div>)}</div>
           <div className="gl-demo-foot"><span>{TITLES[stage]}</span><a href="#gl-full-example" onClick={openFullExample}>读完整示例<ArrowDown size={14} /></a></div>
           <p className="gl-demo-disclosure">正文取自项目公共示例；研究、审阅与配图为演示编排。</p>
           <FullExample />

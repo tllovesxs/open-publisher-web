@@ -70,6 +70,8 @@
    remain excluded from focus and the accessibility tree via visibility. */
 .gl-output { grid-area: 1 / 1; }
 .gl-output[hidden] { display: block; visibility: hidden; pointer-events: none; }
+.gl-output--active { animation: gl-output-arrive 240ms ease-out both; }
+@keyframes gl-output-arrive { from { opacity: .7; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
 .gl-output h3 { font-size: 20px; line-height: 1.5; margin-bottom: 20px; }
 .gl-output h4, .gl-source-proof h4 { font-size: 16px; line-height: 1.6; margin-bottom: 10px; }
 .gl-output > p + p { margin-top: 18px; }
