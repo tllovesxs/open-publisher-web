@@ -10,7 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Preformatted, Image, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Preformatted, Image, PageBreak, KeepTogether
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs/submission/技术方案.md"
@@ -33,7 +33,7 @@ def build():
     h2 = ParagraphStyle("HeadingCN", parent=body, fontSize=15, leading=23, spaceBefore=17, spaceAfter=10,
                         textColor=colors.HexColor("#17537a"), keepWithNext=True)
     small = ParagraphStyle("SmallCN", parent=body, fontSize=8, leading=12, spaceAfter=3)
-    code = ParagraphStyle("CodeCN", parent=body, fontSize=9, leading=15, leftIndent=7,
+    code = ParagraphStyle("CodeCN", parent=body, fontSize=9, leading=13, leftIndent=7,
                          backColor=colors.HexColor("#f0f4f8"), borderPadding=8)
     story = []
     def para(text, style=body):
@@ -51,9 +51,9 @@ def build():
             content = []
             i += 1
             while i < len(lines) and not lines[i].startswith("```"):
-                content.append(html.escape(lines[i]))
+                content.append(lines[i])
                 i += 1
-            story.append(Preformatted("\n".join(content), code))
+            story.append(KeepTogether([Preformatted("\n".join(content), code)]))
         elif line.startswith("|"):
             rows = []
             while i < len(lines) and lines[i].strip().startswith("|"):
@@ -67,8 +67,8 @@ def build():
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2edf5")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#c7d3df")),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]))
             story.extend([table, Spacer(1, 10)])
             continue
@@ -79,8 +79,8 @@ def build():
         else:
             story.append(para(line))
         i += 1
-    story.extend([PageBreak(), para("附录：公共示例界面证据", h2),
-        para("以下截图采集于 2026-10-30 的隔离匿名浏览器，使用本地公共示例，不包含真实用户资料；页面截图不是外部模型或平台发布成功证明。")])
+    story.extend([PageBreak(), para("附录：工作台界面", h2),
+        para("以下界面展示创作入口、Markdown 编辑预览、模板库和素材库，截图使用平台公共示例数据。")])
     from PIL import Image as PILImage
     for name, caption in [("01-create", "创作入口：目标、资料和生成要求"),
                           ("03-workbench", "工作台：Markdown、预览和配图入口"),
