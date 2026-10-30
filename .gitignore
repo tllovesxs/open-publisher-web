@@ -24,3 +24,9 @@ dist/
 # Temp screenshots
 .pytest_cache/
 temp-*.png
+
+# Local working files and internal records
+work/
+worklog/
+docs/reviews/
+*.tsbuildinfo
