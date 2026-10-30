@@ -157,7 +157,16 @@ def test_tei_list_response_supported(rag, monkeypatch):
     from unittest.mock import MagicMock
     from app.services import rag_service
     from app.services import workspace_settings
+    from app.services import model_config_catalog
+    from app.db import session
 
+    # The protocol adapter now resolves the authoritative catalog. Keep this
+    # unit test isolated from any configured service in the running database.
+    monkeypatch.setattr(session, "SessionLocal", MagicMock())
+    monkeypatch.setattr(model_config_catalog, "resolve_rag_config", lambda *args: {
+        "base_url": "http://localhost:8080", "model": "", "timeout_seconds": 7,
+        "api_key": "", "protocol": "tei",
+    })
     monkeypatch.setattr(workspace_settings, "read_preferences", lambda *args: {"rerankBaseUrl": "http://localhost:8080", "rerankTimeoutSeconds": 7})
     response = MagicMock()
     response.__enter__.return_value.read.return_value = json.dumps([{"index": 1, "score": 0.9}, {"index": 0, "score": 0.1}]).encode()

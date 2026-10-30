@@ -151,7 +151,7 @@ def test_node_model_preferences_roundtrip_validation_and_user_scope(client):
     from app.core.auth import require_user
     first = client.post("/api/settings/profiles", json={"name": "默认模型", "baseUrl": "https://example.test/v1", "modelId": "first"}).json()
     second = client.post("/api/settings/profiles", json={"name": "审阅模型", "baseUrl": "https://example.test/v1", "modelId": "second"}).json()
-    preferences = {"profileId": first["id"], "nodeProfileIds": {"draft": first["id"], "review": second["id"], "visual": second["id"]}, "webSearchMode": "off", "disabledNodeIds": ["risk"]}
+    preferences = {"profileId": first["id"], "nodeProfileIds": {"draft": first["id"], "review": second["id"], "visual": second["id"]}, "webSearchMode": "off", "disabledNodeIds": ["risk"], "imageModelId": None, "embeddingModelId": None, "rerankModelId": None}
     assert client.put("/api/settings/preferences", json=preferences).status_code == 200
     assert client.get("/api/settings/preferences").json() == preferences
     assert client.put("/api/settings/preferences", json={**preferences, "nodeProfileIds": {"draft": "missing"}}).status_code == 400

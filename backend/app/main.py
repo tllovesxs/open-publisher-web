@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import admin, agent_runs, articles, assistant, auth, health, media, projects, publishing, rag, revisions, runs, templates
 from app.api import settings as settings_api
 from app.api import model_configs
+from app.api import examples
 from app.core.auth import require_admin, require_user
 from app.core.config import get_settings
 
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
+app.include_router(examples.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(projects.router, prefix="/api", dependencies=[Depends(require_user)])

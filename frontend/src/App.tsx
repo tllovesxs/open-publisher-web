@@ -11,6 +11,7 @@ import { AppNavigation, type NavKey } from "./components/AppNavigation";
 import "./blueprint.css";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const ExamplesPage = lazy(() => import("./pages/ExamplesPage"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const ArticlesPage = lazy(() => import("./pages/ArticlesPage"));
 const CreatePage = lazy(() => import("./pages/CreatePage"));
@@ -38,13 +39,14 @@ function Shell() {
   const { resolved: theme, setSetting: setThemeSetting } = useThemeSetting();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [backendReady, setBackendReady] = useState(false);
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (location.pathname.startsWith("/articles")) setNav("articles");
+    const resourcePath = location.pathname.replace(/^\/examples\//, "/");
+    if (resourcePath.startsWith("/articles")) setNav("articles");
     else if (location.pathname.startsWith("/announcements")) setNav("announcements");
-    else if (location.pathname.startsWith("/templates")) setNav("templates");
-    else if (location.pathname.startsWith("/media")) setNav("media");
+    else if (resourcePath.startsWith("/templates")) setNav("templates");
+    else if (resourcePath.startsWith("/media")) setNav("media");
     else if (location.pathname.startsWith("/settings")) setNav("settings");
     else if (isCreatePathname()) setNav("create");
   }, [location.pathname]);
@@ -58,7 +60,7 @@ function Shell() {
 
   const handleNavigate = useCallback(
     (next: NavKey) => {
-      if (!user && next !== "create") {
+      if (!user && !["create", "articles", "templates", "media"].includes(next)) {
         navigate("/login");
         return;
       }
@@ -111,7 +113,7 @@ function Shell() {
           </button>
           <strong>{title}</strong>
           <span className="workspace-topbar__spacer" />
-          {nav !== "create" && (
+          {user && nav !== "create" && (
             <button
               className="button button--quiet workspace-new"
               onClick={() => navigate("/articles?new=1")}
@@ -130,9 +132,12 @@ function Shell() {
             <Route path="/" element={<CreatePage />} />
             <Route path="/announcements" element={<AnnouncementsPage />} />
             <Route path="/runs/:runId" element={<RunPage />} />
-            <Route path="/articles" element={<ArticlesPage />} />
-            <Route path="/templates" element={<TemplatesPage />} />
-            <Route path="/media" element={<MediaPage />} />
+            <Route path="/articles" element={authLoading ? <PageLoading /> : user ? <ArticlesPage /> : <ExamplesPage kind="articles" />} />
+            <Route path="/templates" element={authLoading ? <PageLoading /> : user ? <TemplatesPage /> : <ExamplesPage kind="templates" />} />
+            <Route path="/media" element={authLoading ? <PageLoading /> : user ? <MediaPage /> : <ExamplesPage kind="media" />} />
+            <Route path="/examples/articles" element={<ExamplesPage kind="articles" />} />
+            <Route path="/examples/templates" element={<ExamplesPage kind="templates" />} />
+            <Route path="/examples/media" element={<ExamplesPage kind="media" />} />
             <Route path="/publish-queue" element={<Navigate to="/articles" replace />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/projects/:projectId/revisions" element={<RevisionsPage />} />

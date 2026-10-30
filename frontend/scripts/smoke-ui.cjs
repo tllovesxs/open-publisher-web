@@ -18,7 +18,8 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
         '/api/auth/me': { id: 'test', username: 'tester', displayName: 'Tester', role: 'user' },
         '/api/settings/profiles': { profiles: [] },
         '/api/settings/image-models': { models: [] },
-        '/api/settings/preferences': { disabledNodeIds: [], webSearchMode: 'off' },
+        '/api/settings/preferences': { disabledNodeIds: [], webSearchMode: 'off', profileId: null, nodeProfileIds: {}, imageModelId: null, embeddingModelId: null, rerankModelId: null },
+        '/api/settings/available-models': Object.fromEntries(['image', 'embedding', 'rerank'].map(kind => [kind, { models: [], defaultId: null }])),
         '/api/templates': { templates: [] },
         '/api/articles': { articles: [] },
         '/api/media': { assets: [] },
@@ -27,7 +28,7 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
       };
       await route.fulfill({ json: responses[path] || {} });
     });
-    const routes = { '/': '.creation-studio', '/articles': '.article-browser', '/templates': '.article-browser', '/media': 'h1', '/settings': '.settings-page', '/login': '.auth-form' };
+    const routes = { '/': '.creation-studio', '/articles': '.article-browser', '/templates': '.template-workbench', '/media': 'h1', '/settings': '.client-settings-layout', '/login': '.auth-form' };
     for (const [route, selector] of Object.entries(routes)) {
       await page.goto(base + route);
       await page.locator(selector).first().waitFor();

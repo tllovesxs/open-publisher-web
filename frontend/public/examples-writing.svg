@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc">
+  <title id="title">从想法到成稿</title><desc id="desc">收集想法、搭建结构、修改成稿的三步写作流程。</desc>
+  <rect width="1200" height="640" rx="28" fill="#eff4f0"/>
+  <g font-family="Microsoft YaHei, sans-serif" fill="#183d32">
+    <text x="80" y="105" font-size="42" font-weight="700">从想法到成稿</text>
+    <text x="80" y="155" font-size="22">让零散素材成为清晰表达</text>
+    <g fill="#fff" stroke="#a9c4b4" stroke-width="2"><rect x="80" y="220" width="300" height="300" rx="20"/><rect x="450" y="220" width="300" height="300" rx="20"/><rect x="820" y="220" width="300" height="300" rx="20"/></g>
+    <g font-size="24" font-weight="700"><text x="116" y="275">01 收集想法</text><text x="486" y="275">02 搭建结构</text><text x="856" y="275">03 修改成稿</text></g>
+    <g fill="#dfeee3"><rect x="116" y="315" width="110" height="60" rx="8"/><rect x="240" y="350" width="102" height="60" rx="8"/><rect x="140" y="415" width="130" height="60" rx="8"/></g>
+    <g fill="none" stroke="#4b8068" stroke-width="8" stroke-linecap="round"><path d="M490 330h210m-210 60h160m-160 60h185M865 330h200m-200 60h140m-140 60h110"/><path d="m1022 445 18 18 36-42"/></g>
+    <g fill="none" stroke="#769883" stroke-width="5"><path d="M393 370h41m-14-14 14 14-14 14M763 370h41m-14-14 14 14-14 14"/></g>
+    <text x="80" y="586" font-size="20">稿流 · 公共示例素材</text>
+  </g>
+</svg>

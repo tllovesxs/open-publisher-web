@@ -1,0 +1,6 @@
+.examples-page { width: min(100%, 960px); margin: 0 auto; padding: 24px; overflow: auto; height: 100%; box-sizing: border-box; }
+.examples-page header { margin-bottom: 24px; }
+.examples-card { padding: 24px; margin-bottom: 20px; border: 1px solid var(--border-color, #8885); border-radius: 12px; overflow-wrap: anywhere; }
+.examples-card img { display: block; width: 100%; max-width: 720px; height: auto; border-radius: 8px; }
+.examples-card textarea { width: 100%; box-sizing: border-box; margin-top: 12px; }
+@media (max-width: 600px) { .examples-page, .examples-card { padding: 14px; } }

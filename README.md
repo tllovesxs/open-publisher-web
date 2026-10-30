@@ -112,6 +112,17 @@ npm run dev
 
 ## 质量验证
 
+### 公共示例资源
+
+未登录时，文章、模板、素材库导航展示只读公共示例：一篇示例文章、一篇实用指南模板、一张原创 SVG 素材。
+登录后这些导航仍进入个人工作区；公共资源可通过 `/examples/articles`、`/examples/templates`、`/examples/media` 访问。
+示例接口为 `GET /api/examples/{articles|templates|media}`，仅读取版本化静态文件，不查询私人资料、不调用模型、不支持写入。
+匿名浏览验收脚本为 `frontend/scripts/smoke-public-examples.cjs`，使用真实本地接口验证桌面与手机视图、图片加载和私人接口隔离。
+
+本次全面审查结果见 [2026-10-30 功能审查报告](docs/reviews/2026-10-30-functional-audit.md)。
+
+### 回归命令
+
 后端在 `backend/` 执行 `python -m pytest tests -q -p no:cacheprovider`。用户端在
 `frontend/` 执行 `npm run typecheck` 或 `npm run build`（构建已包含类型检查）；
 管理端在 `frontend-admin/` 执行 `npm run build`。GitHub Actions 会运行后端测试与双前端构建。
