@@ -15,9 +15,16 @@ const base = process.env.SMOKE_BASE_URL || 'http://localhost:5173';
       structureProfile: { openingPattern: '提问', sectionPattern: '分节', conclusionPattern: '收束', headingDepth: 'H2', paragraphPattern: '短段落' },
       layoutProfile: { useLists: true, useTables: false, useBlockquotes: false, useCodeBlocks: true, imagePlacement: '章节后', emphasisRules: '加粗' },
       fixedBlocks: [], variables: ['title','body'] }];
-    let submitted, copied;
+    let submitted, copied, extracted, extractionCalls = 0;
     await page.route(url => url.pathname.startsWith('/api/'), async route => {
       const request = route.request(), path = new URL(request.url()).pathname;
+      if (path === '/api/templates/extract') {
+        extractionCalls += 1;
+        extracted = request.postDataJSON();
+        const parsed = {...templates[0], id:'imported', name:'导入文档模板', referenceMarkdown:extracted.markdown};
+        templates.push(parsed);
+        return route.fulfill({status:201, json:parsed});
+      }
       if (path.startsWith('/api/templates/') && request.method() === 'PATCH') {
         templates[0] = { ...templates[0], ...request.postDataJSON() };
         return route.fulfill({ json: templates[0] });
@@ -46,6 +53,23 @@ const base = process.env.SMOKE_BASE_URL || 'http://localhost:5173';
     await page.goto(base + '/templates');
     await page.getByLabel('目标读者', { exact:true }).waitFor();
     if (process.env.SMOKE_SCREENSHOT_DIR) await page.screenshot({ path: require('node:path').join(process.env.SMOKE_SCREENSHOT_DIR, 'template-workbench-desktop.png'), fullPage: false });
+    const activeSection = () => page.locator('.template-outline-nav a[aria-current="location"]').getAttribute('href');
+    const scrollToSection = async id => {
+      await page.locator('.template-content').evaluate((node, sectionId) => {
+        const section = node.querySelector('#' + sectionId);
+        node.scrollTo({top:section.getBoundingClientRect().top-node.getBoundingClientRect().top+node.scrollTop-20, behavior:'instant'});
+      }, id);
+      await page.waitForFunction(sectionId => document.querySelector('.template-outline-nav [aria-current="location"]')?.getAttribute('href') === '#' + sectionId, id);
+    };
+    await scrollToSection('template-structure');
+    assert.equal(await activeSection(), '#template-structure');
+    await page.locator('.template-content').hover();
+    await page.mouse.wheel(0, 2000);
+    await page.waitForFunction(() => document.querySelector('.template-outline-nav [aria-current="location"]')?.getAttribute('href') === '#template-usage');
+    await page.mouse.wheel(0, -10000);
+    await page.waitForFunction(() => document.querySelector('.template-outline-nav [aria-current="location"]')?.getAttribute('href') === '#template-outline');
+    await page.getByRole('link', {name:/文风/}).click();
+    await page.waitForFunction(() => document.querySelector('.template-outline-nav [aria-current="location"]')?.getAttribute('href') === '#template-style');
     await page.setViewportSize({width:390,height:844});
     if (process.env.SMOKE_SCREENSHOT_DIR) await page.screenshot({ path: require('node:path').join(process.env.SMOKE_SCREENSHOT_DIR, 'template-workbench-mobile.png'), fullPage: false });
     assert.equal(await page.locator('body').evaluate(node => node.scrollWidth <= window.innerWidth), true, 'template page should not overflow horizontally on mobile');
@@ -79,8 +103,31 @@ const base = process.env.SMOKE_BASE_URL || 'http://localhost:5173';
     await page.waitForURL(url => url.pathname === '/');
     await page.getByRole('button').filter({hasText:'高保真参考 · 参考模板'}).waitFor();
     await page.setViewportSize({width:390,height:844});
+    await page.goto(base + '/templates');
+    await page.getByRole('button', {name:'打开模板列表',exact:true}).click();
+    await page.getByRole('button', {name:'从文章提取',exact:true}).click();
+    const dialog = page.getByRole('dialog', {name:'从参考文章提取'});
+    const fileInput = dialog.getByLabel('导入 Markdown 文件');
+    const source = '# 新项目介绍\n\n## 安装\n\n```sh\nnpm install demo\n```\n\n中文原文。';
+    await fileInput.setInputFiles({name:'参考.md', mimeType:'text/markdown', buffer:Buffer.from(source)});
+    await page.waitForFunction(source => document.querySelector('.template-modal textarea')?.value === source, source);
+    assert.equal(await dialog.getByText('参考.md', {exact:true}).count(), 1);
+    assert.equal(extractionCalls, 0, 'file import must not call a paid model automatically');
+    assert.equal(await dialog.getByRole('button', {name:'提取模板',exact:true}).isEnabled(), false);
+    await fileInput.setInputFiles({name:'空.md', mimeType:'text/markdown', buffer:Buffer.from('  ')});
+    await dialog.getByRole('alert').filter({hasText:'文件内容为空'}).waitFor();
+    assert.equal(await dialog.locator('textarea').inputValue(), source);
+    await fileInput.setInputFiles({name:'参考.md', mimeType:'text/markdown', buffer:Buffer.from(source)});
+    await dialog.getByRole('alert').waitFor({state:'hidden'});
+    await dialog.getByRole('checkbox').check();
+    await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/api/templates/extract'), dialog.getByRole('button', {name:'提取模板',exact:true}).click()]);
+    await dialog.waitFor({state:'hidden'});
+    assert.equal(extractionCalls, 1);
+    assert.equal(extracted.markdown, source);
+    assert.equal(extracted.rightsConfirmed, true);
+    assert.equal(await page.getByLabel('模板骨架', {exact:true}).inputValue(), templates[0].markdown);
     assert.equal(errors.length,0,errors.join('\n'));
-    console.log('PASS template profile editing, save/use, full creation payload, unsaved copy, legacy link and narrow viewport');
+    console.log('PASS template editing, save/use, creation payload, copy, legacy link, scroll tracking, Markdown file import/extraction and narrow viewport');
     await context.close();
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

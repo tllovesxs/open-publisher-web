@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, Copy, FilePlus2, LayoutTemplate, LoaderCircle, Plus, Save, Search, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, Check, Copy, FilePlus2, FileUp, LayoutTemplate, LoaderCircle, Plus, Save, Search, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
 import { useNavigate } from "react-router-dom";
@@ -114,6 +114,10 @@ export default function TemplatesPage() {
   const [description, setDescription] = useState("");
   const [markdown, setMarkdown] = useState("");
   const [extractSource, setExtractSource] = useState("");
+  const [sourceFileName, setSourceFileName] = useState<string | null>(null);
+  const [readingFile, setReadingFile] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
   const [search, setSearch] = useState("");
   const [activeSection, setActiveSection] = useState("template-outline");
@@ -123,6 +127,46 @@ export default function TemplatesPage() {
   const isDirty = Boolean(selected && form && JSON.stringify(form) !== JSON.stringify(toForm(selected)));
   const visibleTemplates = useMemo(() => templates.filter(template => `${template.name} ${template.description} ${template.category}`.toLowerCase().includes(search.trim().toLowerCase())), [templates, search]);
   useEffect(() => { if (!extracting) return; setExtractSeconds(0); const id = window.setInterval(() => setExtractSeconds(n => n + 1), 1000); return () => clearInterval(id); }, [extracting]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || !form) return;
+    const sections = Array.from(content.querySelectorAll<HTMLElement>(".template-section"));
+    const syncSection = () => {
+      if (!sections.length) return;
+      const top = content.getBoundingClientRect().top + 48;
+      let current = sections[0].id;
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= top) current = section.id;
+      }
+      if (content.scrollTop > 0 && content.scrollTop + content.clientHeight >= content.scrollHeight - 2) current = sections[sections.length - 1].id;
+      setActiveSection(current);
+    };
+    content.scrollTo({ top: 0, behavior: "instant" });
+    content.addEventListener("scroll", syncSection, { passive: true });
+    const observer = new ResizeObserver(syncSection);
+    observer.observe(content);
+    sections.forEach(section => observer.observe(section));
+    syncSection();
+    return () => { content.removeEventListener("scroll", syncSection); observer.disconnect(); };
+  }, [selected?.id, Boolean(form)]);
+
+  const importMarkdown = async (file?: File) => {
+    if (!file || extracting || readingFile) return;
+    setError(null);
+    setReadingFile(true);
+    try {
+      if (!/\.(md|markdown|txt)$/i.test(file.name)) throw new Error("请选择 .md、.markdown 或 .txt 文件。");
+      if (file.size > 8_000_000) throw new Error("参考文件过大，请使用不超过 200 万字符的文档。");
+      const content = (await file.text()).replace(/^\uFEFF/, "");
+      if (!content.trim()) throw new Error("文件内容为空，请选择有正文的 Markdown 文档。");
+      if (content.includes("\0") || content.length > 2_000_000) throw new Error("文件包含无效字符或超过 200 万字符。");
+      setExtractSource(content);
+      setSourceFileName(file.name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "无法读取这个文件，请改为粘贴 Markdown 正文。");
+    } finally { setReadingFile(false); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -190,6 +234,8 @@ export default function TemplatesPage() {
         markdown: extractSource, rightsConfirmed,
       }, { timeout: 180000 });
       setExtractSource("");
+      setSourceFileName(null);
+      setRightsConfirmed(false);
       await load();
       setSelected(res.data);
       setExtractOpen(false);
@@ -334,7 +380,7 @@ export default function TemplatesPage() {
             )}
           </div>
         </header>
-        <div className="template-content">
+        <div className="template-content" ref={contentRef}>
         {error && (
           <div className="workflow-task__failure" role="alert"><p>{error}</p></div>
         )}
@@ -358,10 +404,10 @@ export default function TemplatesPage() {
           </>
         )}
         </div>
-        {selected && form && <nav aria-label="模板章节" className="template-outline-nav">{[["template-outline","骨架"],["template-style","文风"],["template-structure","结构"],["template-layout","排版"],["template-blocks","固定内容"],["template-usage","使用说明"]].map(([id,label],i)=><a className={activeSection===id?"is-active":""} href={`#${id}`} key={id} onClick={()=>setActiveSection(id)}><span>0{i+1}</span>{label}</a>)}</nav>}
+        {selected && form && <nav aria-label="模板章节" className="template-outline-nav">{[["template-outline","骨架"],["template-style","文风"],["template-structure","结构"],["template-layout","排版"],["template-blocks","固定内容"],["template-usage","使用说明"]].map(([id,label],i)=><a className={activeSection===id?"is-active":""} aria-current={activeSection===id?"location":undefined} href={`#${id}`} key={id} onClick={event=>{event.preventDefault(); const content=contentRef.current; const target=content?.querySelector<HTMLElement>(`#${id}`); if(content&&target) content.scrollTo({top:target.getBoundingClientRect().top-content.getBoundingClientRect().top+content.scrollTop-20,behavior:"smooth"});}}><span>0{i+1}</span>{label}</a>)}</nav>}
         <footer className="template-savebar"><div>{isDirty ? <><span className="template-dirty-dot" />有未保存的修改</> : <><Check size={14} />已保存</>}</div><div><button className="button button--quiet" onClick={() => setCreateOpen(true)} type="button"><FilePlus2 size={15} />新建</button><button className="button button--primary" disabled={!isDirty || selected?.isBuiltIn || saving} onClick={() => void save()} type="button"><Save size={15} />{saving ? "保存中" : "保存修改"}</button></div></footer>
       </div>
-      {(createOpen || extractOpen) && <div className="template-modal-backdrop" onClick={() => {setCreateOpen(false);setExtractOpen(false);}}><section aria-label={createOpen?"新建模板":"从参考文章提取"} aria-modal="true" className="template-modal" onClick={event=>event.stopPropagation()} role="dialog"><header><div><span className="page-kicker">模板库</span><h2>{createOpen?"新建模板":"从参考文章提取"}</h2></div><button className="icon-button" aria-label="关闭" onClick={()=>{setCreateOpen(false);setExtractOpen(false);}} type="button">×</button></header>{error && <div role="alert" className="workflow-task__failure"><p>{error}</p></div>}{createOpen?<div className="template-modal__body"><label className="field"><span>模板名称</span><input autoFocus onChange={event=>setName(event.target.value)} placeholder="例如：产品发布说明" value={name}/></label><label className="field"><span>用途说明</span><input onChange={event=>setDescription(event.target.value)} placeholder="简要说明模板适用场景" value={description}/></label><label className="field"><span>模板骨架</span><textarea rows={9} onChange={event=>setMarkdown(event.target.value)} placeholder="# {{title}}\n\n## {{section}}\n{{content}}" value={markdown}/></label></div>:<div className="template-modal__body"><p className="muted">分析结构和表达方式，将具体事实替换为变量；参考原文只用于写法分析。</p><label className="field"><span>参考文章</span><textarea rows={12} onChange={event=>setExtractSource(event.target.value)} placeholder="粘贴 Markdown 或纯文本" value={extractSource}/></label><label className="template-rights"><input type="checkbox" checked={rightsConfirmed} onChange={event=>setRightsConfirmed(event.target.checked)}/>我拥有参考文章版权或已取得使用许可</label>{extracting&&<p role="status">提取中，已等待 {extractSeconds} 秒；最长等待 180 秒。</p>}</div>}<footer><button className="button button--quiet" onClick={()=>{setCreateOpen(false);setExtractOpen(false);}} type="button">取消</button><button className="button button--primary" disabled={createOpen?(!name.trim()||!markdown.trim()):extracting||!rightsConfirmed||!extractSource.trim()} onClick={()=>void (createOpen?create():extract())} type="button">{extracting?<LoaderCircle className="spin" size={15}/>:createOpen?<Plus size={15}/>:<Wand2 size={15}/ >}{extracting?"处理中":createOpen?"创建模板":"提取模板"}</button></footer></section></div>}
+      {(createOpen || extractOpen) && <div className="template-modal-backdrop" onClick={() => {setCreateOpen(false);setExtractOpen(false);}}><section aria-label={createOpen?"新建模板":"从参考文章提取"} aria-modal="true" className="template-modal" onClick={event=>event.stopPropagation()} role="dialog"><header><div><span className="page-kicker">模板库</span><h2>{createOpen?"新建模板":"从参考文章提取"}</h2></div><button className="icon-button" aria-label="关闭" onClick={()=>{setCreateOpen(false);setExtractOpen(false);}} type="button">×</button></header>{error && <div role="alert" className="workflow-task__failure"><p>{error}</p></div>}{createOpen?<div className="template-modal__body"><label className="field"><span>模板名称</span><input autoFocus onChange={event=>setName(event.target.value)} placeholder="例如：产品发布说明" value={name}/></label><label className="field"><span>用途说明</span><input onChange={event=>setDescription(event.target.value)} placeholder="简要说明模板适用场景" value={description}/></label><label className="field"><span>模板骨架</span><textarea rows={9} onChange={event=>setMarkdown(event.target.value)} placeholder="# {{title}}\n\n## {{section}}\n{{content}}" value={markdown}/></label></div>:<div className="template-modal__body"><p className="muted">分析结构和表达方式，将具体事实替换为变量；参考原文只用于写法分析。导入后点击“提取模板”开始自动分析。</p><div className="template-import-actions"><input accept=".md,.markdown,.txt,text/markdown,text/plain" aria-label="导入 Markdown 文件" className="visually-hidden" disabled={extracting || readingFile} ref={fileInputRef} type="file" onChange={event=>{const file=event.currentTarget.files?.[0]; event.currentTarget.value=""; void importMarkdown(file);}} /><button className="button button--quiet" disabled={extracting || readingFile} onClick={()=>fileInputRef.current?.click()} type="button"><FileUp size={15}/>{readingFile?"读取中":"导入 .md"}</button>{sourceFileName && <span title={sourceFileName}>{sourceFileName}</span>}</div><label className="field"><span>参考文章</span><textarea disabled={extracting || readingFile} rows={12} onChange={event=>{setExtractSource(event.target.value);setSourceFileName(null);setError(null);}} placeholder="粘贴 Markdown 或纯文本" value={extractSource}/></label><p className="template-import-count">{Array.from(extractSource).length.toLocaleString()} 字符</p><label className="template-rights"><input type="checkbox" checked={rightsConfirmed} onChange={event=>setRightsConfirmed(event.target.checked)}/>我拥有参考文章版权或已取得使用许可</label>{extracting&&<p role="status">提取中，已等待 {extractSeconds} 秒；最长等待 180 秒。</p>}</div>}<footer><button className="button button--quiet" onClick={()=>{setCreateOpen(false);setExtractOpen(false);}} type="button">取消</button><button className="button button--primary" disabled={createOpen?(!name.trim()||!markdown.trim()):extracting||readingFile||!rightsConfirmed||!extractSource.trim()} onClick={()=>void (createOpen?create():extract())} type="button">{extracting?<LoaderCircle className="spin" size={15}/>:createOpen?<Plus size={15}/>:<Wand2 size={15}/ >}{extracting?"处理中":createOpen?"创建模板":"提取模板"}</button></footer></section></div>}
     </section>
   );
 }
