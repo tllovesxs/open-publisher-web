@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleUserRound, LogIn, LogOut, UserPlus } from "lucide-react";
+import { ChevronUp, CircleUserRound, LogIn, LogOut, UserPlus } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import "./AvatarMenu.css";
 
-// 参考主流 AI 聊天站：右上角常驻头像入口；未登录点击出「登录/注册」菜单，
-// 已登录显示账号信息与退出。访客可先浏览创作界面，创作时再引导登录。
-export function AvatarMenu() {
+// 侧栏账号入口：复用登录、注册与退出，菜单向上展开。
+export function AvatarMenu({ runtimeReady, onNavigate }: { runtimeReady: boolean; onNavigate: () => void }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -30,7 +30,7 @@ export function AvatarMenu() {
   const initial = (user?.displayName || user?.username || "").trim().charAt(0).toUpperCase();
 
   return (
-    <div className="avatar-menu" ref={rootRef}>
+    <div className="avatar-menu avatar-menu--sidebar" ref={rootRef}>
       <button
         aria-expanded={open}
         aria-haspopup="menu"
@@ -45,10 +45,13 @@ export function AvatarMenu() {
         ) : (
           <CircleUserRound aria-hidden="true" size={22} strokeWidth={1.8} />
         )}
+        <span className="avatar-menu__identity"><strong>{user ? user.displayName || user.username : "登录稿流"}</strong><small>{user ? user.role === "admin" ? "管理员" : "个人账号" : "同步你的创作内容"}</small></span>
+        <ChevronUp aria-hidden="true" size={14} className="avatar-menu__chevron" />
       </button>
 
       {open && (
-        <div className="avatar-menu__panel" role="menu">
+        <div className="avatar-menu__panel" role="menu" aria-label="账号菜单">
+          <div className="avatar-menu__runtime"><span className={runtimeReady ? "is-ready" : ""} />{runtimeReady ? "创作引擎已就绪" : "正在连接创作引擎"}</div>
           {user ? (
             <>
               <div className="avatar-menu__header">
@@ -60,6 +63,7 @@ export function AvatarMenu() {
                 onClick={async () => {
                   setOpen(false);
                   await logout();
+                  onNavigate();
                   navigate("/", { replace: true });
                 }}
                 role="menuitem"
@@ -77,7 +81,7 @@ export function AvatarMenu() {
               </div>
               <button
                 className="avatar-menu__item"
-                onClick={() => { setOpen(false); navigate("/login"); }}
+                onClick={() => { setOpen(false); onNavigate(); navigate("/login"); }}
                 role="menuitem"
                 type="button"
               >
@@ -86,7 +90,7 @@ export function AvatarMenu() {
               </button>
               <button
                 className="avatar-menu__item"
-                onClick={() => { setOpen(false); navigate("/login?mode=register"); }}
+                onClick={() => { setOpen(false); onNavigate(); navigate("/login?mode=register"); }}
                 role="menuitem"
                 type="button"
               >

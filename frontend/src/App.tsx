@@ -5,7 +5,6 @@ import { api } from "./api/client";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ActiveRunProvider } from "./lib/activeRunContext";
 import { PageBoundary, PageLoading } from "./components/PageBoundary";
-import { AvatarMenu } from "./components/AvatarMenu";
 import { useThemeSetting } from "./lib/theme";
 import { VisualPlanProvider } from "./components/article/VisualPlanProvider";
 import { AppNavigation, type NavKey } from "./components/AppNavigation";
@@ -96,7 +95,6 @@ function Shell() {
         onCloseMobile={() => setMobileNavOpen(false)}
         onNavigate={handleNavigate}
         onToggleTheme={() => setThemeSetting(theme === "light" ? "dark" : "light")}
-        runtimeLabel="AI 写作 · 智能配图 · 多平台草稿"
         runtimeReady={backendReady}
         theme={theme}
       />
@@ -123,7 +121,6 @@ function Shell() {
               新文章
             </button>
           )}
-          <AvatarMenu />
         </header>
 
         <main

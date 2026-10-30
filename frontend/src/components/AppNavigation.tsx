@@ -1,3 +1,4 @@
+import { AvatarMenu } from "./AvatarMenu";
 import { Bell, BookOpenText, Images, LayoutTemplate, Moon, PenLine, Settings, Sun, X } from "lucide-react";
 
 // 迁移自蓝本 apps/desktop/src/components/AppNavigation.tsx（团队自有代码），1:1 导航与品牌。
@@ -7,7 +8,6 @@ interface AppNavigationProps {
   active: NavKey;
   mobileOpen: boolean;
   theme: "light" | "dark";
-  runtimeLabel: string;
   runtimeReady: boolean;
   onCloseMobile: () => void;
   onNavigate: (nav: NavKey) => void;
@@ -31,7 +31,6 @@ export function AppNavigation({
   active,
   mobileOpen,
   theme,
-  runtimeLabel,
   runtimeReady,
   onCloseMobile,
   onNavigate,
@@ -76,23 +75,8 @@ export function AppNavigation({
         </nav>
 
         <div className="app-navigation__footer">
-          <div className="runtime-state">
-            <span
-              aria-hidden="true"
-              className={`runtime-state__dot${runtimeReady ? " is-ready" : ""}`}
-            />
-            <span>
-              <strong>{runtimeReady ? "创作引擎已就绪" : "创作引擎启动中"}</strong>
-              <small>{runtimeLabel}</small>
-            </span>
-          </div>
-          <button
-            aria-label={theme === "light" ? "切换深色主题" : "切换浅色主题"}
-            className="icon-button"
-            onClick={onToggleTheme}
-            title={theme === "light" ? "深色主题" : "浅色主题"}
-            type="button"
-          >
+          <AvatarMenu runtimeReady={runtimeReady} onNavigate={onCloseMobile} />
+          <button aria-label={theme === "light" ? "切换深色主题" : "切换浅色主题"} className="icon-button" onClick={onToggleTheme} title={theme === "light" ? "深色主题" : "浅色主题"} type="button">
             {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
           </button>
         </div>
