@@ -23,6 +23,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE);
     const menu=page.getByRole('menu',{name:'账号菜单',exact:true});
     await menu.waitFor();
     const box=await menu.boundingBox();
+    const unobscured = await menu.evaluate(el => {
+      const b = el.getBoundingClientRect();
+      return [[b.right - 8,b.top + 10],[b.right - 8,b.bottom - 10]].every(([x,y]) => el.contains(document.elementFromPoint(x,y)));
+    });
+    assert.ok(unobscured, 'Menu edges must not be clipped by sidebar');
+    if (logged && width === 1280) await page.screenshot({path:'work/account-menu-refined.png'});
     assert.ok(box.x>=0 && box.x+box.width<=width && box.y>=0,JSON.stringify(box));
     assert.equal(await page.getByRole('menuitem',{name:logged?'退出登录':'登录',exact:true}).count(),1);
     await page.keyboard.press('Escape');

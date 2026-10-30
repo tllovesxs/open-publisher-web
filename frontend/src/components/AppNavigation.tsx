@@ -1,5 +1,5 @@
 import { AvatarMenu } from "./AvatarMenu";
-import { Bell, BookOpenText, Images, LayoutTemplate, Moon, PenLine, Settings, Sun, X } from "lucide-react";
+import { Bell, BookOpenText, Images, LayoutTemplate, PenLine, Settings, X } from "lucide-react";
 
 // 迁移自蓝本 apps/desktop/src/components/AppNavigation.tsx（团队自有代码），1:1 导航与品牌。
 export type NavKey = "create" | "articles" | "announcements" | "templates" | "media" | "settings";
@@ -75,10 +75,7 @@ export function AppNavigation({
         </nav>
 
         <div className="app-navigation__footer">
-          <AvatarMenu runtimeReady={runtimeReady} onNavigate={onCloseMobile} />
-          <button aria-label={theme === "light" ? "切换深色主题" : "切换浅色主题"} className="icon-button" onClick={onToggleTheme} title={theme === "light" ? "深色主题" : "浅色主题"} type="button">
-            {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
-          </button>
+          <AvatarMenu theme={theme} onToggleTheme={onToggleTheme} runtimeReady={runtimeReady} onNavigate={onCloseMobile} />
         </div>
       </aside>
       {mobileOpen && (

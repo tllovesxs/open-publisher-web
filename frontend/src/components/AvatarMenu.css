@@ -21,3 +21,19 @@
   .app-navigation .app-navigation__footer { flex-direction: column; gap: 6px; }
   .avatar-menu--sidebar .avatar-menu__trigger { justify-content: center; }
 }
+/* Keep the account row spacious; the existing theme action lives in its menu. */
+.app-navigation .app-navigation__footer { padding: 10px 8px; }
+.avatar-menu--sidebar .avatar-menu__trigger { gap: 10px; padding: 9px 8px; min-height: 56px; }
+.avatar-menu--sidebar .avatar-menu__avatar { width: 34px; height: 34px; flex-basis: 34px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border); font-size: 13px; }
+.avatar-menu__identity { gap: 4px; }
+.avatar-menu__identity strong { font-size: 13px; }
+.avatar-menu__identity small { font-size: 11px; }
+.account-popover.avatar-menu__panel { position: fixed; top: auto; right: auto; width: 260px; min-width: 0; max-width: calc(100vw - 24px); max-height: calc(100dvh - 100px); overflow-y: auto; z-index: 1000; padding: 7px; border-radius: 16px; background: var(--surface); box-shadow: 0 8px 32px rgb(0 0 0 / 14%), 0 1px 4px rgb(0 0 0 / 6%); }
+.account-popover .avatar-menu__header { order: -1; display: grid; grid-template-columns: 38px minmax(0, 1fr); column-gap: 11px; row-gap: 3px; align-items: center; padding: 12px 9px 15px; margin: 0 0 4px; }
+.account-popover__avatar { grid-row: 1 / 3; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 15px; font-weight: 600; }
+.account-popover .avatar-menu__header strong, .account-popover .avatar-menu__header small { overflow-wrap: anywhere; min-width: 0; }
+.account-popover .avatar-menu__header:not(:has(.account-popover__avatar)) { grid-template-columns: 1fr; }
+.account-popover .avatar-menu__item { align-items: center; gap: 11px; padding: 11px 10px; border-radius: 9px; font-size: 13px; }
+.account-popover .avatar-menu__item svg { flex-shrink: 0; color: var(--muted); }
+.account-popover .avatar-menu__runtime { border-top: 1px solid var(--border); margin-top: 5px; padding: 12px 10px 7px; font-size: 11px; }
+.account-popover button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
