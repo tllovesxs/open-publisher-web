@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 570" role="img" aria-labelledby="title">
+  <title id="title">搭建文章结构：观点、顺序、过渡</title>
+  <rect width="400" height="570" fill="#e7e7e4"/>
+  <g font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#202022">
+    <text x="28" y="48" font-size="24" font-weight="700">把散落的想法串成一条主线</text>
+    <rect x="28" y="76" width="344" height="130" fill="#f5f5f2"/>
+    <text x="48" y="116" font-size="28" font-weight="700">确定核心观点</text>
+    <text x="48" y="158" font-size="24">最想说清什么？</text>
+    <text x="48" y="190" font-size="22">用一句话定下主线</text>
+    <rect x="28" y="238" width="344" height="130" fill="#f5f5f2"/>
+    <text x="48" y="278" font-size="28" font-weight="700">安排内容顺序</text>
+    <text x="48" y="320" font-size="24">先说什么，再说什么？</text>
+    <text x="48" y="352" font-size="22">让素材按逻辑展开</text>
+    <rect x="28" y="400" width="344" height="130" fill="#f5f5f2"/>
+    <text x="48" y="440" font-size="28" font-weight="700">补充过渡衔接</text>
+    <text x="48" y="482" font-size="24">两段为何连在一起？</text>
+    <text x="48" y="514" font-size="22">补上一句，让思路接续</text>
+  </g>
+  <g stroke="#555557" stroke-width="2" fill="none"><path d="M200 212v20m-7-7 7 7 7-7M200 374v20m-7-7 7 7 7-7"/></g>
+</svg>

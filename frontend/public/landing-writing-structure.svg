@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" role="img" aria-labelledby="title desc">
+<title id="title">搭建文章结构的三步法</title><desc id="desc">确定核心观点，安排内容顺序，补充过渡衔接。每一步用具体问题说明。</desc>
+<rect width="960" height="360" fill="#e7e7e4"/>
+<g font-family="Microsoft YaHei, PingFang SC, sans-serif" fill="#272723">
+<text x="44" y="63" font-size="24">把散落的想法，串成一条主线</text>
+<g fill="#f5f5f2"><rect x="44" y="102" width="272" height="194"/><rect x="344" y="102" width="272" height="194"/><rect x="644" y="102" width="272" height="194"/></g>
+<g font-size="28" font-weight="700"><text x="66" y="151">确定核心观点</text><text x="366" y="151">安排内容顺序</text><text x="666" y="151">补充过渡衔接</text></g>
+<g font-size="23"><text x="66" y="210">最想说清什么？</text><text x="366" y="210">先说什么，再说什么？</text><text x="666" y="210">两段为何连在一起？</text></g>
+<g font-size="21" fill="#57574e"><text x="66" y="261">用一句话定下主线</text><text x="366" y="261">让素材按逻辑展开</text><text x="666" y="261">补上一句，让思路接续</text></g>
+<path d="M316 196h28m-9-7 9 7-9 7m281-7h28m-9-7 9 7-9 7" fill="none" stroke="#57574e" stroke-width="2"/>
+<text x="44" y="332" font-size="18">稿流 · 《把零散想法变成一篇清晰的文章》配图示例</text>
+</g></svg>

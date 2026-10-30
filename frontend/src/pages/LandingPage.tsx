@@ -1,708 +1,154 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type PointerEvent,
-} from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import {
-  ArrowDown,
-  ArrowRight,
-  ArrowUpRight,
-  BookOpen,
-  Check,
-  ChevronRight,
-  FileText,
-  ImageIcon,
-  Layers3,
-  MoveUpRight,
-  Pause,
-  PenLine,
-  Play,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Workflow,
-} from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Pause, Play } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import FlowBackdrop from "./landing/FlowBackdrop";
 import MetallicPaint from "../components/MetallicPaint/MetallicPaint";
+import exampleArticle from "../../../backend/app/data/example-article.v1.md?raw";
 import "./landing/landing.css";
 
-const STEPS = [
-  {
-    title: "研究",
-    label: "让灵感有据可循",
-    icon: Search,
-    detail: "梳理主题与参考资料，找到值得展开的方向。",
-    tags: ["主题理解", "受众分析", "资料检索"],
-  },
-  {
-    title: "写作",
-    label: "把思路写成好内容",
-    icon: PenLine,
-    detail: "从结构到段落，让零散的想法连成一篇文章。",
-    tags: ["大纲规划", "正文创作", "风格适配"],
-  },
-  {
-    title: "审阅",
-    label: "让每次修改都有价值",
-    icon: ShieldCheck,
-    detail: "检查表达与内容风险，在版本之间持续打磨。",
-    tags: ["内容评估", "风险检查", "版本追溯"],
-  },
-  {
-    title: "配图",
-    label: "给文字一个视觉表达",
-    icon: ImageIcon,
-    detail: "从素材匹配到生成配图，让图文在同一处完成。",
-    tags: ["素材匹配", "智能配图", "图文编排"],
-  },
-];
+const STAGES = ["研究", "写作", "审阅", "配图"];
+const TITLES = ["让资料先有一条主线", "把大纲展开成正文", "让修改有具体的理由", "让图和文字一起说明问题"];
+const ARTICLE = "把零散想法变成一篇清晰的文章";
+const ORIGINAL = "写作的第一步不是动笔，而是“倾倒”。把脑海中所有相关的想法都写下来，不必讲究顺序，也不必追求措辞，哪怕只是一个词、半句话，都可以先记录在纸上或文档里。";
+const REVISED = "先把脑海中与主题相关的想法记下来。一个词、半句话都可以，暂时不用排序，也不用打磨措辞。";
 
-const CAPABILITIES = [
-  {
-    icon: BookOpen,
-    title: "好内容，从好资料开始。",
-    text: "导入参考文件，结合知识库检索，让资料融入你的创作。",
-    path: "/",
-    link: "带着资料开始",
-    kind: "sources",
-  },
-  {
-    icon: Layers3,
-    title: "你的表达，有自己的风格。",
-    text: "选择创作模板，调整表达方式，把内容写成你想要的样子。",
-    path: "/templates",
-    link: "探索创作模板",
-    kind: "templates",
-  },
-  {
-    icon: ImageIcon,
-    title: "文字与画面，一起成稿。",
-    text: "管理图片素材，匹配文章配图，让视觉表达接上写作思路。",
-    path: "/media",
-    link: "打开素材库",
-    kind: "images",
-  },
-];
+function openFullExample() {
+  const example = document.getElementById("gl-full-example") as HTMLDetailsElement | null;
+  if (example) example.open = true;
+}
 
-function spotlight(event: PointerEvent<HTMLElement>) {
-  const bounds = event.currentTarget.getBoundingClientRect();
-  event.currentTarget.style.setProperty(
-    "--pointer-x",
-    `${event.clientX - bounds.left}px`,
-  );
-  event.currentTarget.style.setProperty(
-    "--pointer-y",
-    `${event.clientY - bounds.top}px`,
-  );
+function FullExample() {
+  return <details className="gl-full-example" id="gl-full-example"><summary>完整示例原文</summary><div>{exampleArticle.trim().split(/\r?\n\s*\r?\n/).map((block, index) => {
+    if (block.startsWith("# ")) return <h3 key={index}>{block.slice(2)}</h3>;
+    if (block.startsWith("## ")) return <h4 key={index}>{block.slice(3)}</h4>;
+    if (/^\d+\./.test(block)) return <ol key={index}>{block.split(/\r?\n/).map(line => <li key={line}>{line.replace(/^\d+\.\s*/, "").replace(/\*\*/g, "")}</li>)}</ol>;
+    return <p key={index}>{block}</p>;
+  })}</div></details>;
+}
+
+function StructureImage({ compact = false }: { compact?: boolean }) {
+  return <picture><source media={compact ? "(max-width: 1100px)" : "(max-width: 640px)"} srcSet="/landing-writing-structure-mobile.svg" /><img src="/landing-writing-structure.svg" width="960" height="360" alt="搭建文章结构：确定核心观点，安排内容顺序，补充过渡衔接。" /></picture>;
+}
+
+function Brand({ still }: { still: boolean }) {
+  return <a className="gl-brand" href="#gl-content" aria-label="稿流首页">
+    <img src="/gaoliu-mark.svg" width="36" height="36" alt="" />
+    <MetallicPaint text="稿流" dpr={2} className="gl-wordmark" fontFamily="Microsoft YaHei, PingFang SC, sans-serif" fontWeight={800} color="#eee7ff" density={2.1} softness={0.18} dispersion={0.12} distortion={0.05} edgeBend={0.7} speed={0.45} scale={1.1} mouseTilt={0.25} intro={false} paused={still} />
+  </a>;
+}
+
+function StageOutput({ stage }: { stage: number }) {
+  if (stage === 0) return <>
+    <h3>从资料里提取文章结构</h3>
+    <div className="gl-source"><span className="gl-meta">资料摘录 · 项目公共示例文章</span><p>“留下真正有用的素材，舍弃那些看似精彩却偏离主线的内容。”</p><a href="#gl-full-example" onClick={openFullExample}>来源：《{ARTICLE}》 <ArrowDown size={14} /></a></div>
+    <p className="gl-summary"><strong>整理摘要</strong>先筛选与主题相关的素材，再用核心观点串联段落。</p>
+    <h4>由此展开的大纲</h4>
+    <ol className="gl-outline"><li>先收集，再筛选</li><li>搭建结构：观点、顺序、过渡</li><li>反复修改，让文字更清晰</li></ol>
+  </>;
+  if (stage === 1) return <>
+    <h3>先收集，再筛选</h3><p>{ORIGINAL}这个阶段的关键是放开手脚，不做评判。</p>
+    <p>收集完毕后，进入筛选环节。问自己三个问题：这个想法与主题有关吗？它能支撑我的核心观点吗？删掉它会影响文章的完整性吗？</p>
+    <blockquote>筛选的过程，就是为文章“瘦身”的过程。</blockquote><span className="gl-meta">节选自项目公共示例正文</span>
+  </>;
+  if (stage === 2) return <>
+    <h3>把抽象动作改成可执行的一步</h3><p className="gl-summary"><strong>问题与理由</strong>“倾倒”依赖比喻理解，原句也偏长。先说清动作，再拆开表达，读者更容易照着做。</p>
+    <div className="gl-edit gl-edit--before"><span className="gl-meta">修改前 · 原文节选</span><p>写作的第一步不是动笔，而是“倾倒”。把脑海中所有相关的想法都写下来，不必讲究顺序，也不必追求措辞。</p></div>
+    <div className="gl-edit"><span className="gl-meta">修改后 · 编辑示例</span><p>{REVISED}</p></div>
+  </>;
+  return <>
+    <h3>搭建结构的三步法</h3><p>用一句话确定核心观点，再安排内容顺序，最后补充过渡衔接。</p>
+    <figure className="gl-figure"><StructureImage /><figcaption>图：把素材串成文章的三个步骤。图文编排示例。</figcaption></figure>
+    <span className="gl-meta">根据示例文章制作的说明图</span>
+  </>;
 }
 
 export default function LandingPage() {
   const { user } = useAuth();
-  const [step, setStep] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-  const root = useRef<HTMLElement>(null);
-  const current = STEPS[step];
-  const motionEnabled = !paused && !reducedMotion;
-
+  const [stage, setStage] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [motionPaused, setMotionPaused] = useState(false);
+  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [inView, setInView] = useState(false);
+  const [visible, setVisible] = useState(!document.hidden);
+  const preview = useRef<HTMLElement>(null);
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [style, setStyle] = useState(0);
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReducedMotion(query.matches);
+    const update = () => { setReduced(query.matches); if (query.matches) setPlaying(false); };
+    const visibility = () => setVisible(!document.hidden);
     query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+    document.addEventListener("visibilitychange", visibility);
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: .25 });
+    if (preview.current) observer.observe(preview.current);
+    return () => { query.removeEventListener("change", update); document.removeEventListener("visibilitychange", visibility); observer.disconnect(); };
   }, []);
-
-  const scrollTo = (id: string) =>
-    document.getElementById(id)?.scrollIntoView({
-      behavior: motionEnabled ? "smooth" : "instant",
-      block: "start",
-    });
-
-  return (
-    <main
-      className={`gl-home${motionEnabled ? "" : " gl-home--still"}`}
-      ref={root}
-    >
-      <a className="gl-skip" href="#gl-content">
-        跳到主要内容
-      </a>
-      <header className="gl-nav">
-        <div className="gl-nav__inner">
-          <a className="gl-brand" href="#gl-content" aria-label="稿流首页">
-            <img src="/gaoliu-mark.svg" alt="" />
-            <strong>
-              <MetallicPaint
-                text="稿流"
-                dpr={2}
-                className="gl-wordmark"
-                fontFamily="Microsoft YaHei, PingFang SC, sans-serif"
-                fontWeight={800}
-                color="#eee7ff"
-                density={2.1}
-                softness={0.18}
-                dispersion={0.12}
-                distortion={0.05}
-                edgeBend={0.7}
-                speed={0.45}
-                scale={1.1}
-                mouseTilt={0.25}
-                intro={false}
-                paused={!motionEnabled}
-              />
-              <span className="gl-brand__english">GAOLIU</span>
-            </strong>
-          </a>
-          <nav className="gl-nav__links" aria-label="产品导航">
-            <a
-              href="#experience"
-              onClick={(event) => {
-                event.preventDefault();
-                scrollTo("experience");
-              }}
-            >
-              创作体验
-            </a>
-            <a
-              href="#capabilities"
-              onClick={(event) => {
-                event.preventDefault();
-                scrollTo("capabilities");
-              }}
-            >
-              产品能力
-            </a>
-            <a
-              href="#workflow"
-              onClick={(event) => {
-                event.preventDefault();
-                scrollTo("workflow");
-              }}
-            >
-              工作流程
-            </a>
-          </nav>
-          <div className="gl-nav__actions">
-            <Link className="gl-login" to={user ? "/articles" : "/login"}>
-              {user ? "我的稿件" : "登录"}
-            </Link>
-            <Link className="gl-button gl-button--small" to="/">
-              进入工作台
-              <ArrowUpRight size={16} />
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <div className="gl-container" id="gl-content" tabIndex={-1}>
+  useEffect(() => {
+    if (!playing || reduced || !inView || !visible) return;
+    const timer = window.setInterval(() => setStage(value => (value + 1) % STAGES.length), 9000);
+    return () => window.clearInterval(timer);
+  }, [playing, reduced, inView, visible]);
+  const select = (index: number) => { setPlaying(false); setStage(index); };
+  const handleTabKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % STAGES.length;
+    else if (event.key === "ArrowLeft") next = (index + STAGES.length - 1) % STAGES.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = STAGES.length - 1;
+    else return;
+    event.preventDefault(); select(next); tabs.current[next]?.focus({ preventScroll: true });
+  };
+  const still = reduced || motionPaused || !visible;
+  return <main className={`gl-home${still ? " gl-home--still" : ""}`}>
+    <a className="gl-skip" href="#gl-content">跳到主要内容</a>
+    <header className="gl-nav"><div className="gl-frame gl-nav__inner">
+      <Brand still={still} /><nav aria-label="产品导航"><a href="#experience">创作示例</a><a href="#capabilities">产品能力</a><a href="#faq">常见问题</a></nav>
+      <Link className="gl-nav-login" to={user ? "/articles" : "/login"}>{user ? "我的稿件" : "登录"}<ArrowUpRight size={16} /></Link>
+    </div></header>
+    <div className="gl-frame" id="gl-content" tabIndex={-1}>
+      <div className="gl-opening">
         <section className="gl-hero" aria-labelledby="gl-title">
-          <div className="gl-hero__main">
-            <div className="gl-eyebrow">
-              <span className="gl-status-dot" />
-              想法与作品之间，有稿流。
-            </div>
-            <h1 id="gl-title">
-              让想法成稿，
-              <br />
-              让好内容<span className="gl-gradient-text">流动。</span>
-            </h1>
-            <div className="gl-hero__actions">
-              <Link className="gl-button" to="/">
-                开始创作
-                <ArrowUpRight size={19} />
-              </Link>
-              <button
-                className="gl-text-button"
-                type="button"
-                onClick={() => scrollTo("experience")}
-              >
-                看看创作过程
-                <ArrowDown size={16} />
-              </button>
-            </div>
-          </div>
-          <div className="gl-hero__aside">
-            <span className="gl-orbit-mark" aria-hidden="true">
-              ✳
-            </span>
-            <p>
-              从一闪而过的灵感，
-              <br />
-              到值得分享的好文章。
-            </p>
-            <p className="gl-muted">
-              研究、写作、审阅、配图与发布，
-              <br className="gl-desktop-break" />
-              在一个连贯的创作空间里完成。
-            </p>
-            <div className="gl-hero__note">
-              <Workflow size={15} />
-              <span>AI 协作，让创作顺势而行</span>
-            </div>
-          </div>
+          <h1 id="gl-title">让想法成稿，<br />让好内容流动。</h1>
+          <p className="gl-lead">稿流是一个 AI 内容创作工作台，将资料研究、长文写作、审阅、配图与发布管理，放进同一个工作空间。</p>
+          <div className="gl-hero__actions"><Link className="gl-button" to="/">开始创作<ArrowUpRight size={19} /></Link><a className="gl-text-link" href="#experience">查看创作示例<ArrowDown size={16} /></a></div>
+          <p className="gl-hero-note">带着主题和资料开始，成稿后继续编辑与确认。</p>
         </section>
-
-        <section
-          className="gl-experience"
-          id="experience"
-          aria-label="交互式创作流程预览"
-        >
-          <FlowBackdrop active={motionEnabled} />
-          <div className="gl-stage-top">
-            <span>
-              <span className="gl-status-dot" />
-              THE CREATIVE FLOW
-            </span>
-            <button
-              type="button"
-              className="gl-motion"
-              disabled={reducedMotion}
-              onClick={() => setPaused((value) => !value)}
-              aria-label={
-                reducedMotion
-                  ? "已跟随系统减少动态效果"
-                  : paused
-                    ? "开启动效"
-                    : "暂停动效"
-              }
-              aria-pressed={paused || reducedMotion}
-            >
-              {motionEnabled ? <Pause size={13} /> : <Play size={13} />}
-              <span>
-                {reducedMotion ? "静态模式" : paused ? "开启动效" : "暂停动效"}
-              </span>
-            </button>
+        <section className="gl-experience" id="experience" ref={preview} aria-labelledby="gl-example-title">
+          <div className="gl-demo-heading"><h2 id="gl-example-title">看一篇文章逐步成稿</h2><span className="gl-meta">创作示例</span></div>
+          <p className="gl-example-name">{ARTICLE}</p>
+          <div className="gl-demo-toolbar"><div className="gl-tabs" role="tablist" aria-label="创作示例阶段">{STAGES.map((title, index) => <button type="button" role="tab" id={`gl-tab-${index}`} aria-controls={`gl-panel-${index}`} aria-selected={index === stage} tabIndex={index === stage ? 0 : -1} ref={el => { tabs.current[index] = el; }} onKeyDown={event => handleTabKey(event, index)} onClick={() => select(index)} key={title}>{title}</button>)}</div>
+            <button className="gl-play" type="button" disabled={reduced} onClick={() => setPlaying(value => !value)} aria-label={reduced ? "已跟随系统减少动态效果" : playing ? "暂停示例" : "播放示例"} aria-pressed={playing}>{playing ? <Pause size={15} /> : <Play size={15} />}<span>{reduced ? "静态" : playing ? "暂停" : "播放"}</span></button>
           </div>
-          <div className="gl-stage-layout">
-            <div className="gl-preview">
-              <div className="gl-preview__bar">
-                <div className="gl-window-dots" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </div>
-                <span>一篇好文章的诞生</span>
-                <span className="gl-preview__badge">流程预览</span>
-              </div>
-              <div className="gl-preview__body">
-                <div className="gl-preview__heading">
-                  <span className="gl-file-icon">
-                    <FileText size={19} />
-                  </span>
-                  <div>
-                    <small>创作示例 / 内容工作方式</small>
-                    <h2>把灵感，写成下一篇好内容。</h2>
-                  </div>
-                </div>
-                <div
-                  className="gl-preview__content"
-                  key={step}
-                  aria-live="polite"
-                  aria-atomic="true"
-                >
-                  {step === 0 && (
-                    <>
-                      <div className="gl-section-label">01 / 研究与规划</div>
-                      <p className="gl-document-intro">
-                        好的表达，始于对主题的理解。先把资料和想法放在一起，再找到文章的主线。
-                      </p>
-                      <div className="gl-research-grid">
-                        <div>
-                          <Search size={17} />
-                          <strong>明确主题</strong>
-                          <span>AI 如何融入日常内容创作</span>
-                        </div>
-                        <div>
-                          <BookOpen size={17} />
-                          <strong>整理资料</strong>
-                          <span>参考文件 · 知识库 · 素材</span>
-                        </div>
-                      </div>
-                      <div className="gl-outline">
-                        <span>文章结构</span>
-                        <p>
-                          <i>01</i>从一个值得表达的想法出发
-                        </p>
-                        <p>
-                          <i>02</i>让资料与观点形成连接
-                        </p>
-                        <p>
-                          <i>03</i>在协作中找到自己的表达
-                        </p>
-                      </div>
-                    </>
-                  )}
-                  {step === 1 && (
-                    <>
-                      <div className="gl-section-label">02 / 正文创作</div>
-                      <p className="gl-document-intro">
-                        创作的起点，往往只是一个还没想清楚的念头。
-                      </p>
-                      <p className="gl-document-paragraph">
-                        它可能藏在一段阅读笔记里，也可能来自一次随手记录。当资料有了结构，当观点找到线索，零散的想法就开始成为文章。
-                      </p>
-                      <blockquote>
-                        让工具接住繁琐的过程，
-                        <br />
-                        把注意力留给真正想说的话。
-                      </blockquote>
-                      <p className="gl-document-paragraph">
-                        从大纲到正文，再到语气与节奏，每一步都可以继续调整，直到内容呈现出你想要的样子。
-                      </p>
-                      <div className="gl-inline-note">
-                        <PenLine size={14} />
-                        示例正文 · 内容可在工作台继续编辑
-                      </div>
-                    </>
-                  )}
-                  {step === 2 && (
-                    <>
-                      <div className="gl-section-label">03 / 审阅与打磨</div>
-                      <p className="gl-document-intro">
-                        回看文章的结构、表达和风险，让每一轮修改都有清晰的方向。
-                      </p>
-                      <div className="gl-review-items">
-                        {["结构与表达", "内容与风险", "版本与修改"].map(
-                          (label, index) => (
-                            <div key={label}>
-                              <span>
-                                <Check size={14} />
-                              </span>
-                              <div>
-                                <strong>{label}</strong>
-                                <p>
-                                  {
-                                    [
-                                      "检查段落衔接，打磨阅读节奏",
-                                      "结合审阅报告，逐项确认内容",
-                                      "保留修改记录，随时对比与回退",
-                                    ][index]
-                                  }
-                                </p>
-                              </div>
-                              <ArrowUpRight size={14} />
-                            </div>
-                          ),
-                        )}
-                      </div>
-                      <div className="gl-inline-note">
-                        <ShieldCheck size={14} />
-                        审阅能力示意 · 实际报告在创作后生成
-                      </div>
-                    </>
-                  )}
-                  {step === 3 && (
-                    <>
-                      <div className="gl-section-label">04 / 视觉表达</div>
-                      <div className="gl-cover">
-                        <div className="gl-cover__lines" />
-                        <span>THE ART OF FINDING YOUR FLOW</span>
-                        <strong>
-                          灵感有形。
-                          <br />
-                          好内容，自有回响。
-                        </strong>
-                        <small>稿流 / GAOLIU</small>
-                      </div>
-                      <div className="gl-image-caption">
-                        <span>
-                          <ImageIcon size={14} />
-                          图文编排示例
-                        </span>
-                        <span>素材匹配 / 创作配图</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="gl-preview__footer">
-                <span>
-                  <span className="gl-status-dot" />
-                  {current.title} · {current.tags[0]}
-                </span>
-                <span>
-                  由你的想法驱动
-                  <Sparkles size={13} />
-                </span>
-              </div>
-            </div>
-            <div className="gl-controls">
-              <span className="gl-controls__eyebrow">
-                从灵感开始，随思路推进
-              </span>
-              <h2>
-                好内容，
-                <br />
-                一步步发生。
-              </h2>
-              <div
-                className="gl-step-buttons"
-                role="group"
-                aria-label="选择预览阶段"
-              >
-                {STEPS.map(({ title, icon: Icon }, index) => (
-                  <button
-                    type="button"
-                    key={title}
-                    onClick={() => setStep(index)}
-                    aria-pressed={step === index}
-                    className={step === index ? "is-active" : ""}
-                  >
-                    <Icon size={17} />
-                    <span>{title}</span>
-                    <span className="gl-step-number" aria-hidden="true">
-                      0{index + 1}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="gl-step-description">
-                <strong>{current.label}</strong>
-                <p>{current.detail}</p>
-              </div>
-              <Link to="/" className="gl-stage-link">
-                打开创作工作台
-                <ArrowRight size={16} />
-              </Link>
-            </div>
-          </div>
-          <div className="gl-stage-bottom">
-            <span>从零散灵感，到完整表达。</span>
-            <span>
-              YOUR IDEAS. IN FLOW.
-              <MoveUpRight size={14} />
-            </span>
-          </div>
+          <div className="gl-demo-panels" data-ui="article-output">{STAGES.map((_, index) => <div role="tabpanel" hidden={stage !== index} id={`gl-panel-${index}`} aria-labelledby={`gl-tab-${index}`} tabIndex={0} className="gl-output" key={index}><StageOutput stage={index} /></div>)}</div>
+          <div className="gl-demo-foot"><span>{TITLES[stage]}</span><a href="#gl-full-example" onClick={openFullExample}>读完整示例<ArrowDown size={14} /></a></div>
+          <p className="gl-demo-disclosure">正文取自项目公共示例；研究、审阅与配图为演示编排。</p>
+          <FullExample />
         </section>
-
-        <div className="gl-feature-strip" aria-label="创作能力">
-          <span>为完整的创作过程而设计</span>
-          <div>
-            {["资料理解", "长文写作", "多维审阅", "智能配图", "发布管理"].map(
-              (label) => (
-                <span key={label}>
-                  <Check size={13} />
-                  {label}
-                </span>
-              ),
-            )}
-          </div>
-        </div>
-
-        <section
-          className="gl-capabilities"
-          id="capabilities"
-          aria-labelledby="gl-capabilities-title"
-        >
-          <div className="gl-section-heading">
-            <div>
-              <p className="gl-eyebrow">MORE ROOM FOR YOUR IDEAS</p>
-              <h2 id="gl-capabilities-title">把精力，留给表达本身。</h2>
-            </div>
-            <p>
-              把创作中来回切换的环节，
-              <br />
-              放进同一个顺手的工作空间。
-            </p>
-          </div>
-          <div className="gl-card-grid">
-            {CAPABILITIES.map(
-              ({ icon: Icon, title, text, path, link, kind }) => (
-                <article
-                  className="gl-capability"
-                  key={kind}
-                  onPointerMove={spotlight}
-                >
-                  <div
-                    className={`gl-mini-art gl-mini-art--${kind}`}
-                    aria-hidden="true"
-                  >
-                    {kind === "sources" && (
-                      <>
-                        <div className="gl-source-paper gl-source-paper--back">
-                          <FileText size={18} />
-                          <i />
-                          <i />
-                          <i />
-                        </div>
-                        <div className="gl-source-paper">
-                          <span>参考资料</span>
-                          <i />
-                          <i />
-                          <i />
-                          <b>
-                            <Search size={12} />
-                            找到思路线索
-                          </b>
-                        </div>
-                        <span className="gl-art-orb">
-                          <Sparkles size={20} />
-                        </span>
-                      </>
-                    )}
-                    {kind === "templates" && (
-                      <>
-                        <div className="gl-type-row">
-                          <span>Aa</span>
-                          <small>你的语气，你的风格。</small>
-                        </div>
-                        <div className="gl-template-tags">
-                          <span>深度解读</span>
-                          <span>品牌故事</span>
-                          <span>产品介绍</span>
-                        </div>
-                        <div className="gl-type-line">
-                          <i />
-                          <i />
-                          <i />
-                        </div>
-                      </>
-                    )}
-                    {kind === "images" && (
-                      <>
-                        <div className="gl-art-frame gl-art-frame--back" />
-                        <div className="gl-art-frame">
-                          <span />
-                          <ImageIcon size={21} />
-                        </div>
-                        <span className="gl-art-label">
-                          <Sparkles size={12} />
-                          让灵感有画面
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  <div className="gl-capability__copy">
-                    <Icon size={20} />
-                    <h3>{title}</h3>
-                    <p>{text}</p>
-                    <Link to={path}>
-                      {link}
-                      <ArrowUpRight size={16} />
-                    </Link>
-                  </div>
-                </article>
-              ),
-            )}
-          </div>
-        </section>
-
-        <section
-          className="gl-workflow"
-          id="workflow"
-          aria-labelledby="gl-workflow-title"
-        >
-          <div className="gl-workflow__intro">
-            <p className="gl-eyebrow">ONE CONNECTED WORKSPACE</p>
-            <h2 id="gl-workflow-title">
-              从第一句想法，
-              <br />
-              到最后一次确认。
-            </h2>
-            <p>
-              你掌握方向，稿流协助推进。
-              <br />
-              每个环节，都留有你的判断与选择。
-            </p>
-            <Link className="gl-text-button" to="/articles">
-              看看稿件空间
-              <ArrowUpRight size={16} />
-            </Link>
-          </div>
-          <ol className="gl-workflow__steps">
-            {[
-              [
-                "把想法带进来",
-                "输入主题、参考资料与表达要求，确定这一次想说什么。",
-              ],
-              [
-                "和 AI 一起成稿",
-                "从研究规划到正文配图，在工作台里跟进创作过程。",
-              ],
-              [
-                "打磨，直到满意",
-                "结合审阅报告继续优化，查看历史版本，保留每一次选择。",
-              ],
-              [
-                "让好内容被看见",
-                "确认最终稿件，管理发布计划，通过同步助手连接目标平台。",
-              ],
-            ].map(([title, text], index) => (
-              <li
-                key={title}
-                style={
-                  {
-                    "--step-color": [
-                      "#b4a1ff",
-                      "#8facff",
-                      "#f3bca1",
-                      "#b2dfd1",
-                    ][index],
-                  } as CSSProperties
-                }
-              >
-                <span className="gl-workflow__number">0{index + 1}</span>
-                <div>
-                  <h3>{title}</h3>
-                  <p>{text}</p>
-                </div>
-                <ChevronRight size={17} />
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <section className="gl-final-cta">
-          <div className="gl-cta-orbit" aria-hidden="true" />
-          <span className="gl-eyebrow">MAKE SOMETHING WORTH SHARING</span>
-          <h2>
-            下一篇好内容，
-            <br />
-            从你的想法开始。
-          </h2>
-          <Link className="gl-button" to="/">
-            进入稿流，开始创作
-            <ArrowUpRight size={18} />
-          </Link>
-          <p>让灵感有所落点，让表达持续发生。</p>
-        </section>
-        <footer className="gl-footer">
-          <a className="gl-brand" href="#gl-content">
-            <img src="/gaoliu-mark.svg" alt="" />
-            <strong>
-              <MetallicPaint
-                text="稿流"
-                dpr={2}
-                className="gl-wordmark"
-                fontFamily="Microsoft YaHei, PingFang SC, sans-serif"
-                fontWeight={800}
-                color="#eee7ff"
-                density={2.1}
-                softness={0.18}
-                dispersion={0.12}
-                distortion={0.05}
-                edgeBend={0.7}
-                speed={0.45}
-                scale={1.1}
-                mouseTilt={0.25}
-                intro={false}
-                paused={!motionEnabled}
-              />
-              <span className="gl-brand__english">GAOLIU</span>
-            </strong>
-          </a>
-          <span>让想法成稿，让好内容流动。</span>
-          <Link to="/">
-            创作工作台
-            <ArrowUpRight size={14} />
-          </Link>
-        </footer>
       </div>
-    </main>
-  );
+      <section className="gl-capabilities" id="capabilities" aria-labelledby="gl-capabilities-title">
+        <div className="gl-section-heading"><h2 id="gl-capabilities-title">不只得到文字，<br />也看得见内容的来路。</h2><p>资料、表达、图文，围绕同一篇文章继续打磨。<br />以下为能力演示，实际结果取决于输入与模型配置。</p></div>
+        <article className="gl-evidence gl-evidence--source">
+          <div className="gl-evidence-copy"><h3>让资料进入文章，<br />而不是停在附件里。</h3><p>导入参考文件，结合知识库检索，让有用的资料成为大纲和正文的依据。</p><Link className="gl-text-link" to="/">带着资料开始<ArrowUpRight size={16} /></Link></div>
+          <div className="gl-source-proof" data-ui="source-outline"><div><span className="gl-meta">参考摘录 · 公共示例原文</span><p>“用一句话概括你最想表达的意思。这句话就是文章的中心，后续所有内容都要为它服务。”</p><span className="gl-meta">来源：示例文章「搭建结构的三步法」</span></div><ArrowRight className="gl-proof-arrow" size={22} aria-hidden="true" /><div><span className="gl-meta">进入大纲 · 整理示例</span><h4>先确定核心观点</h4><p>先用一句话定下文章主线，再按逻辑安排素材。</p><span className="gl-meta">接续章节：安排顺序 → 补充过渡</span></div></div>
+        </article>
+        <article className="gl-evidence gl-evidence--style">
+          <div className="gl-evidence-copy"><h3>观点不变，<br />换一种合适的表达。</h3><p>用创作模板和表达要求调整语气。看看同一个意思，如何写给不同的读者。</p><Link className="gl-text-link" to="/templates">探索创作模板<ArrowUpRight size={16} /></Link></div>
+          <div className="gl-style-proof" data-ui="style-comparison"><div className="gl-style-original"><span className="gl-meta">同一段原文</span><p>“写作的第一步不是动笔，而是‘倾倒’。把脑海中所有相关的想法都写下来……”</p></div><fieldset><legend>切换表达要求，比较改写示例</legend><div className="gl-style-options">{["简明直接", "温和引导"].map((label, index) => <label key={label}><input type="radio" name="writing-style" checked={style === index} onChange={() => setStyle(index)} />{label}</label>)}</div></fieldset><div className="gl-style-result" aria-live="polite"><span className="gl-meta">{style === 0 ? "少用比喻，先说明动作" : "降低动笔压力，像对话一样展开"}</span><p>{style === 0 ? REVISED : "不知道从哪里写起时，不妨先记下想到的内容。一个词、半句话也没关系，等想法都摆在眼前，再慢慢整理。"}</p></div></div>
+        </article>
+        <article className="gl-evidence gl-evidence--image">
+          <div className="gl-evidence-copy"><h3>文字与画面，<br />在同一篇稿件里完成。</h3><p>从素材匹配到生成配图，在文章工作区调整图片位置，让正文、图片和图注相互补充。</p><Link className="gl-text-link" to="/media">打开素材库<ArrowUpRight size={16} /></Link></div>
+          <div className="gl-image-proof" data-ui="article-image-layout"><div><span className="gl-meta">图文编排示例</span><h4>搭建结构的三步法</h4><p>确定观点是起点，安排顺序让内容有逻辑，过渡衔接则让读者跟得上思路。</p></div><figure className="gl-figure"><StructureImage compact /><figcaption>图：从一个核心观点，走向连贯的文章。</figcaption></figure></div>
+        </article>
+      </section>
+      <section className="gl-workflow" id="workflow" aria-labelledby="gl-workflow-title"><h2 id="gl-workflow-title">开始，只需要带来一个主题。</h2><ol>{[["输入主题与资料", "在工作台写下读者、目标和表达要求，按需导入参考文件。"], ["发起创作，继续打磨", "登录后开始生成，在文章工作区查看结果、编辑正文、确认配图与审阅建议。"], ["确认成稿，再同步草稿", "需要同步时，连接浏览器扩展及平台账号，检查内容后再提交草稿。"]].map(([title, text]) => <li key={title}><h3>{title}</h3><p>{text}</p></li>)}</ol><Link className="gl-text-link" to="/">进入工作台<ArrowUpRight size={16} /></Link></section>
+      <section className="gl-faq" id="faq" aria-labelledby="gl-faq-title"><h2 id="gl-faq-title">开始前，你可能想知道。</h2><div>{[
+        ["需要先登录吗？", "可以先浏览首页与公共示例。发起 AI 创作需要登录，并使用已配置的模型服务。"],
+        ["如何开始，能带什么资料？", "进入工作台，输入文章主题、读者与表达要求。参考文件支持 Markdown（.md、.markdown）和 TXT，也可以添加图片、选择素材，或在资料面板补充参考内容。"],
+        ["成稿可以怎样带走？", "文章工作区提供 Markdown 正文编辑与图文预览。需要带走文字时，可以选择并复制正文。"],
+        ["同步发布有什么限制？", "当前同步通道依赖文章同步助手浏览器扩展，以及扩展中已登录的平台账号。只提交平台草稿，需由你到平台确认发布；可用平台以扩展实际返回的账号为准。手机上能否使用取决于浏览器扩展支持。"],
+      ].map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div></section>
+      <section className="gl-close" aria-labelledby="gl-close-title"><div><h2 id="gl-close-title">下一篇，就从你的想法开始。</h2><p>把资料带进来，把判断留给自己。</p></div><Link className="gl-button" to="/">开始创作<ArrowUpRight size={19} /></Link></section>
+      <footer className="gl-footer"><Brand still={still} /><span>让想法成稿，让好内容流动。</span><button type="button" className="gl-text-link" disabled={reduced} onClick={() => setMotionPaused(value => !value)}>{reduced ? "已减少动态效果" : motionPaused ? "恢复品牌动效" : "暂停品牌动效"}</button></footer>
+    </div>
+  </main>;
 }
