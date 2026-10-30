@@ -482,7 +482,7 @@ export default function ArticlesPage() {
     }
     setError(null);
     setCreating(false);
-    const articleId = `article-${crypto.randomUUID()}`;
+    const articleId = crypto.randomUUID();
     try {
       await startActiveRun({
         articleId,
