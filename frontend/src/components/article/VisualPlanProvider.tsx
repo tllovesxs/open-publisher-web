@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { LoaderCircle } from "lucide-react";
+import { ImagePlus, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { useActiveRun } from "../../lib/activeRunContext";
@@ -120,6 +120,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 /** 与蓝本一致：规划不生图，确认后最多四张并行，全部准备好才提交正文。 */
 export function VisualPlanProvider({ children }: { children: ReactNode }) {
+  const [pending, setPending] = useState<{ articleId: string; options: StartVisualPlanOptions } | null>(null);
   const [job, setJob] = useState<VisualPlanJob | null>(null);
   const [completed, setCompleted] = useState<CompletedVisualApply | null>(null);
   const [excludedIds, setExcludedIds] = useState<string[]>([]);
@@ -137,7 +138,6 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
   const dirtyArticles = useRef(new Set<string>());
   // 失败重试保留成功的图片；更换正文、提示词、模型后不复用。
   const generated = useRef(new Map<string, string>());
-  const automaticApproval = useRef<VisualPlanSummary | null>(null);
   const navigate = useNavigate();
   const { activeRun, runStatus } = useActiveRun();
   const plannedRun = useRef<string | null>(null);
@@ -170,10 +170,20 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
 
   const startPlan = async (articleId: string, options: StartVisualPlanOptions = {}) => {
     if (lock.current) return;
+    setJob(null); setError(null); setStale(false); setDismissed(false);
+    setTargetCount(options.targetCount ?? 2);
+    setSelectedModel(options.imageModelId ?? "");
+    setMaterialMatchThreshold(options.materialMatchThreshold ?? 40);
+    setPending({ articleId, options });
+    if (options.runKey) sessionStorage.setItem(options.runKey, "1");
+  };
+
+  const generatePlan = async (articleId: string, options: StartVisualPlanOptions = {}) => {
+    if (lock.current) return;
     if (dirtyArticles.current.has(articleId)) { setError("请先保存正文，再生成配图策略。"); return; }
     lock.current = true;
     setBusy(true);
-    setPhase("正在规划配图，不会调用生图接口");
+    setPhase("正在生成配图策略，请稍候…");
     setError(null);
     setDismissed(false);
     try {
@@ -186,6 +196,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
       });
       if (options.runKey) sessionStorage.setItem(options.runKey, "1");
       if (!res.data.placements.length) { setJob(null); setError("视觉规划认为本文不需要配图。"); return; }
+      setPending(null);
       installPlan(articleId, { ...res.data, imageModelId: options.imageModelId ?? null }, options.snapshot ?? null);
     } catch (err) { setError(errorMessage(err, "配图规划失败，请稍后重试。")); }
     finally { lock.current = false; setBusy(false); }
@@ -193,7 +204,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
 
   // 与蓝本 App 级编排相同：正文运行完成并落库后规划，切换页面不改变触发时机。
   useEffect(() => {
-    if (!activeRun?.visualPlan?.enabled || runStatus !== "succeeded" || job || busy || lock.current) return;
+    if (!activeRun?.visualPlan?.enabled || runStatus !== "succeeded" || job || pending || busy || lock.current) return;
     const runKey = `gaoliu.visual-applied:${activeRun.runId}`;
     if (plannedRun.current === activeRun.runId || sessionStorage.getItem(runKey)) return;
     plannedRun.current = activeRun.runId;
@@ -203,7 +214,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
       imageModelId: options.imageModelId, mode: options.mode ?? "fixed",
       materialMatchThreshold: options.materialMatchThreshold ?? 40, runKey,
     });
-  }, [activeRun, runStatus, job, busy]);
+  }, [activeRun, runStatus, job, pending, busy]);
 
   const ensureCurrent = async (current: VisualPlanJob) => {
     const res = await api.get<VisualApplyResult["article"]>(`/articles/${current.articleId}`);
@@ -233,22 +244,22 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
   const togglePlacement = (id: string) => setExcludedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
   const replan = async (count?: number) => {
     if (!job || lock.current) return;
-    await startPlan(job.articleId, {
+    await generatePlan(job.articleId, {
       targetCount: count ?? (job.plan.mode === "auto" ? 0 : targetCount), assetIds: job.plan.assetIds ?? [],
-      materialMatchThreshold, mode: count === undefined ? job.plan.mode ?? "fixed" : "fixed",
+      materialMatchThreshold, mode: count === undefined && targetCount === job.plan.targetCount ? job.plan.mode ?? "fixed" : "fixed",
       imageModelId: selectedModel || null, requiredAssetIds: job.plan.requiredAssetIds ?? [],
     });
   };
   const closePlan = () => {
     if (lock.current) return;
-    setJob(null); setExcludedIds([]); setError(null); setDismissed(false); generated.current.clear();
+    setPending(null); setJob(null); setExcludedIds([]); setError(null); setDismissed(false); generated.current.clear();
   };
   const minimizePlan = () => setDismissed(true);
   const resumeVisualPlan = () => { if (!job && completed) navigate("/articles"); setDismissed(false); };
 
   const confirmApply = async () => {
     const current = job;
-    if (!current || lock.current || stale) return;
+    if (!current || lock.current || stale || targetCount !== current.plan.targetCount) return;
     const placements = current.plan.placements.filter(item => !excludedIds.includes(item.id)).map(item => ({ ...item, ...decisions[item.id] }));
     if (!placements.length) { setError("请至少保留一张配图，或选择暂不配图。"); return; }
     lock.current = true;
@@ -298,37 +309,31 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
     } finally { lock.current = false; setBusy(false); }
   };
 
-  useEffect(() => {
-    if (job?.plan.needsConfirmation === false && !busy && !stale && automaticApproval.current !== job.plan) {
-      automaticApproval.current = job.plan;
-      void confirmApply();
-    }
-  }, [job, busy, stale]);
-
   const activePlacements = job?.plan.placements.filter(item => !excludedIds.includes(item.id)) ?? [];
   const generatedCount = activePlacements.filter(item => decisions[item.id]?.source === "generate").length;
   return (
     <VisualPlanContext.Provider value={{ busy, error, job, completed, excludedIds, startPlan, setPlanForArticle, togglePlacement, closePlan, minimizePlan, confirmApply, consumeCompleted: () => setCompleted(null), observeEditor }}>
       {children}
-      {(job || busy || error) && !dismissed && (
+      {(pending || job || busy || error) && !dismissed && (
         <div className="studio-modal" role="presentation">
           <div className="studio-modal__scrim" />
-          <section aria-label="确认配图方案" aria-modal="true" className="creation-picker__dialog visual-plan-dialog" role="dialog" style={{ maxWidth: 600, width: "min(600px, 100%)" }}>
+          <section aria-label="确认配图方案" aria-modal="true" className="creation-picker__dialog visual-plan-dialog" role="dialog" >
             <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div><span className="page-kicker">正文配图方案</span><h2>确认后再开始生成</h2></div>
-              <button aria-label="配图任务转后台" className="icon-button" onClick={minimizePlan} type="button">✕</button>
+              <div className="visual-plan-heading"><span className="visual-plan-heading__icon"><ImagePlus size={23} /></span><div><span className="page-kicker">正文配图方案 · {pending ? "01 / 02" : "02 / 02"}</span><h2>{pending ? "先规划，再配图" : "确认你的配图方案"}</h2></div></div>
+              <button aria-label="配图任务转后台" className="icon-button" onClick={minimizePlan} type="button"><X size={18} /></button>
             </header>
             <div className="visual-plan-dialog__body">
               {busy && <p role="status"><LoaderCircle className="spin" size={16} /> {phase}</p>}
               {error && <div className="workflow-task__failure" role="alert"><p>{error}</p></div>}
+              {job && targetCount !== job.plan.targetCount && <p role="status">配图数量已调整，请点击“重新生成策略”更新方案。</p>}
               {stale && <div className="workflow-task__failure" role="status"><strong>当前策略已过期</strong><p>请保存当前正文后重新生成策略，旧方案不能直接插入。</p></div>}
-              <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>
+              {pending ? <div className="visual-plan-intro"><Sparkles size={28} /><h3>为这篇文章设计配图策略</h3><p>选择配图数量与素材偏好，点击下方按钮后开始分析正文、推荐配图位置和内容。</p><span>生成策略会消耗模型 Token。图片将在下一步确认后生成。</span></div> : <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>}
               <div className="visual-plan-settings">
                 <label>生图模型 <select aria-label="生图模型" disabled={busy} onChange={event => setSelectedModel(event.target.value)} value={selectedModel}>
                   <option value="">跟随设置中的生图模型</option>
                   {imageModels.map(model => <option key={model.id} value={model.id}>{model.name} · {model.model}</option>)}
                 </select></label>
-                <label>配图数量 <select aria-label="配图数量" disabled={busy} value={targetCount} onChange={event => void replan(Number(event.target.value))}>
+                <label>配图数量 <select aria-label="配图数量" disabled={busy} value={targetCount} onChange={event => { setTargetCount(Number(event.target.value)); setPending(current => current ? { ...current, options: { ...current.options, mode: "fixed" } } : null);  }}>
                   {[1, 2, 3, 4, 5, 6].map(count => <option key={count} value={count}>{count}</option>)}
                 </select></label>
                 <label className="creation-threshold">素材匹配阈值 <strong>{materialMatchThreshold}%</strong>
@@ -337,9 +342,9 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                     if (job) setDecisions(defaultDecisions(job.plan, value));
                   }} />
                 </label>
-                <small>sketch-notes · 马卡龙配色 · 并发 4 · 预计生图 {generatedCount} 张 · 复用素材 {activePlacements.length - generatedCount} 张</small>
+                {!pending && <small className="visual-plan-summary">预计生图 {generatedCount} 张 · 复用素材 {activePlacements.length - generatedCount} 张</small>}
               </div>
-              <ol className="visual-plan-placements">
+              {!pending && <ol className="visual-plan-placements">
                 {job?.plan.placements.map((placement, index) => {
                   const decision = decisions[placement.id];
                   const excluded = excludedIds.includes(placement.id);
@@ -362,18 +367,18 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                     <button className="button button--quiet" type="button" disabled={busy} onClick={() => togglePlacement(placement.id)}>{excluded ? "保留这张" : "不插入这张"}</button>
                   </li>;
                 })}
-              </ol>
+              </ol>}
             </div>
             <footer className="visual-plan-footer">
               <button className="button button--quiet" disabled={busy} onClick={closePlan} type="button">暂不配图</button>
-              <button className="button button--quiet" disabled={busy || !job} onClick={() => void replan()} type="button">重新生成策略</button>
-              <button className="button button--primary" disabled={busy || !job || stale} onClick={() => void confirmApply()} type="button">{busy ? "处理中…" : "确认并继续"}</button>
+              {!pending && <button className="button button--quiet" disabled={busy || !job} onClick={() => void replan()} type="button">重新生成策略</button>}
+              {pending ? <button className="button button--primary" disabled={busy} onClick={() => void generatePlan(pending.articleId, { ...pending.options, targetCount, imageModelId: selectedModel || null, materialMatchThreshold })} type="button"><Sparkles size={16} />{busy ? "正在生成策略…" : "开始生成策略"}</button> : <button className="button button--primary" disabled={busy || !job || stale || targetCount !== job.plan.targetCount} onClick={() => void confirmApply()} type="button">{busy ? "处理中…" : "确认并继续"}</button>}
             </footer>
           </section>
         </div>
       )}
-      {dismissed && (busy || job || completed || error) && <button className="visual-plan-chip" onClick={resumeVisualPlan} type="button">
-        {busy && <LoaderCircle className="spin" size={14} />}<span>{busy ? phase : job ? "配图方案已就绪 · 点击继续" : completed ? `配图完成：已插入 ${completed.insertedCount} 张 · 点击查看` : "配图任务失败 · 点击查看"}</span>
+      {dismissed && (pending || busy || job || completed || error) && <button className="visual-plan-chip" onClick={resumeVisualPlan} type="button">
+        {busy && <LoaderCircle className="spin" size={14} />}<span>{busy ? phase : pending ? "配图策略待开始 · 点击继续" : job ? "配图方案已就绪 · 点击继续" : completed ? `配图完成：已插入 ${completed.insertedCount} 张 · 点击查看` : "配图任务失败 · 点击查看"}</span>
       </button>}
     </VisualPlanContext.Provider>
   );

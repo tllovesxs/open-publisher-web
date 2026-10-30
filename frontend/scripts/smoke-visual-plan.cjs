@@ -90,7 +90,16 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
           await page.getByText('创作失败：LLM 调用失败：Connection error.', { exact: true }).waitFor();
         } else {
           await page.getByRole('dialog', { name: '确认配图方案' }).waitFor();
-          await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent === '确认并继续' && !b.disabled));
+          assert.equal(planned, 0); assert.equal(attempts.size, 0);
+          await page.getByRole('button', { name: '开始生成策略', exact: true }).waitFor();
+          await page.getByRole('combobox', { name: '配图数量', exact: true }).selectOption('5');
+          await page.getByRole('combobox', { name: '配图数量', exact: true }).selectOption('6');
+          assert.equal(planned, 0);
+          if (process.env.SMOKE_SCREENSHOT && options.cancelBeforePlan) await page.screenshot({ animations: 'disabled', path: process.env.SMOKE_SCREENSHOT.replace('.png', '-start.png') });
+          if (!options.cancelBeforePlan) {
+            await page.getByRole('button', { name: '开始生成策略', exact: true }).click();
+            await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent === '确认并继续' && !b.disabled));
+          }
         }
       }
       return { context, page, editor, calls, errors, attempts, completedImages, changeRemote: () => { article = { ...article, currentRevisionId: 'remote', contentHash: 'remote' }; }, stats: () => ({ applied, planned, maxInflight, generated: [...attempts.values()].reduce((a, b) => a + b, 0) }) };
@@ -121,7 +130,7 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
         layouts.push(await dialog.evaluate(el => ({ width: innerWidth, fits: el.getBoundingClientRect().right <= innerWidth + 1, noOverflow: el.scrollWidth <= el.clientWidth + 1 })));
       }
       assert.ok(layouts.every(x => x.fits && x.noOverflow), JSON.stringify(layouts));
-      if (process.env.SMOKE_SCREENSHOT) await t.page.screenshot({ path: process.env.SMOKE_SCREENSHOT });
+      if (process.env.SMOKE_SCREENSHOT) await t.page.screenshot({ animations: 'disabled', path: process.env.SMOKE_SCREENSHOT });
       await dialog.getByRole('button', { name: '确认并继续' }).click();
       await dialog.waitFor({ state: 'hidden' });
       assert.deepEqual(t.stats(), { applied: 1, planned: 2, maxInflight: 4, generated: 6 });
@@ -132,9 +141,9 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
     }
     // Cancel never triggers images.
     {
-      const t = await setup();
+      const t = await setup({ cancelBeforePlan: true });
       await t.page.getByRole('button', { name: '暂不配图', exact: true }).click();
-      assert.equal(t.stats().generated, 0); assert.equal(t.stats().applied, 0);
+      assert.equal(t.stats().planned, 0); assert.equal(t.stats().generated, 0); assert.equal(t.stats().applied, 0);
       reports.push({ scenario: 'cancel-zero-images', ...t.stats() }); await t.context.close();
     }
     // Global orchestration still plans when the user leaves the article page.
@@ -149,7 +158,8 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
     {
       const t = await setup();
       t.changeRemote();
-      await t.page.getByRole('button', { name: '确认并继续', exact: true }).click();
+      const confirm = t.page.getByRole('button', { name: '确认并继续', exact: true });
+      if (await confirm.isEnabled()) await confirm.click({ timeout: 1000 }).catch(() => {});
       await t.page.getByText('当前策略已过期', { exact: true }).waitFor();
       assert.equal(t.stats().generated, 0); assert.equal(t.stats().applied, 0);
       reports.push({ scenario: 'stale-before-confirm-zero-images', ...t.stats() }); await t.context.close();
@@ -181,6 +191,9 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       await t.editor.fill('# 修改后正文\n\n用户新写的段落。');
       await t.page.getByRole('button', { name: '智能配图', exact: true }).click();
       await t.page.getByRole('dialog', { name: '确认配图方案' }).waitFor();
+      assert.equal(t.stats().planned, 0);
+      await t.page.getByRole('button', { name: '开始生成策略', exact: true }).click();
+      await t.page.getByRole('button', { name: '确认并继续', exact: true }).waitFor();
       const saveIndex = t.calls.findIndex(c => c.path === '/api/articles' && c.method === 'POST');
       const planIndex = t.calls.findIndex(c => c.path.endsWith('/visual-plan'));
       assert.ok(saveIndex >= 0 && saveIndex < planIndex);

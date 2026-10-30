@@ -10193,8 +10193,8 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
 }
 
 .visual-plan-dialog > footer {
-  margin: 0 18px !important;
-  padding: 14px 0 !important;
+  margin: 0;
+  padding: 18px 26px;
 }
 
 /* 配图数量分段选择器 */
@@ -10259,3 +10259,32 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
 .visual-plan-placements [role="radiogroup"] label { display: flex; align-items: center; gap: 5px; }
 .visual-plan-placements img { display: block; max-width: 100%; max-height: 180px; object-fit: contain; margin: 8px 0; border-radius: 8px; }
 .visual-plan-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
+
+/* 配图策略：先确认规划，再确认图片。 */
+.visual-plan-dialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 22px; box-shadow: 0 24px 80px rgb(0 0 0 / 18%); padding: 0; gap: 0; overflow: hidden; }
+.visual-plan-dialog > header { padding: 24px 26px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.visual-plan-heading { display: flex; align-items: center; gap: 14px; }
+.visual-plan-heading__icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--accent); background: var(--accent-soft); }
+.visual-plan-heading h2 { margin: 5px 0 0; font-size: 20px; font-weight: 650; }
+.visual-plan-dialog__body { padding: 24px 26px; background: var(--surface); }
+.visual-plan-dialog__body > [role="status"] { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.visual-plan-intro { padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: linear-gradient(135deg, var(--accent-soft), var(--surface)); }
+.visual-plan-intro > svg { color: var(--accent); }
+.visual-plan-intro h3 { margin: 14px 0 8px; font-size: 18px; }
+.visual-plan-intro p { margin: 0 0 14px; color: var(--muted); line-height: 1.8; font-size: 14px; }
+.visual-plan-intro > span { display: block; color: var(--accent); font-size: 12px; line-height: 1.7; }
+.visual-plan-settings { grid-template-columns: minmax(0, 1fr) minmax(110px, .45fr); gap: 20px; margin: 24px 0; }
+.visual-plan-settings label { font-size: 13px; font-weight: 550; gap: 9px; }
+.visual-plan-settings .creation-threshold, .visual-plan-summary { grid-column: 1 / -1; }
+.visual-plan-dialog select { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.visual-plan-dialog input[type="range"] { width: 100%; accent-color: var(--accent); }
+.visual-plan-summary { padding: 12px 14px; background: var(--accent-soft); color: var(--accent); border-radius: 10px; }
+.visual-plan-placements { gap: 18px; margin: 0; }
+.visual-plan-placements > li { padding: 20px; gap: 12px; background: var(--surface); border-radius: 16px; }
+.visual-plan-placements > li > strong { font-size: 15px; line-height: 1.6; }
+.visual-plan-placements p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.visual-plan-placements blockquote { padding: 12px 14px; border-radius: 0 10px 10px 0; background: var(--surface-muted); font-size: 13px; line-height: 1.8; max-height: 120px; overflow: auto; }
+.visual-plan-placements [role="radiogroup"] label { padding: 8px 12px; border: 1px solid var(--border); border-radius: 9px; font-size: 13px; }
+.visual-plan-placements input[type="radio"] { accent-color: var(--accent); }
+.visual-plan-footer { margin: 0; padding: 18px 26px; background: var(--surface); }
+@media(max-width: 600px) { .visual-plan-dialog > header, .visual-plan-dialog__body { padding: 18px; } .visual-plan-heading h2 { font-size: 18px; } .visual-plan-heading__icon { width: 40px; height: 40px; } .visual-plan-settings { grid-template-columns: 1fr; gap: 16px; } .visual-plan-footer { padding: 16px 18px; } .visual-plan-footer .button { flex: 1; white-space: nowrap; } }
