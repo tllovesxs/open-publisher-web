@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import FlowBackdrop from "./landing/FlowBackdrop";
+import MetallicPaint from "../components/MetallicPaint/MetallicPaint";
 import "./landing/landing.css";
 
 const STEPS = [
@@ -118,12 +119,10 @@ export default function LandingPage() {
   }, []);
 
   const scrollTo = (id: string) =>
-    document
-      .getElementById(id)
-      ?.scrollIntoView({
-        behavior: motionEnabled ? "smooth" : "instant",
-        block: "start",
-      });
+    document.getElementById(id)?.scrollIntoView({
+      behavior: motionEnabled ? "smooth" : "instant",
+      block: "start",
+    });
 
   return (
     <main
@@ -138,7 +137,25 @@ export default function LandingPage() {
           <a className="gl-brand" href="#gl-content" aria-label="稿流首页">
             <img src="/gaoliu-mark.svg" alt="" />
             <strong>
-              稿流<span>GAOLIU</span>
+              <MetallicPaint
+                text="稿流"
+                dpr={2}
+                className="gl-wordmark"
+                fontFamily="Microsoft YaHei, PingFang SC, sans-serif"
+                fontWeight={800}
+                color="#eee7ff"
+                density={2.1}
+                softness={0.18}
+                dispersion={0.12}
+                distortion={0.05}
+                edgeBend={0.7}
+                speed={0.45}
+                scale={1.1}
+                mouseTilt={0.25}
+                intro={false}
+                paused={!motionEnabled}
+              />
+              <span className="gl-brand__english">GAOLIU</span>
             </strong>
           </a>
           <nav className="gl-nav__links" aria-label="产品导航">
@@ -190,7 +207,7 @@ export default function LandingPage() {
               想法与作品之间，有稿流。
             </div>
             <h1 id="gl-title">
-              让想法<span className="gl-serif">成稿，</span>
+              让想法成稿，
               <br />
               让好内容<span className="gl-gradient-text">流动。</span>
             </h1>
@@ -658,7 +675,25 @@ export default function LandingPage() {
           <a className="gl-brand" href="#gl-content">
             <img src="/gaoliu-mark.svg" alt="" />
             <strong>
-              稿流<span>GAOLIU</span>
+              <MetallicPaint
+                text="稿流"
+                dpr={2}
+                className="gl-wordmark"
+                fontFamily="Microsoft YaHei, PingFang SC, sans-serif"
+                fontWeight={800}
+                color="#eee7ff"
+                density={2.1}
+                softness={0.18}
+                dispersion={0.12}
+                distortion={0.05}
+                edgeBend={0.7}
+                speed={0.45}
+                scale={1.1}
+                mouseTilt={0.25}
+                intro={false}
+                paused={!motionEnabled}
+              />
+              <span className="gl-brand__english">GAOLIU</span>
             </strong>
           </a>
           <span>让想法成稿，让好内容流动。</span>

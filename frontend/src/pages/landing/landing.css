@@ -93,7 +93,12 @@
   letter-spacing: 2px;
   line-height: 1.2;
 }
-.gl-brand strong span {
+.gl-brand .gl-wordmark {
+  display: block;
+  width: 2.25em;
+  height: 1.2em;
+}
+.gl-brand strong > .gl-brand__english {
   display: block;
   font-size: 8px;
   letter-spacing: 3px;
@@ -200,10 +205,6 @@
   font-weight: 600;
   letter-spacing: -2px;
   margin: 22px 0 28px;
-}
-.gl-serif {
-  font-family: Georgia, "Songti SC", "SimSun", serif;
-  font-weight: 500;
 }
 .gl-gradient-text {
   background: linear-gradient(100deg, #efddff 5%, #bda6f9 50%, #a58cfa);
@@ -1087,7 +1088,7 @@
 .gl-footer .gl-brand strong {
   font-size: 16px;
 }
-.gl-footer .gl-brand strong span {
+.gl-footer .gl-brand strong > .gl-brand__english {
   font-size: 6px;
   letter-spacing: 2px;
   margin-top: 3px;
@@ -1494,7 +1495,7 @@
   .gl-brand strong {
     font-size: 19px;
   }
-  .gl-brand strong span {
+  .gl-brand strong > .gl-brand__english {
     font-size: 6px;
     letter-spacing: 2px;
     margin-top: 3px;
