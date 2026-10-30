@@ -40,6 +40,7 @@ def _none_key() -> tuple[str, str]:
 def _base_llm_config() -> dict:
     settings = get_settings()
     return {
+        "provider": "custom",
         "profileId": None,
         "profileName": None,
         "api_key": "",
@@ -93,6 +94,7 @@ def _with_profile(config: dict, db: Session, profile: ModelProfile) -> dict:
         key_source, key_hint = _none_key()
     config.update(
         {
+            "provider": profile.provider,
             "profileId": profile.id,
             "profileName": profile.name,
             "api_key": profile_key or "",
@@ -185,6 +187,7 @@ def resolve_image_config(
     """
     settings = get_settings()
     config = {
+        "provider": "custom",
         "api_key": "",
         "keySource": "none",
         "keyHint": "",

@@ -149,6 +149,35 @@ body {
 .admin-main-head h1 { font-size: 24px; margin: 0 0 4px; }
 .admin-main-head p { margin: 0; }
 
+.nav-link { background: transparent; border: 0; border-radius: 10px; color: var(--ink-soft); cursor: pointer; font-size: 13px; padding: 8px 10px; text-align: left; }
+.nav-link:hover, .nav-link.active { background: var(--accent-soft); color: var(--accent-ink); }
+.ops-workspace { display: grid; gap: 16px; min-width: 0; }
+.ops-tabs { align-items: center; display: flex; flex-wrap: wrap; gap: 4px; }
+.ops-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; font-size: 13px; padding: 9px 12px; }
+.ops-tab.active { border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.ops-refresh { margin-left: auto; }
+.ops-kpis { display: grid; gap: 10px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ops-kpi { background: var(--glass-surface-strong); border: 1px solid var(--border); border-radius: 12px; display: grid; gap: 5px; min-width: 0; padding: 14px; }
+.ops-kpi svg { color: var(--accent-ink); }
+.ops-kpi small { color: var(--muted); font-size: 11px; }
+.ops-kpi strong { font-size: 19px; overflow-wrap: anywhere; }
+.ops-kpis.compact { grid-template-columns: repeat(3, 1fr); }
+.ops-grid-two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); }
+.ops-bars { align-items: end; display: flex; gap: 8px; height: 170px; padding-top: 18px; }
+.ops-bar-col { align-items: center; display: flex; flex: 1; flex-direction: column; gap: 7px; height: 100%; justify-content: end; min-width: 0; }
+.ops-bar { background: var(--accent); border-radius: 5px 5px 2px 2px; min-height: 6px; width: 100%; }
+.ops-bar-col small { color: var(--muted); font-size: 10px; }
+.ops-list-row { align-items: center; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; padding: 10px 0; }
+.ops-list-row span { display: grid; gap: 3px; min-width: 0; }.ops-list-row small, .ops-table small { color: var(--muted); display: block; font-size: 11px; }
+.ops-toolbar { align-items: center; display: flex; gap: 8px; }.ops-toolbar input { min-width: 220px; }
+.ops-table-wrap { overflow-x: auto; }.ops-table { border-collapse: collapse; min-width: 720px; width: 100%; }.ops-table th { color: var(--muted); font-size: 11px; font-weight: 500; text-align: left; }.ops-table td, .ops-table th { border-bottom: 1px solid var(--border); padding: 11px 8px; vertical-align: middle; }.ops-table td:first-child { min-width: 140px; }.ops-table td strong { font-size: 13px; }.ops-table code { color: var(--muted); display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-pill { border-radius: 999px; display: inline-flex; font-size: 11px; padding: 3px 8px; }.status-pill.good { background: var(--success-soft); color: var(--success); }.status-pill.bad { background: var(--danger-soft); color: var(--danger); }.muted-pill { background: var(--surface-muted); color: var(--muted); }
+.ops-pager { align-items: center; display: flex; gap: 12px; justify-content: flex-end; padding-top: 4px; }.ops-pager span { color: var(--muted); font-size: 12px; }
+.price-form { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }.price-form button { align-self: end; }.price-form label { min-width: 0; }
+.ops-drawer { background: var(--glass-surface-strong); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: 0 18px 50px rgb(15 23 42 / 18%); display: grid; gap: 16px; max-width: 380px; padding: 20px; position: fixed; right: 24px; top: 24px; width: min(380px, calc(100vw - 48px)); z-index: 5; }.drawer-head { align-items: start; display: flex; justify-content: space-between; }.drawer-head h2 { font-size: 18px; margin: 0 0 4px; }
+@media (max-width: 980px) { .ops-kpis { grid-template-columns: repeat(3, 1fr); }.ops-grid-two { grid-template-columns: 1fr; }.price-form { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .admin-shell { display: block; height: auto; min-height: 100dvh; overflow: visible; }.admin-sidebar { border-bottom: 1px solid var(--border); border-right: 0; padding: 14px; position: static; }.admin-nav { display: flex; flex-wrap: wrap; gap: 3px; }.nav-title { display: none; }.admin-user { display: flex; justify-content: space-between; margin-top: 4px; padding-top: 10px; }.admin-main { overflow: visible; padding: 16px; }.ops-kpis { grid-template-columns: repeat(2, 1fr); }.ops-toolbar { align-items: stretch; flex-direction: column; width: 100%; }.ops-toolbar input { min-width: 0; width: 100%; }.price-form { grid-template-columns: 1fr; }.ops-tabs { overflow-x: auto; flex-wrap: nowrap; }.ops-tab { white-space: nowrap; } }
+
 /* ---------- 卡片 ---------- */
 
 .admin-card {

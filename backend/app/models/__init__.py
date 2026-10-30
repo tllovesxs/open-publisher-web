@@ -9,6 +9,7 @@ from app.models.assistant import AssistantMessage, AssistantSession
 from app.models.app_secret import AppSecret, SecretAudit
 from app.models.settings_profile import ImageConfig, ModelProfile
 from app.models.user import AppUser
+from app.models.usage import AdminAuditLog, ModelPricing, UsageEvent
 from app.models.agent_runtime import AgentSession, AgentRun, AgentRunEvent, ToolExecution
 from app.models.publishing import (
     PublishAttempt,
@@ -43,5 +44,8 @@ __all__ = [
     "AppUser",
     "AppSecret",
     "SecretAudit",
+    "UsageEvent",
+    "ModelPricing",
+    "AdminAuditLog",
 ]
 

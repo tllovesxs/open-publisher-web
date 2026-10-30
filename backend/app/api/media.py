@@ -77,9 +77,11 @@ def generate_media(
     db: Session = Depends(get_db),
     user: AppUser = Depends(require_user),
 ):
+    from app.services.usage import UsageRecorder
     return MediaService(db).generate(
         image_profile_id=body.imageModelId,
         prompt=body.prompt, size=body.size, owner_user_id=user.id,
+        usage_recorder=UsageRecorder(db, user_id=user.id, operation="image-generate", service_type="image"),
     )
 
 

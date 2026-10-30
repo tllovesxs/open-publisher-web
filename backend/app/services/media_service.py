@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from collections.abc import Callable
 
 from app.models.media import MediaAsset
 
@@ -150,7 +151,8 @@ class MediaService:
 
     def generate(self, *, prompt: str, size: str = "1024x1024",
                  owner_user_id: str | None = None,
-                 image_profile_id: str | None = None) -> dict:
+                 image_profile_id: str | None = None,
+                 usage_recorder: Callable[[dict], None] | None = None) -> dict:
         """OpenAI 兼容 images API；密钥来自数据库加密存储。"""
         from fastapi import HTTPException
 
@@ -205,6 +207,8 @@ class MediaService:
             raise HTTPException(status_code=502, detail=f"图片生成失败：{exc}") from None
         if not result.data:
             raise HTTPException(status_code=502, detail="图片生成没有返回内容")
+        if usage_recorder:
+            usage_recorder({"serviceType": "image", "operation": "image-generate", "modelId": resolved["model"], "provider": resolved.get("provider", "custom"), "profileId": resolved.get("profileId"), "imageCount": 1, "requestCount": 1})
         item = result.data[0]
         if item.b64_json:
             return self.add_generated(

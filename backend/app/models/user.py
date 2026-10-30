@@ -24,4 +24,5 @@ class AppUser(Base):
         onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
+    last_login_at: Mapped[object | None] = mapped_column(DateTime, nullable=True, index=True)
 

@@ -145,6 +145,16 @@ def _llm_reply(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"助手调用失败：{exc}") from None
     reply = response.choices[0].message.content or ""
+    try:
+        from app.services.usage import UsageRecorder
+        usage = getattr(response, "usage", None)
+        UsageRecorder(db, user_id=user.id, operation=f"assistant-{mode}", service_type="vision" if attachments else "text", provider=config.get("provider", "custom"))({
+            "modelId": config.get("model"), "profileId": config.get("profileId"),
+            "inputTokens": getattr(usage, "prompt_tokens", None), "outputTokens": getattr(usage, "completion_tokens", None),
+            "imageCount": len(attachments or []), "requestCount": 1,
+        })
+    except Exception:
+        pass
     return reply, config
 
 

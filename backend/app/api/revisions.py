@@ -30,9 +30,16 @@ _OPTIMIZE_DIRECTIONS: dict[str, str] = {
 }
 
 
-def get_llm_client() -> LLMClient:
+def get_llm_client(db: Session = Depends(get_db), user: AppUser = Depends(require_user)) -> LLMClient:
     """LLM 客户端依赖（测试时可 dependency_overrides 替换）。"""
-    return LLMClient()
+    from app.services.model_profile_service import resolve_llm_profile_config
+    from app.services.usage import UsageRecorder
+    config = resolve_llm_profile_config(db, profile_id=None, owner_user_id=user.id)
+    return LLMClient(
+        config=config,
+        usage_recorder=UsageRecorder(db, user_id=user.id, operation="revision-optimize", service_type="text", provider=config.get("provider", "custom")),
+        usage_operation="revision-optimize",
+    )
 
 
 def _get_revision_or_404(revision_id: str, db: Session) -> TweetRevision:

@@ -98,6 +98,7 @@ def create_article_run(
     if article and article.get("ownerId") not in (None, user.id):
         raise HTTPException(status_code=404, detail={"code": "ARTICLE_NOT_FOUND"})
     from app.services.workspace_settings import read_preferences
+    from app.services.usage import UsageRecorder
     from app.services.model_profile_service import preferred_profile_id, resolve_llm_profile_config
     from app.agents.llm_client import LLMClient
     prefs = read_preferences(db, "user:" + user.id)
@@ -107,7 +108,12 @@ def create_article_run(
         for node_id in (prefs.get("nodeProfileIds") or {}):
             node_config = resolve_llm_profile_config(db, profile_id=preferred_profile_id(db, prefs, node_id), owner_user_id=user.id)
             node_llms[node_id] = LLMClient(config=node_config)
-    service = WriterService(db, llm=LLMClient(config=config), node_llms=node_llms)
+    recorder = UsageRecorder(db, user_id=user.id, operation="article-create", resource_id=body.articleId, provider=config.get("provider", "custom"))
+    node_llms = {
+        node_id: LLMClient(config=node_config, usage_recorder=recorder, usage_operation="article-create")
+        for node_id, node_config in node_llms.items()
+    }
+    service = WriterService(db, llm=LLMClient(config=config, usage_recorder=recorder, usage_operation="article-create"), node_llms=node_llms)
     creation = {
         "_ownerUserId": user.id,
         "modelSelections": {key: prefs.get(key) for key in ("embeddingModelId", "rerankModelId")},
@@ -161,11 +167,12 @@ def create_rewrite_candidate(
     user: AppUser = Depends(require_user),
 ):
     from app.services.rewrite_service import RewriteService
+    from app.services.usage import UsageRecorder
 
     from app.services.model_profile_service import resolve_llm_profile_config
     from app.agents.llm_client import LLMClient
     config = resolve_llm_profile_config(db, profile_id=body.profileId, owner_user_id=user.id)
-    service = RewriteService(db, llm=LLMClient(config=config))
+    service = RewriteService(db, llm=LLMClient(config=config, usage_recorder=UsageRecorder(db, user_id=user.id, operation="rewrite", resource_id=body.articleId, provider=config.get("provider", "custom")), usage_operation="rewrite"))
     try:
         return service.start_rewrite(
             article_id=body.articleId, markdown=body.markdown,

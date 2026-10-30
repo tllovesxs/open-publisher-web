@@ -6,6 +6,7 @@ JWTStrategy。
 """
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -71,6 +72,8 @@ async def _issue_login(
     response: Response, user: AppUser, user_db: SyncUserDatabase
 ) -> dict:
     """签发 fastapi-users JWT 并设置 Cookie；登录时顺带升级旧密码散列。"""
+    user.last_login_at = datetime.now(timezone.utc)
+    user = await user_db.update(user, {"last_login_at": user.last_login_at})
     token = await create_access_token(user)
     _set_auth_cookie(response, token)
     return {"token": token, "user": _user_out(user)}

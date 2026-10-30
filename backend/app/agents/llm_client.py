@@ -7,7 +7,7 @@ API Key 只来自后端数据库 app_secrets 解密结果，不落仓库。
 import json
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from openai import BadRequestError, OpenAI
 
@@ -44,12 +44,17 @@ class LLMClient:
         model: str | None = None,
         timeout_seconds: int | None = None,
         config: dict | None = None,
+        usage_recorder: Callable[[dict], None] | None = None,
+        usage_operation: str = "llm",
+        usage_service_type: str = "text",
+        usage_run_id: str | None = None,
     ) -> None:
         settings = get_settings()
         resolved = config or resolve_llm_config()
         self.capabilities = resolved.get("capabilities") or {}
         self.profile_id = resolved.get("profileId")
         self.profile_name = resolved.get("profileName")
+        self.provider = resolved.get("provider") or "custom"
         self._api_key = api_key if api_key is not None else resolved["api_key"]
         self._base_url = base_url if base_url is not None else resolved["base_url"]
         self.model = model if model is not None else resolved["model"]
@@ -57,6 +62,10 @@ class LLMClient:
             timeout_seconds if timeout_seconds is not None else resolved["timeout_seconds"]
         )
         self.call_count = 0
+        self.usage_recorder = usage_recorder
+        self.usage_operation = usage_operation
+        self.usage_service_type = usage_service_type
+        self.usage_run_id = usage_run_id
         self._client = OpenAI(
             api_key=self._api_key or "sk-not-configured",
             base_url=self._base_url,
@@ -110,6 +119,39 @@ class LLMClient:
                 retry_kwargs["extra_body"] = remaining
             return self._client.chat.completions.create(**retry_kwargs)
 
+    def _record_usage(self, *, usage: dict | None = None, status: str = "succeeded", latency_ms: int | None = None, image_count: int = 0) -> None:
+        if not self.usage_recorder:
+            return
+        usage = usage or {}
+        try:
+            self.usage_recorder({
+                "serviceType": self.usage_service_type,
+                "operation": self.usage_operation,
+                "modelId": self.model,
+                "provider": self.provider,
+                "profileId": self.profile_id,
+                "runId": self.usage_run_id,
+                "inputTokens": usage.get("inputTokens", usage.get("prompt_tokens")),
+                "outputTokens": usage.get("outputTokens", usage.get("completion_tokens")),
+                "imageCount": image_count,
+                "status": status,
+                "latencyMs": latency_ms,
+            })
+        except Exception:
+            return
+
+    @staticmethod
+    def _usage_from_response(response) -> dict:
+        raw = getattr(response, "usage", None)
+        if not raw:
+            return {}
+        details = getattr(raw, "completion_tokens_details", None)
+        return {
+            "inputTokens": getattr(raw, "prompt_tokens", None),
+            "outputTokens": getattr(raw, "completion_tokens", None),
+            "reasoningTokens": getattr(details, "reasoning_tokens", None),
+        }
+
     @property
     def api_key_configured(self) -> bool:
         """激活档案或全局数据库密钥是否提供了 API Key。"""
@@ -137,6 +179,8 @@ class LLMClient:
         temperature: float = 0.7,
     ) -> Iterator[str]:
         """逐段返回模型输出；JSON 输出仍一次性返回，便于统一解析。"""
+        started = time.monotonic()
+        usage: dict = {}
         try:
             if json_mode:
                 response = self._create_completion(
@@ -149,6 +193,7 @@ class LLMClient:
                     response_format={"type": "json_object"},
                 )
                 self.call_count += 1
+                self._record_usage(usage=self._usage_from_response(response), latency_ms=round((time.monotonic() - started) * 1000))
                 content = response.choices[0].message.content or ""
                 if content:
                     yield content
@@ -163,8 +208,11 @@ class LLMClient:
                 ],
                 **self._options(temperature),
                 stream=True,
+                stream_options={"include_usage": True},
             )
             for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    usage = self._usage_from_response(chunk)
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
@@ -172,7 +220,9 @@ class LLMClient:
                 if content:
                     yield content
             self.call_count += 1
+            self._record_usage(usage=usage, latency_ms=round((time.monotonic() - started) * 1000))
         except Exception as exc:  # noqa: BLE001 - 统一转为 LLMError
+            self._record_usage(status="failed", latency_ms=round((time.monotonic() - started) * 1000))
             raise LLMError(f"LLM 调用失败：{exc}") from exc
 
     def stream_chat(
@@ -255,6 +305,7 @@ class LLMClient:
                         slot["arguments"] += fragment.function.arguments
                     yield {"type": "tool_delta", "index": fragment.index, **slot}
             self.call_count += 1
+            self._record_usage(usage=usage, latency_ms=round((time.monotonic() - started) * 1000))
             ordered = [tool_calls[i] for i in sorted(tool_calls)]
             yield {
                 "type": "message",
@@ -268,6 +319,7 @@ class LLMClient:
                 "firstToolMs": first_tool_ms,
             }
         except Exception as exc:  # noqa: BLE001 - 统一转为 LLMError
+            self._record_usage(status="failed", latency_ms=round((time.monotonic() - started) * 1000))
             raise LLMError(f"LLM 调用失败：{exc}") from exc
         finally:
             if stream is not None:
@@ -296,10 +348,12 @@ class LLMClient:
                     response_format={"type": "json_object"},
                 )
                 self.call_count += 1
+                self._record_usage(usage=self._usage_from_response(response), latency_ms=0, image_count=len(images))
                 return parse_json_dict(response.choices[0].message.content or "")
             except LLMError:
                 raise
             except Exception as exc:
+                self._record_usage(status="failed", latency_ms=0, image_count=len(images))
                 raise LLMError(f"LLM 调用失败：{exc}") from exc
         text = self.complete(system, user, json_mode=True, temperature=temperature)
         return parse_json_dict(text)
