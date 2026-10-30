@@ -117,3 +117,20 @@ def test_legacy_pbkdf2_login_upgrades_and_issues_jwt():
 
     assert verify_legacy_pbkdf2("x", "pbkdf2_sha256$390000$00$00") is False
 
+
+
+def test_profile_update_is_persistent_and_scoped_to_current_user(client):
+    assert client.patch("/api/auth/me", json={"displayName": "新昵称"}).status_code == 401
+    other = client.post("/api/auth/register", json={"username": "other", "password": "secret-pass-1"}).json()
+    owner = client.post("/api/auth/register", json={"username": "owner", "password": "secret-pass-1"}).json()
+    headers = {"Authorization": f"Bearer {owner['token']}"}
+    response = client.patch("/api/auth/me", headers=headers, json={"displayName": "  新昵称  "})
+    assert response.status_code == 200
+    assert response.json()["displayName"] == "新昵称"
+    assert response.json()["username"] == "owner"
+    assert client.get("/api/auth/me", headers=headers).json()["displayName"] == "新昵称"
+    other_headers = {"Authorization": f"Bearer {other['token']}"}
+    assert client.get("/api/auth/me", headers=other_headers).json()["displayName"] == "other"
+    for payload in [{"displayName": " "}, {"displayName": "x" * 121}, {"displayName": "x", "role": "admin"}]:
+        assert client.patch("/api/auth/me", headers=headers, json=payload).status_code == 422
+    assert client.get("/api/auth/me", headers=headers).json()["role"] == "user"

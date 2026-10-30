@@ -27,6 +27,11 @@ class RegisterIn(BaseModel):
     displayName: str = Field(default="", max_length=120)
 
 
+class ProfileUpdateIn(BaseModel):
+    model_config = {"extra": "forbid"}
+    displayName: str = Field(min_length=1, max_length=120)
+
+
 class LoginIn(BaseModel):
     username: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=200)
@@ -144,6 +149,19 @@ def me(request: Request, response: Response, user: AppUser = Depends(get_current
         if token:
             _set_auth_cookie(response, token)
     return _user_out(user)
+
+
+@router.patch("/me")
+async def update_profile(
+    body: ProfileUpdateIn,
+    user: AppUser = Depends(get_current_user),
+    user_db: SyncUserDatabase = Depends(get_user_db),
+):
+    display_name = body.displayName.strip()
+    if not display_name:
+        raise HTTPException(status_code=422, detail="昵称不能为空")
+    updated = await user_db.update(user, {"display_name": display_name})
+    return _user_out(updated)
 
 
 @router.post("/logout")

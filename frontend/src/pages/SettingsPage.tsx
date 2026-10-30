@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Check, FileCheck2, FilePenLine, Globe, Image, Layout, ListTree, Monitor, Moon, Save, Search, Settings2, ShieldCheck, Sparkles, Sun, User } from "lucide-react";
+import { ArrowRightLeft, Check, FileCheck2, FilePenLine, Globe, Image, Layout, ListTree, Monitor, Moon, Pencil, Save, Search, Settings2, ShieldCheck, Sparkles, Sun, User } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -16,7 +17,6 @@ const EXTRA_MODELS = [
   { kind: "rerank", field: "rerankModelId", label: "检索排序模型", description: "对检索到的资料进一步排序", icon: ListTree },
 ] as const;
 interface Preferences { imageModelId: string | null; embeddingModelId: string | null; rerankModelId: string | null; disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null; nodeProfileIds: Record<string, string> }
-interface Integrations { trustedHosts: string[]; publishBridgeUrl: string; tavily?: {keyConfigured:boolean}; github?: {keyConfigured:boolean} }
 
 const TABS = [
   { id: "model", label: "模型", icon: Settings2 },
@@ -32,15 +32,16 @@ const STAGE_ICONS: Record<string, typeof Search> = {
 };
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
+  const navigate = useNavigate();
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const admin = user?.role === "admin";
   const { setting, setSetting } = useThemeSetting();
   const [tab, setTab] = useState<string>("model");
   const [catalogs, setCatalogs] = useState<Record<ModelKind, ModelCatalog>>({image:{models:[],defaultId:null},embedding:{models:[],defaultId:null},rerank:{models:[],defaultId:null}});
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [prefs, setPrefs] = useState<Preferences>({imageModelId:null, embeddingModelId:null, rerankModelId:null, disabledNodeIds:[], webSearchMode:"auto", profileId:null, nodeProfileIds:{}});
-  const [integrations, setIntegrations] = useState<Integrations>({trustedHosts:[], publishBridgeUrl:""});
-  const [keys, setKeys] = useState({tavily:"", github:""});
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -59,8 +60,7 @@ export default function SettingsPage() {
     setPrefs({ ...w.data, disabledNodeIds: w.data.disabledNodeIds.filter(id => id !== "draft"), ...Object.fromEntries(EXTRA_MODELS.map(({kind,field}) => [field, c.data[kind].models.some(model => model.id === w.data[field]) ? w.data[field] : null])), profileId: ids.has(w.data.profileId ?? "") ? w.data.profileId : null,
       nodeProfileIds: Object.fromEntries(Object.entries(w.data.nodeProfileIds ?? {}).filter(([, id]) => ids.has(id))),
     });
-    if (admin) setIntegrations((await api.get<Integrations>("/settings/integrations")).data);
-  }, ""); }, [admin]);
+  }, ""); }, []);
 
   const defaultProfile = profiles.find(p => p.id === prefs.profileId) ?? profiles.find(p => p.isDefault) ?? profiles[0];
   const modelSelect = (label: string, profileId: string | null, onChange: (value: string) => void, inherit = false, models = profiles, defaultId?: string | null) => (
@@ -180,84 +180,30 @@ export default function SettingsPage() {
               <h2>{user?.displayName || user?.username}</h2>
               <span className="client-settings-role">{admin ? "管理员" : "成员"}</span>
             </div>
-            <button className="button button--quiet" onClick={() => void logout()} type="button">退出登录</button>
+            <div className="client-settings-account-actions">
+              <button className="button button--quiet" disabled={busy} onClick={() => { setDisplayName(user?.displayName || user?.username || ""); setEditingProfile(true); setNotice(""); }} type="button"><Pencil size={15} />编辑资料</button>
+              <button className="button button--quiet" disabled={busy} onClick={() => void act(async () => { await logout(); navigate("/login", { replace: true }); }, "")} type="button"><ArrowRightLeft size={15} />切换账号</button>
+            </div>
           </section>
 
-          {admin && (
-            <section style={{
-              background: "var(--surface, #fff)", border: "1px solid var(--border, #e5e5e5)",
-              borderRadius: 12, display: "grid", gap: 14, padding: 20,
+          {editingProfile && (
+            <form className="client-settings-card client-settings-profile-form" onSubmit={event => {
+              event.preventDefault();
+              if (!displayName.trim()) { setNotice("请输入昵称。"); return; }
+              void act(async () => { await updateProfile(displayName.trim()); setEditingProfile(false); }, "资料已更新");
             }}>
-              <div>
-                <strong style={{ fontSize: 14 }}>外部服务</strong>
-                <p style={{ color: "var(--muted, #888)", fontSize: 12, marginTop: 2 }}>
-                  管理联网搜索和代码仓库的访问权限
-                </p>
+              <header className="client-settings-section-heading">
+                <span className="client-settings-icon"><Pencil size={19} /></span>
+                <div><h2>编辑资料</h2><p>更新你的昵称，保存后立即生效。</p></div>
+              </header>
+              <label>用户名<input value={user?.username ?? ""} readOnly /></label>
+              <label>昵称<input autoFocus autoComplete="nickname" maxLength={120} required value={displayName} disabled={busy} onChange={event => setDisplayName(event.target.value)} /></label>
+              <div className="client-settings-footer">
+                <button className="button button--quiet" disabled={busy} onClick={() => { setEditingProfile(false); setNotice(""); }} type="button">取消</button>
+                <button className="button button--primary" disabled={busy || !displayName.trim()} type="submit"><Save size={15} />保存资料</button>
               </div>
-              {(["tavily", "github"] as const).map(kind => (
-                <div key={kind} style={{ display: "grid", gap: 6 }}>
-                  <label style={{ color: "var(--ink)", fontSize: 13, fontWeight: 500 }}>
-                    {kind === "tavily" ? "联网搜索密钥（Tavily）" : "代码仓库访问凭证（GitHub）"}
-                    <span style={{
-                      background: integrations[kind]?.keyConfigured ? "var(--success-soft, #f0fff4)" : "var(--surface-muted, #f5f5f5)",
-                      borderRadius: 4, color: integrations[kind]?.keyConfigured ? "var(--success, #22543d)" : "var(--muted, #888)",
-                      fontSize: 10, marginLeft: 6, padding: "2px 6px",
-                    }}>
-                      {integrations[kind]?.keyConfigured ? "已配置" : "未配置"}
-                    </span>
-                  </label>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      autoComplete="new-password"
-                      onChange={e => setKeys({...keys, [kind]: e.target.value})}
-                      style={{ borderRadius: 8, border: "1px solid var(--border, #ddd)", flex: 1, fontSize: 13, padding: "8px 10px" }}
-                      type="password"
-                      value={keys[kind]}
-                    />
-                    <button
-                      className="button button--quiet"
-                      disabled={busy || !keys[kind].trim()}
-                      onClick={() => void act(async () => {
-                        await api.put(`/settings/integrations/${kind}/key`, {apiKey: keys[kind]});
-                        setKeys(k => ({...k, [kind]: ""}));
-                        setIntegrations(i => ({...i, [kind]: {keyConfigured: true}}));
-                      })}
-                      style={{ fontSize: 12, padding: "8px 14px", whiteSpace: "nowrap" }}
-                    >
-                      加密保存
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <label style={{ color: "var(--ink)", display: "grid", fontSize: 13, fontWeight: 500, gap: 6 }}>
-                允许访问的网站域名（每行一个）
-                <textarea
-                  onChange={e => setIntegrations({...integrations, trustedHosts: e.target.value.split("\n")})}
-                  rows={3}
-                  style={{ borderRadius: 8, border: "1px solid var(--border, #ddd)", fontSize: 13, padding: "8px 10px", resize: "vertical" }}
-                  value={integrations.trustedHosts.join("\n")}
-                />
-              </label>
-              <label style={{ color: "var(--ink)", display: "grid", fontSize: 13, fontWeight: 500, gap: 6 }}>
-                发布连接服务地址
-                <input
-                  onChange={e => setIntegrations({...integrations, publishBridgeUrl: e.target.value})}
-                  placeholder="https://bridge.example.com"
-                  style={{ borderRadius: 8, border: "1px solid var(--border, #ddd)", fontSize: 13, padding: "8px 10px" }}
-                  value={integrations.publishBridgeUrl}
-                />
-              </label>
-              <button
-                className="button button--primary"
-                disabled={busy}
-                onClick={() => void act(() => api.put("/settings/integrations", {trustedHosts: integrations.trustedHosts, publishBridgeUrl: integrations.publishBridgeUrl}))}
-                style={{ alignItems: "center", display: "flex", gap: 6, fontSize: 13, justifyContent: "center", padding: "9px 16px" }}
-              >
-                <Save size={14} /> 保存服务设置
-              </button>
-            </section>
+            </form>
           )}
-          {!admin && <div className="client-settings-account-note"><ShieldCheck size={18} aria-hidden="true" /><div><strong>外部服务</strong><p>联网搜索等外部服务由管理员统一配置。</p></div></div>}
         </div>
       )}
 
