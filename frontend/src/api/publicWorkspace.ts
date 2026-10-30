@@ -1,10 +1,13 @@
 // Public examples and guest edits share the normal workbench contracts.
 // Guest writes stay in this browser; private backend routes remain protected.
 import type { AxiosAdapter, InternalAxiosRequestConfig } from "axios";
+import bundledExamples from "../data/examples.v1.json";
+import productPromotion from "../data/product-promotion.v1.json";
+import exampleArticle from "../data/example-article.v1.md?raw";
 
 type Row = Record<string, any>;
 type Kind = "articles" | "templates" | "media";
-const cache = new Map<Kind, Promise<Row[]>>();
+// Public starter content ships with the app; browsing it never needs a server.
 export const isExample = (id: string) => id.startsWith("example-");
 const key = (kind: string) => `opw:local-workspace:${localStorage.getItem("opw_user_id") || "guest"}:${kind}`;
 function read(kind: string): Row[] {
@@ -17,11 +20,9 @@ export function localMediaSource(id: string): string | null {
 }
 
 export async function examples(kind: Kind): Promise<Row[]> {
-  if (!cache.has(kind)) cache.set(kind, fetch(`/api/examples/${kind}`, { credentials: "omit" }).then(async res => {
-    if (!res.ok) throw new Error("无法加载示例");
-    const { items } = await res.json();
-    return items.map((item: Row) => kind === "articles" ? {
-      articleId: item.id, title: item.title, markdown: item.markdown,
+    const items: Row[] = bundledExamples[kind];
+    const rows: Row[] = items.map((item: Row) => kind === "articles" ? {
+      articleId: item.id, title: item.title, markdown: exampleArticle,
       currentRevisionId: null, contentHash: null, updatedAt: null,
     } : kind === "templates" ? {
       ...item, name: item.title, category: "示例", isBuiltIn: true, mode: "scaffold",
@@ -31,8 +32,10 @@ export async function examples(kind: Kind): Promise<Row[]> {
       ...item, name: item.title, visualDescription: item.description, usageHint: "公共示例素材",
       generationPrompt: "", tags: ["示例"], mime: "image/svg+xml", origin: "upload", createdAt: "2026-10-30T00:00:00Z",
     });
-  }).catch(error => { cache.delete(kind); throw error; }));
-  return structuredClone(await cache.get(kind)!);
+    if (kind === "templates") rows.unshift({
+      ...productPromotion.template, isBuiltIn: true, mode: "scaffold",
+    });
+    return structuredClone(rows);
 }
 
 export async function localRows(kind: Kind): Promise<Row[]> {
@@ -68,7 +71,7 @@ export const localAdapter: AxiosAdapter = async config => {
         data = { [kind === "media" ? "assets" : kind]: filtered };
       }
     } else if (method === "delete") {
-      if (isExample(id || "")) throw new Error("公共示例不可删除");
+      if (row?.isBuiltIn || isExample(id || "")) throw new Error("内置模板和公共示例不可删除");
       write(kind, read(kind).filter(r => (r.articleId || r.id) !== id));
       data = {};
     } else {
@@ -81,7 +84,7 @@ export const localAdapter: AxiosAdapter = async config => {
         const revisions = read(`revisions:${articleId}`);
         write(`revisions:${articleId}`, [{ ...data, revisionId: data.currentRevisionId, createdAt: data.updatedAt }, ...revisions]);
       } else {
-        if (method === "patch" && isExample(id)) throw new Error("请复制示例后修改");
+        if (method === "patch" && (row?.isBuiltIn || isExample(id))) throw new Error("请复制内置模板或示例后修改");
         data = { ...row, ...body, id: method === "patch" ? id : crypto.randomUUID(), isBuiltIn: false,
           createdAt: row?.createdAt || new Date().toISOString(), source: body.dataUrl || row?.source,
           mode: row?.mode || "scaffold", origin: row?.origin || "upload" };

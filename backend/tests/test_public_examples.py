@@ -36,3 +36,14 @@ def test_private_libraries_still_require_login(anonymous_client, path):
 
 def test_example_path_cannot_read_arbitrary_files(anonymous_client):
     assert anonymous_client.get("/api/examples/secrets").status_code == 404
+
+
+def test_bundled_starter_resources_match_backend_sources():
+    """The frontend-only preview must ship the real starter content, not placeholders."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    for name in ("product-promotion.v1.json", "examples.v1.json", "example-article.v1.md"):
+        assert (root / "frontend/src/data" / name).read_text(encoding="utf-8") == (
+            root / "backend/app/data" / name
+        ).read_text(encoding="utf-8")

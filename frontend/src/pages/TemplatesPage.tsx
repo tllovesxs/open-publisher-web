@@ -107,6 +107,8 @@ export default function TemplatesPage() {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [extractSeconds, setExtractSeconds] = useState(0);
   const [templates, setTemplates] = useState<MarkdownTemplate[]>([]);
+  const [libraryUnavailable, setLibraryUnavailable] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<MarkdownTemplate | null>(null);
   const [form, setForm] = useState<TemplateForm | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -170,8 +172,11 @@ export default function TemplatesPage() {
   };
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await api.get<{ templates: MarkdownTemplate[] }>("/templates");
+      const res = await api.get<{ templates: MarkdownTemplate[]; libraryUnavailable?: boolean }>("/templates");
+      setLibraryUnavailable(Boolean(res.data.libraryUnavailable));
+      setError(null);
       setTemplates(res.data.templates);
       setSelected((current) =>
         current && res.data.templates.some((template) => template.id === current.id)
@@ -180,7 +185,7 @@ export default function TemplatesPage() {
       );
     } catch {
       setError("无法加载模板列表。");
-    }
+    } finally { setLoading(false); }
   }, [user?.id]);
 
   useEffect(() => {
@@ -383,6 +388,7 @@ export default function TemplatesPage() {
           </div>
         </header>
         <div className="template-content" ref={contentRef}>
+        {libraryUnavailable && <div className="workflow-task__failure" role="status"><p>个人模板暂时无法同步，已显示内置模板。恢复连接后可重试。</p><button className="button button--quiet" disabled={loading} onClick={() => void load()} type="button">{loading ? "重试中…" : "重新加载"}</button></div>}
         {error && (
           <div className="workflow-task__failure" role="alert"><p>{error}</p></div>
         )}

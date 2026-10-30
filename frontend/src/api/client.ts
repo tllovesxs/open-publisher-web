@@ -40,4 +40,16 @@ api.interceptors.response.use(async response => {
     } catch { /* A public example outage must not hide personal resources. */ }
   }
   return response;
+}, async error => {
+  const config = error.config;
+  const status = error.response?.status;
+  // Preserve authentication errors and all writes. Only the immutable starter
+  // templates remain available when the personal library cannot be reached.
+  if (!axios.isCancel(error) && config?.method === "get"
+    && config.url?.split("?")[0] === "/templates"
+    && (!error.response || status >= 500)) {
+    return { data: { templates: await examples("templates"), libraryUnavailable: true },
+      status: 200, statusText: "Starter templates", headers: {}, config };
+  }
+  return Promise.reject(error);
 });
