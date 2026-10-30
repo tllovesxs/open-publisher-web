@@ -10298,22 +10298,6 @@ aside[aria-label="模板列表"] .article-list-item.is-active {
 .visual-plan-materials span { min-width: 0; overflow-wrap: anywhere; }
 .visual-plan-materials small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; }
 
-/* 同步发布沿用蓝本的“只收缩侧栏”：保留同步工具栏，给正文腾出空间。 */
-@media (min-width: 821px) {
-  .app-shell:has(.sync-publish) { --sidebar-width: 64px; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
-  .app-shell:has(.sync-publish) .app-navigation__brand { justify-content: center; padding-inline: 0; }
-  .app-shell:has(.sync-publish) .app-navigation__brand > div,
-  .app-shell:has(.sync-publish) .app-navigation__item > span { display: none; }
-  .app-shell:has(.sync-publish) .app-navigation__items { padding-inline: 10px; }
-  .app-shell:has(.sync-publish) .app-navigation__item { justify-content: center; padding-inline: 0; }
-  .app-shell:has(.sync-publish) .app-navigation__footer { justify-content: center; padding-inline: 8px; }
-  .app-shell:has(.sync-publish) .avatar-menu--sidebar .avatar-menu__identity,
-  .app-shell:has(.sync-publish) .avatar-menu--sidebar .avatar-menu__chevron { display: none; }
-  .app-shell:has(.sync-publish) .avatar-menu--sidebar .avatar-menu__trigger { justify-content: center; }
-  .sync-publish { inset: var(--topbar-height) 0 0 var(--sidebar-width) !important; }
-  .sync-publish > footer { left: var(--sidebar-width) !important; }
-}
-
 /* Template library: navigation, focused editor and section index. */
 .template-workbench { display: grid; grid-template-columns: 258px minmax(0,1fr); height: 100%; min-height: 0; overflow: hidden; background: var(--surface); color: var(--ink); }
 .template-library { display: flex; flex-direction: column; min-width: 0; padding: 26px 16px 16px; border-right: 1px solid var(--border); background: var(--surface-muted); }
