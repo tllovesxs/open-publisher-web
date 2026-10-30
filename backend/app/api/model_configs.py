@@ -24,6 +24,7 @@ class ConfigurationInput(BaseModel):
     baseUrl: str = Field(default="", max_length=500)
     modelId: str = Field(min_length=1, max_length=200)
     timeoutSeconds: int = Field(default=30, ge=1, le=1800)
+    enabled: bool = True
     protocol: Literal["auto", "openai", "compatible", "tei"] = "auto"
     apiKey: str | None = Field(default=None, min_length=4, max_length=4096, repr=False)
 

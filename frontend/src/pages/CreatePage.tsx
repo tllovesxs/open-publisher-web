@@ -60,7 +60,6 @@ interface ImageModelOption {
   id: string;
   name: string;
   model: string;
-  keyConfigured: boolean;
 }
 
 const lengthOptions: Array<{ id: LengthPreset; label: string }> = [
@@ -126,7 +125,7 @@ export default function CreatePage() {
   const [profiles, setProfiles] = useState<ModelProfile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [imageModels, setImageModels] = useState<ImageModelOption[]>([]);
-  // 生图模型选择为非必选：留空 = 跟随系统配置（管理端生图配置 / IMAGE_* 环境变量）
+  // 生图模型选择为非必选：留空沿用当前用户的生图偏好，未设置时使用平台默认
   const [selectedImageModelId, setSelectedImageModelId] = useState("");
 
   const [importNote, setImportNote] = useState<string | null>(null);
@@ -535,10 +534,10 @@ export default function CreatePage() {
                     label="生图模型"
                     onChange={setSelectedImageModelId}
                     options={[
-                      { id: "", label: "跟随系统配置（默认）" },
+                      { id: "", label: "跟随设置中的生图模型" },
                       ...imageModels.map((model) => ({
                         id: model.id,
-                        label: `${model.name} · ${model.model}${model.keyConfigured ? "" : "（缺少密钥）"}`,
+                        label: `${model.name} · ${model.model}`,
                       })),
                     ]}
                     value={selectedImageModelId}

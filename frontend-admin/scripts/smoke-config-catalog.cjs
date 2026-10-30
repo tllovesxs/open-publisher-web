@@ -106,7 +106,21 @@ const base = process.env.ADMIN_BASE_URL || 'http://127.0.0.1:5184';
     assert.equal(await form.getByLabel('接口协议', { exact: true }).inputValue(), kind === 'embedding' ? 'tei' : 'compatible');
     assert.equal(await form.getByLabel('等待时限（秒）', { exact: true }).inputValue(), '45');
    }
-   await form.getByRole('button', { name: '取消', exact: true }).click();
+   if (kind !== 'text') {
+    const availability = form.getByRole('checkbox', { name: '向客户端开放此模型', exact: true });
+    assert.equal(await availability.isChecked(), true);
+    await availability.uncheck();
+    await form.getByRole('button', { name: '保存配置', exact: true }).click();
+    await row.filter({ hasText: '未向客户端开放' }).waitFor();
+    assert.equal(catalogs[kind].profiles.find(p => p.id === 'new-' + kind).enabled, false);
+    await row.getByRole('button', { name: '编辑配置', exact: true }).click();
+    form = panel.getByRole('form');
+    assert.equal(await form.getByRole('checkbox', { name: '向客户端开放此模型', exact: true }).isChecked(), false);
+    await form.getByRole('checkbox', { name: '向客户端开放此模型', exact: true }).check();
+    await form.getByRole('button', { name: '保存配置', exact: true }).click();
+    await panel.getByRole('form').waitFor({ state: 'detached' });
+    assert.equal(catalogs[kind].profiles.find(p => p.id === 'new-' + kind).enabled, true);
+   } else await form.getByRole('button', { name: '取消', exact: true }).click();
    if (kind !== 'text') {
     await add.click(); form = panel.getByRole('form'); await form.waitFor();
     await form.getByLabel('方案名称', { exact: true }).fill('新增-' + kind);

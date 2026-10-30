@@ -849,7 +849,7 @@ class WriterService:
                     # 命中片段带 [n] 来源编号注入上下文；失败时降级为原文注入。
                     from app.services.rag_service import get_rag_service
 
-                    rag = get_rag_service()
+                    rag = get_rag_service(db=self.db, owner_user_id=creation["_ownerUserId"], preferences=creation.get("modelSelections")) if creation.get("_ownerUserId") else get_rag_service()
                     run_index = f"run-{run_id}"
                     ingest_info = rag.ingest(run_index, "用户参考资料", references)
                     query = " ".join(

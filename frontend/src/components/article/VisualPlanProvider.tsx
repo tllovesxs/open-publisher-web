@@ -325,7 +325,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
               <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>
               <div className="visual-plan-settings">
                 <label>生图模型 <select aria-label="生图模型" disabled={busy} onChange={event => setSelectedModel(event.target.value)} value={selectedModel}>
-                  <option value="">跟随系统配置（默认）</option>
+                  <option value="">跟随设置中的生图模型</option>
                   {imageModels.map(model => <option key={model.id} value={model.id}>{model.name} · {model.model}</option>)}
                 </select></label>
                 <label>配图数量 <select aria-label="配图数量" disabled={busy} value={targetCount} onChange={event => void replan(Number(event.target.value))}>

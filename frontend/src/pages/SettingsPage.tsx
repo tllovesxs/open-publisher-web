@@ -8,7 +8,14 @@ import "./SettingsPage.css";
 import { ARTICLE_WORKFLOW_NODES } from "../workflow/articleNodes";
 
 interface Profile { id: string; name: string; isDefault?: boolean }
-interface Preferences { disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null; nodeProfileIds: Record<string, string> }
+type ModelKind = "image" | "embedding" | "rerank";
+interface ModelCatalog { models: Profile[]; defaultId: string | null }
+const EXTRA_MODELS = [
+  { kind: "image", field: "imageModelId", label: "生图模型", description: "生成文章配图和素材图片", icon: Image },
+  { kind: "embedding", field: "embeddingModelId", label: "资料检索模型（向量）", description: "将资料与问题转为向量，查找相关内容", icon: Search },
+  { kind: "rerank", field: "rerankModelId", label: "检索排序模型", description: "对检索到的资料进一步排序", icon: ListTree },
+] as const;
+interface Preferences { imageModelId: string | null; embeddingModelId: string | null; rerankModelId: string | null; disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null; nodeProfileIds: Record<string, string> }
 interface Integrations { trustedHosts: string[]; publishBridgeUrl: string; tavily?: {keyConfigured:boolean}; github?: {keyConfigured:boolean} }
 
 const TABS = [
@@ -29,8 +36,9 @@ export default function SettingsPage() {
   const admin = user?.role === "admin";
   const { setting, setSetting } = useThemeSetting();
   const [tab, setTab] = useState<string>("model");
+  const [catalogs, setCatalogs] = useState<Record<ModelKind, ModelCatalog>>({image:{models:[],defaultId:null},embedding:{models:[],defaultId:null},rerank:{models:[],defaultId:null}});
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [prefs, setPrefs] = useState<Preferences>({disabledNodeIds:[], webSearchMode:"auto", profileId:null, nodeProfileIds:{}});
+  const [prefs, setPrefs] = useState<Preferences>({imageModelId:null, embeddingModelId:null, rerankModelId:null, disabledNodeIds:[], webSearchMode:"auto", profileId:null, nodeProfileIds:{}});
   const [integrations, setIntegrations] = useState<Integrations>({trustedHosts:[], publishBridgeUrl:""});
   const [keys, setKeys] = useState({tavily:"", github:""});
   const [notice, setNotice] = useState("");
@@ -44,10 +52,11 @@ export default function SettingsPage() {
   };
 
   useEffect(() => { void act(async () => {
-    const [p, w] = await Promise.all([api.get<{profiles:Profile[]}>("/settings/profiles"), api.get<Preferences>("/settings/preferences")]);
+    const [p, w, c] = await Promise.all([api.get<{profiles:Profile[]}>("/settings/profiles"), api.get<Preferences>("/settings/preferences"), api.get<Record<ModelKind, ModelCatalog>>("/settings/available-models")]);
+    setCatalogs(c.data);
     setProfiles(p.data.profiles);
     const ids = new Set(p.data.profiles.map(profile => profile.id));
-    setPrefs({ ...w.data, profileId: ids.has(w.data.profileId ?? "") ? w.data.profileId : null,
+    setPrefs({ ...w.data, ...Object.fromEntries(EXTRA_MODELS.map(({kind,field}) => [field, c.data[kind].models.some(model => model.id === w.data[field]) ? w.data[field] : null])), profileId: ids.has(w.data.profileId ?? "") ? w.data.profileId : null,
       nodeProfileIds: Object.fromEntries(Object.entries(w.data.nodeProfileIds ?? {}).filter(([, id]) => ids.has(id))),
     });
     if (admin) setIntegrations((await api.get<Integrations>("/settings/integrations")).data);
@@ -118,9 +127,25 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+          <div className="client-settings-divider" />
+          <div className="client-settings-section-label">其他模型</div>
+          <div className="client-settings-model-grid">
+            {EXTRA_MODELS.map(({ kind, field, label, description, icon: Icon }) => {
+              const catalog = catalogs[kind];
+              const platform = catalog.models.find(model => model.id === catalog.defaultId);
+              return <div className="client-settings-model-row" key={kind}>
+                <div className="client-settings-node-label"><Icon size={16} aria-hidden="true" /><strong>{label}</strong></div>
+                <ToolbarSelect className="toolbar-select--fill toolbar-select--lg" label={label}
+                  disabled={busy || catalog.models.length === 0} value={prefs[field] ?? ""}
+                  onChange={value => setPrefs(current => ({ ...current, [field]: value || null }))}
+                  options={catalog.models.length ? [{ id: "", label: `平台默认（${platform?.name ?? "自动选择"}）` }, ...catalog.models.map(model => ({id:model.id,label:model.name}))] : [{id:"",label:"暂无可用模型，请联系管理员"}]} />
+                <p>{description}{kind === "embedding" ? "。更换向量模型后，已有资料需重新建立索引。" : "。"}</p>
+              </div>;
+            })}
+          </div>
           <div className="client-settings-footer">
-            <p>{profiles.length === 0 ? "暂无可用模型，请联系管理员配置。" : profiles.length === 1 ? "管理员仅配置了一个模型，各环节统一使用该模型。" : "模型由管理员统一配置，此处仅保存你的使用偏好。"}</p>
-            <button className="button button--primary" disabled={busy || profiles.length === 0} onClick={() => void act(() => api.put("/settings/preferences", prefs), "模型选择已保存")} type="button"><Save size={15} />保存模型选择</button>
+            <p>{profiles.length === 0 ? "暂无可用写作模型，仍可保存其他模型选择。" : profiles.length === 1 ? "各写作环节统一使用已配置的写作模型，其他模型可独立选择。" : "模型由管理员统一配置，此处仅保存你的使用偏好。"}</p>
+            <button className="button button--primary" disabled={busy} onClick={() => void act(() => api.put("/settings/preferences", prefs), "模型选择已保存")} type="button"><Save size={15} />保存模型选择</button>
           </div>
         </section>
       )}

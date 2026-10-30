@@ -133,28 +133,14 @@ def image_status(db: Session = Depends(get_db)):
 
 @router.get("/image-models")
 def list_image_models(db: Session = Depends(get_db)):
-    """创作端可选的已配置生图模型（只读，不含密钥本体）。"""
-    from app.models.settings_profile import ImageConfig
+    from app.services.customer_models import available_models
+    return available_models(db, "image")
 
-    rows = db.query(ImageConfig).order_by(ImageConfig.updated_at.desc()).all()
-    meta = secret_store.get_secret_meta(db, secret_store.SECRET_ID_IMAGE_GLOBAL)
-    from app.services.model_config_catalog import read_catalog
-    catalog = read_catalog(db, "image")
-    names = {p["id"]: p["name"] for p in catalog["profiles"]}
-    models = []
-    for row in rows:
-        models.append(
-            {
-                "id": row.id,
-                "name": names.get(row.id, row.model_id),
-                "isDefault": row.id == catalog["activeId"],
-                "model": row.model_id,
-                "keyConfigured": meta is not None,
-                "keySource": "db" if meta is not None else "none",
-                "keyHint": (meta or {}).get("keyHint", ""),
-            }
-        )
-    return {"models": models}
+
+@router.get("/available-models", dependencies=[Depends(require_user)])
+def list_available_models(db: Session = Depends(get_db)):
+    from app.services.customer_models import KINDS, available_models
+    return {kind: available_models(db, kind) for kind in KINDS}
 
 
 @router.get("/profiles")
@@ -578,6 +564,9 @@ class WritingPreferences(BaseModel):
     webSearchMode: Literal["auto", "off"] = "auto"
     profileId: str | None = None
     nodeProfileIds: dict[WorkflowNodeId, str] = Field(default_factory=dict)
+    imageModelId: str | None = Field(default=None, max_length=64)
+    embeddingModelId: str | None = Field(default=None, max_length=64)
+    rerankModelId: str | None = Field(default=None, max_length=64)
 
 class IntegrationSettings(BaseModel):
     trustedHosts: list[str] = Field(default_factory=list, max_length=30)
@@ -585,13 +574,22 @@ class IntegrationSettings(BaseModel):
 
 @router.get("/preferences")
 def preferences(db: Session = Depends(get_db), user: AppUser = Depends(require_user)):
-    return WritingPreferences(**read_preferences(db, "user:" + user.id)).model_dump()
+    from app.services.customer_models import PREFERENCE_FIELDS, available_models
+    prefs = WritingPreferences(**read_preferences(db, "user:" + user.id)).model_dump()
+    for kind, field in PREFERENCE_FIELDS.items():
+        if prefs[field] not in {p["id"] for p in available_models(db, kind)["models"]}:
+            prefs[field] = None
+    return prefs
 
 @router.put("/preferences")
 def save_preferences(body: WritingPreferences, db: Session = Depends(get_db), user: AppUser = Depends(require_user)):
     profile_ids = [body.profileId, *body.nodeProfileIds.values()]
     if any(profile_id and db.get(ModelProfile, profile_id) is None for profile_id in profile_ids):
         raise HTTPException(status_code=400, detail="模型档案不存在")
+    from app.services.customer_models import PREFERENCE_FIELDS, selected_model_id
+    for kind, field in PREFERENCE_FIELDS.items():
+        if getattr(body, field):
+            selected_model_id(db, kind, user.id, getattr(body, field))
     return write_preferences(db, "user:" + user.id, body.model_dump())
 
 @router.get("/integrations", dependencies=[Depends(require_admin)])

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import os
 import re
@@ -21,6 +22,7 @@ import threading
 import urllib.request
 import zipfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import numpy as np
 from openai import OpenAI
@@ -189,8 +191,10 @@ def _cosine_top(query_vec: list[float], vectors: list[list[float]], top_n: int) 
 class RagService:
     """按 index_id 管理向量+BM25 混合索引；写操作覆盖保存（单进程内足够）。"""
 
-    def __init__(self, index_dir: str | None = None) -> None:
+    def __init__(self, index_dir: str | None = None, *, runtime_configs: dict | None = None) -> None:
         self.settings = get_settings()
+        self.runtime_configs = runtime_configs
+        self._vector_model = None
         self.index_dir = Path(index_dir or self.settings.rag_index_dir)
         self.index_dir.mkdir(parents=True, exist_ok=True)
 
@@ -203,6 +207,7 @@ class RagService:
     def _load(self, index_ids: list[str]) -> dict:
         chunks: list[dict] = []
         vectors: list[list[float]] = []
+        identities = []
         for index_id in index_ids:
             path = self._path(index_id)
             if not path.exists():
@@ -220,11 +225,17 @@ class RagService:
                 raise RAGUnavailable("索引片段格式无效，请重新索引资料")
             if len(stored_chunks) != len(stored_vectors):
                 raise RAGUnavailable("索引片段与向量不一致，请重新索引资料")
+            if stored_chunks:
+                identities.append(data.get("embeddingModel"))
             chunks.extend(stored_chunks)
             vectors.extend(stored_vectors)
-        return {"chunks": chunks, "vectors": vectors}
+        return {"chunks": chunks, "vectors": vectors, "embeddingModels": identities}
 
     def _save(self, index_id: str, data: dict) -> None:
+        data = dict(data)
+        identities = data.pop("embeddingModels", [])
+        if identities and "embeddingModel" not in data:
+            data["embeddingModel"] = identities[0]
         target = self._path(index_id)
         temporary = target.with_suffix(".pending")
         # Same-directory replacement prevents readers observing a half-written JSON.
@@ -260,7 +271,7 @@ class RagService:
             return False
         self._save(
             index_id,
-            {"chunks": [c for c, _ in kept], "vectors": [v for _, v in kept]},
+            {"chunks": [c for c, _ in kept], "vectors": [v for _, v in kept], "embeddingModels": data.get("embeddingModels", [])},
         )
         return True
 
@@ -283,6 +294,11 @@ class RagService:
         return model, base_url
 
     def _embedding_runtime_config(self) -> dict:
+        if self.runtime_configs is not None:
+            config = self.runtime_configs["embedding"]
+            if config.get("error"):
+                raise RAGUnavailable(config["error"])
+            return config
         from app.db.session import SessionLocal
         from app.services.model_config_catalog import resolve_rag_config
         try:
@@ -296,9 +312,23 @@ class RagService:
     def _embed(self, texts: list[str]) -> list[list[float]]:
         from app.services.retrieval_models import embed, error_detail
         try:
-            return embed(self._embedding_runtime_config(), texts, client_factory=OpenAI)
+            config = self._embedding_runtime_config()
+            values = embed(config, texts, client_factory=OpenAI)
+            from app.services.retrieval_models import endpoint_base, protocol_for
+            protocol = protocol_for(config, "embedding")
+            base = endpoint_base(config["base_url"], "/embeddings" if protocol == "openai" else "/embed")
+            if protocol == "openai" and not urlsplit(base).path:
+                base += "/v1"
+            self._vector_model = hashlib.sha256(json.dumps([base, config["model"], protocol]).encode()).hexdigest()
+            return values
+        except RAGUnavailable:
+            raise
         except Exception as exc:
             raise RAGUnavailable(error_detail(exc)) from None
+
+    def _assert_embedding_model(self, data: dict) -> None:
+        if self._vector_model and any(identity != self._vector_model for identity in data.get("embeddingModels", [])):
+            raise RAGUnavailable("资料索引的向量模型已变更，请移除旧索引并重新导入资料")
 
     # ---- 写入 / 检索 ----
 
@@ -317,11 +347,14 @@ class RagService:
             data = self._load([index_id])
             kept = [(c, v) for c, v in zip(data["chunks"], data["vectors"]) if c.get("source") != source]
             if kept:
+                self._assert_embedding_model(data)
                 _cosine_top(vectors[0], [v for _, v in kept], 1)
             data = {"chunks": [c for c, _ in kept], "vectors": [v for _, v in kept]}
             for chunk, vec in zip(chunks, vectors):
                 data["chunks"].append({"source": source, **chunk})
                 data["vectors"].append(vec)
+            if self._vector_model:
+                data["embeddingModel"] = self._vector_model
             self._save(index_id, data)
         return {"indexId": index_id, "source": source, "chunks": len(chunks)}
 
@@ -342,6 +375,7 @@ class RagService:
 
         recall_n = max(top_k * 4, 20)
         query_vec = self._embed([query.strip()])[0]
+        self._assert_embedding_model(data)
         vec_rank = _cosine_top(query_vec, data["vectors"], recall_n)
 
         from rank_bm25 import BM25Okapi
@@ -372,6 +406,13 @@ class RagService:
 
     def _rerank(self, query: str, texts: list[str]) -> list[tuple[int, float]] | None:
         """Use the same protocol adapter as probes; preserve retrieval on failure."""
+        if self.runtime_configs is not None:
+            from app.services.retrieval_models import rerank
+            try:
+                config = self.runtime_configs["rerank"]
+                return rerank(config, query, texts) if not config.get("error") else None
+            except Exception:
+                return None
         rerank_base = self.settings.rerank_base_url
         rerank_timeout = self.settings.rerank_timeout_seconds
         rerank_model = ""
@@ -419,7 +460,21 @@ class RagService:
 _service: RagService | None = None
 
 
-def get_rag_service() -> RagService:
+def get_rag_service(*, db=None, owner_user_id: str | None = None, preferences: dict | None = None) -> RagService:
+    if owner_user_id:
+        from app.services.customer_models import selected_model_id, available_models
+        from app.services.model_config_catalog import resolve_rag_config
+        from fastapi import HTTPException
+        configs = {}
+        for kind in ("embedding", "rerank"):
+            try:
+                if not available_models(db, kind)["models"]:
+                    raise HTTPException(status_code=501, detail="管理员尚未开放可用的检索模型")
+                selected = selected_model_id(db, kind, owner_user_id, preferences=preferences)
+                configs[kind] = resolve_rag_config(db, kind, selected)
+            except HTTPException as exc:
+                configs[kind] = {"error": exc.detail}
+        return RagService(runtime_configs=configs)
     global _service
     if _service is None:
         _service = RagService()

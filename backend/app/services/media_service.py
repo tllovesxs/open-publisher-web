@@ -163,6 +163,9 @@ class MediaService:
         if size not in self.SUPPORTED_SIZES:
             raise HTTPException(status_code=400, detail="不支持的生成尺寸")
 
+        if owner_user_id:
+            from app.services.customer_models import selected_model_id
+            image_profile_id = selected_model_id(self.db, "image", owner_user_id, image_profile_id)
         resolved = resolve_image_config(db=self.db, profile_id=image_profile_id)
         from app.services.image_config_validation import validate_image_generation_config
         validate_image_generation_config(resolved["base_url"], resolved["model"])

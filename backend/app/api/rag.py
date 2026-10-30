@@ -58,7 +58,7 @@ def ingest_document(
 ):
     index = _user_index(body.projectId, user, db)
     try:
-        result = get_rag_service().ingest(index, body.name, body.text)
+        result = get_rag_service(db=db, owner_user_id=user.id).ingest(index, body.name, body.text)
         return {**result, "indexId": body.projectId}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
@@ -79,7 +79,7 @@ def upload_document(
         raise HTTPException(status_code=413, detail="文件超过 20MB 上限")
     try:
         text = parse_document(file.filename or "untitled.txt", data)
-        result = get_rag_service().ingest(index, file.filename or "untitled.txt", text)
+        result = get_rag_service(db=db, owner_user_id=user.id).ingest(index, file.filename or "untitled.txt", text)
         return {**result, "indexId": projectId}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
@@ -125,7 +125,7 @@ def search(
 ):
     index = _user_index(body.projectId, user, db)
     try:
-        return get_rag_service().search([index], body.query, top_k=body.topK)
+        return get_rag_service(db=db, owner_user_id=user.id).search([index], body.query, top_k=body.topK)
     except RAGUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
 

@@ -6,10 +6,10 @@ import { ConfigurationKeyEditor } from "./ConfigurationKeyEditor";
 
 export type ModelKind = "image" | "embedding" | "rerank";
 export interface ConfigurationManagerHandle { toggleCurrent: () => void; selectedId: () => string | null }
-interface Configuration { id: string; name: string; baseUrl: string; modelId: string; timeoutSeconds: number; protocol?: string; keyConfigured?: boolean; keyHint?: string }
+interface Configuration { id: string; name: string; baseUrl: string; modelId: string; timeoutSeconds: number; protocol?: string; enabled?: boolean; keyConfigured?: boolean; keyHint?: string }
 interface Catalog { profiles: Configuration[]; activeId: string | null }
 const labels: Record<ModelKind, string> = { image: "生图模型", embedding: "资料检索模型", rerank: "检索排序模型" };
-const empty = (kind: ModelKind) => ({ protocol: "auto", apiKey: "", name: "", baseUrl: "", modelId: "", timeoutSeconds: kind === "image" ? 180 : 30 });
+const empty = (kind: ModelKind) => ({ enabled: true, protocol: "auto", apiKey: "", name: "", baseUrl: "", modelId: "", timeoutSeconds: kind === "image" ? 180 : 30 });
 function errorMessage(error: unknown): string {
   const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   return typeof detail === "string" ? detail : "操作失败，请检查输入后重试。";
@@ -47,7 +47,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
   const edit = (profile?: Configuration) => {
     if (externalBusy || busy || loading) return;
     setEditing(profile?.id ?? null);
-    setDraft(profile ? { protocol: profile.protocol ?? "auto", apiKey: "", name: profile.name, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds } : empty(kind));
+    setDraft(profile ? { enabled: profile.enabled ?? true, protocol: profile.protocol ?? "auto", apiKey: "", name: profile.name, baseUrl: profile.baseUrl, modelId: profile.modelId, timeoutSeconds: profile.timeoutSeconds } : empty(kind));
     setError(""); setMessage(""); setOpen(true);
   };
   useImperativeHandle(ref, () => ({ toggleCurrent: () => {
@@ -94,7 +94,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
     {loading && <p className="muted">正在读取配置...</p>}
     {!loading && catalog.profiles.length === 0 && <p className="muted">尚无已保存配置，点击“新增配置”开始。</p>}
     {catalog.profiles.map(profile => <div className={`profile${profile.id === selected?.id ? " selected" : ""}`} key={profile.id}>
-      <button className="profile-summary profile-select" type="button" aria-pressed={profile.id === selected?.id} disabled={externalBusy || busy || loading} onClick={() => { setSelectedId(profile.id); cancel(); }}><strong>{profile.id === catalog.activeId && <Star size={13} />} {profile.name}{profile.id === catalog.activeId && <span className="profile-badge">使用中</span>}</strong><small>{profile.baseUrl || "沿用文本模型服务地址"} · {profile.modelId}{` · ${profile.timeoutSeconds}s`}</small></button>
+      <button className="profile-summary profile-select" type="button" aria-pressed={profile.id === selected?.id} disabled={externalBusy || busy || loading} onClick={() => { setSelectedId(profile.id); cancel(); }}><strong>{profile.id === catalog.activeId && <Star size={13} />} {profile.name}{profile.enabled === false && "（未向客户端开放）"}{profile.id === catalog.activeId && <span className="profile-badge">使用中</span>}</strong><small>{profile.baseUrl || "沿用文本模型服务地址"} · {profile.modelId}{` · ${profile.timeoutSeconds}s`}</small></button>
       <div className="actions"><button className="quiet" disabled={externalBusy || busy || loading} onClick={() => { setSelectedId(profile.id); edit(profile); }} type="button">编辑配置</button><button className="quiet" disabled={externalBusy || busy || loading || profile.id === catalog.activeId} onClick={() => void mutate(() => api.post(`${endpoint}/${profile.id}/activate`), "默认配置已切换。")} type="button">设为默认</button><button aria-label={`删除配置 ${profile.name}`} className="quiet" disabled={externalBusy || busy || loading || profile.id === catalog.activeId} onClick={() => void mutate(() => api.delete(`${endpoint}/${profile.id}`), "配置已删除。")} type="button"><Trash2 size={14} /></button></div>
     </div>)}
     </div>
@@ -113,6 +113,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
       </>}
       <label><span>模型名称</span><input disabled={busy} maxLength={200} onChange={e => setDraft({ ...draft, modelId: e.target.value })} placeholder="服务提供方的模型名称" required value={draft.modelId} /></label>
       <label><span>等待时限（秒）</span><input disabled={busy} min={1} max={kind === "rerank" ? 120 : 1800} onChange={e => setDraft({ ...draft, timeoutSeconds: Number(e.target.value) })} required type="number" value={draft.timeoutSeconds} /></label>
+      <label style={{display:"flex",alignItems:"center",gap:8}}><input style={{width:16,height:16}} type="checkbox" checked={draft.enabled} disabled={busy} onChange={e => setDraft({...draft, enabled:e.target.checked})} /><span>向客户端开放此模型</span></label>
       <label><span>访问密钥（可选）</span><input autoComplete="new-password" disabled={busy} maxLength={4096} minLength={4} onChange={e => setDraft({ ...draft, apiKey: e.target.value })} placeholder={editing ? "留空保留此配置已有密钥" : "仅用于此配置"} type="password" value={draft.apiKey} /></label>
       <p className="muted config-form-hint">密钥随当前配置独立保存。新增配置不会覆盖已有配置。</p>
       <div className="config-form-actions"><button className="quiet" disabled={busy} onClick={cancel} type="button">取消</button><button className="primary" disabled={busy} type="submit">{busy ? "保存中..." : "保存配置"}</button></div>

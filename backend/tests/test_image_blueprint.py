@@ -18,6 +18,8 @@ def test_image_provider_matches_blueprint(monkeypatch, model, wording, schema_re
     import json
     import openai
     from app.services import model_profile_service
+    from app.services import customer_models
+    monkeypatch.setattr(customer_models, "selected_model_id", lambda db, kind, owner, selected: selected)
 
     calls = []
     client_options = []

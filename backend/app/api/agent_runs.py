@@ -106,6 +106,8 @@ def create_article_run(
             node_llms[node_id] = LLMClient(config=node_config)
     service = WriterService(db, llm=LLMClient(config=config), node_llms=node_llms)
     creation = {
+        "_ownerUserId": user.id,
+        "modelSelections": {key: prefs.get(key) for key in ("embeddingModelId", "rerankModelId")},
         "title": body.title,
         "references": body.references,
         "template": body.template.model_dump() if body.template else None,

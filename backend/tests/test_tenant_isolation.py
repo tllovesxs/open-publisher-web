@@ -164,7 +164,7 @@ def test_rag_global_library_is_private_and_legacy_index_untouched(env, monkeypat
     from tests.test_rag_service import _FakeRag
     rag = _FakeRag(tmp_path)
     rag.ingest("global", "legacy", "历史归属未知资料")
-    monkeypatch.setattr(rag_api, "get_rag_service", lambda: rag)
+    monkeypatch.setattr(rag_api, "get_rag_service", lambda **kwargs: rag)
     client, _, switch = env
     switch("alice")
     assert client.post("/api/rag/documents", json={"name": "private", "text": "价格 99 元"}).status_code == 201
@@ -183,7 +183,7 @@ def test_rag_legacy_project_index_is_preserved_for_verified_owner(env, monkeypat
     from tests.test_rag_service import _FakeRag
     rag = _FakeRag(tmp_path)
     rag.ingest("proj-bob", "legacy", "价格 99 元")
-    monkeypatch.setattr(rag_api, "get_rag_service", lambda: rag)
+    monkeypatch.setattr(rag_api, "get_rag_service", lambda **kwargs: rag)
     client, factory, switch = env
     _seed_bob_data(factory)
     switch("alice")

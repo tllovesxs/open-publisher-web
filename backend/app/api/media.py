@@ -100,7 +100,9 @@ def preview_media(
     import base64 as _base64
     from app.services.model_profile_service import resolve_image_config
 
-    resolved = resolve_image_config(db=db, profile_id=body.imageModelId)
+    from app.services.customer_models import selected_model_id
+    selected = selected_model_id(db, "image", user.id, body.imageModelId)
+    resolved = resolve_image_config(db=db, profile_id=selected)
     if not resolved["api_key"]:
         raise HTTPException(status_code=501, detail="生图模型未配置密钥")
     from openai import OpenAI
