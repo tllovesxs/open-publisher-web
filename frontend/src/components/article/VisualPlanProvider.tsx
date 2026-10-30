@@ -100,13 +100,12 @@ const STALE_MESSAGE = "当前策略已过期：文章在规划后发生修改，
 const VisualPlanContext = createContext<VisualPlanContextValue | null>(null);
 
 function defaultDecisions(plan: VisualPlanSummary, threshold: number): Record<string, Decision> {
-  if (plan.needsConfirmation === false) return Object.fromEntries(plan.placements.map(item => [item.id, { source: item.source, assetId: item.assetId }]));
   const used = new Set<string>();
   return Object.fromEntries(plan.placements.map((placement, index) => {
     const requiredId = plan.requiredAssetIds?.[index];
     const candidate = requiredId
       ? placement.candidates.find(item => item.assetId === requiredId)
-      : placement.candidates.find(item => item.score / 10 >= threshold && !used.has(item.assetId));
+      : placement.candidates.find(item => item.score / 10 >= threshold && !used.has(item.assetId) && !plan.requiredAssetIds?.slice(index + 1).includes(item.assetId));
     if (candidate) used.add(candidate.assetId);
     return [placement.id, { source: candidate ? "existing_asset" : "generate", assetId: candidate?.assetId ?? null }];
   }));
@@ -120,6 +119,8 @@ function errorMessage(error: unknown, fallback: string): string {
 
 /** 与蓝本一致：规划不生图，确认后最多四张并行，全部准备好才提交正文。 */
 export function VisualPlanProvider({ children }: { children: ReactNode }) {
+  const [materials, setMaterials] = useState<Array<{ id: string; name: string; alt: string; visualDescription?: string }>>([]);
+  const [materialsError, setMaterialsError] = useState(false);
   const [pending, setPending] = useState<{ articleId: string; options: StartVisualPlanOptions } | null>(null);
   const [job, setJob] = useState<VisualPlanJob | null>(null);
   const [completed, setCompleted] = useState<CompletedVisualApply | null>(null);
@@ -171,7 +172,9 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
   const startPlan = async (articleId: string, options: StartVisualPlanOptions = {}) => {
     if (lock.current) return;
     setJob(null); setError(null); setStale(false); setDismissed(false);
-    setTargetCount(options.targetCount ?? 2);
+    setTargetCount(options.mode === "auto" ? 0 : options.targetCount ?? 2);
+    setMaterialsError(false);
+    void api.get<{ assets: typeof materials }>("/media").then(res => setMaterials(res.data.assets ?? [])).catch(() => { setMaterials([]); setMaterialsError(true); });
     setSelectedModel(options.imageModelId ?? "");
     setMaterialMatchThreshold(options.materialMatchThreshold ?? 40);
     setPending({ articleId, options });
@@ -246,7 +249,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
     if (!job || lock.current) return;
     await generatePlan(job.articleId, {
       targetCount: count ?? (job.plan.mode === "auto" ? 0 : targetCount), assetIds: job.plan.assetIds ?? [],
-      materialMatchThreshold, mode: count === undefined && targetCount === job.plan.targetCount ? job.plan.mode ?? "fixed" : "fixed",
+      materialMatchThreshold, mode: (count ?? targetCount) === 0 ? "auto" : "fixed",
       imageModelId: selectedModel || null, requiredAssetIds: job.plan.requiredAssetIds ?? [],
     });
   };
@@ -328,12 +331,14 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
               {job && targetCount !== job.plan.targetCount && <p role="status">配图数量已调整，请点击“重新生成策略”更新方案。</p>}
               {stale && <div className="workflow-task__failure" role="status"><strong>当前策略已过期</strong><p>请保存当前正文后重新生成策略，旧方案不能直接插入。</p></div>}
               {pending ? <div className="visual-plan-intro"><Sparkles size={28} /><h3>为这篇文章设计配图策略</h3><p>选择配图数量与素材偏好，点击下方按钮后开始分析正文、推荐配图位置和内容。</p><span>生成策略会消耗模型 Token。图片将在下一步确认后生成。</span></div> : <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>}
+              {pending && targetCount > 0 && targetCount < (pending.options.requiredAssetIds?.length ?? 0) && <p role="alert">配图数量不能少于指定必须插入的素材数量，请调整数量或取消对应素材。</p>}
               <div className="visual-plan-settings">
                 <label>生图模型 <select aria-label="生图模型" disabled={busy} onChange={event => setSelectedModel(event.target.value)} value={selectedModel}>
                   <option value="">跟随设置中的生图模型</option>
                   {imageModels.map(model => <option key={model.id} value={model.id}>{model.name} · {model.model}</option>)}
                 </select></label>
-                <label>配图数量 <select aria-label="配图数量" disabled={busy} value={targetCount} onChange={event => { setTargetCount(Number(event.target.value)); setPending(current => current ? { ...current, options: { ...current.options, mode: "fixed" } } : null);  }}>
+                <label>配图数量 <select aria-label="配图数量" disabled={busy} value={targetCount} onChange={event => { setTargetCount(Number(event.target.value)); setPending(current => current ? { ...current, options: { ...current.options, mode: Number(event.target.value) === 0 ? "auto" : "fixed" } } : null);  }}>
+                  <option value={0}>自动（按正文长度）</option>
                   {[1, 2, 3, 4, 5, 6].map(count => <option key={count} value={count}>{count}</option>)}
                 </select></label>
                 <label className="creation-threshold">素材匹配阈值 <strong>{materialMatchThreshold}%</strong>
@@ -342,6 +347,10 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                     if (job) setDecisions(defaultDecisions(job.plan, value));
                   }} />
                 </label>
+                {pending && <fieldset className="visual-plan-materials"><legend>参与匹配的素材 · 已选 {pending.options.assetIds?.length ?? 0} 张</legend>
+                  <p className="muted">只匹配勾选的素材；未选素材时使用 AI 生图。匹配按素材描述与正文关键词计算，分数不是语义准确率。</p>
+                  {materialsError ? <p role="alert">素材加载失败，请关闭后重新打开。</p> : !materials.length ? <p className="muted">素材库暂无图片，可先上传并补充图片描述。</p> : <div>{materials.map(asset => <label key={asset.id}><input type="checkbox" disabled={busy || ((pending.options.assetIds?.length ?? 0) >= 20 && !pending.options.assetIds?.includes(asset.id))} checked={pending.options.assetIds?.includes(asset.id) ?? false} onChange={event => { const checked = event.target.checked; setPending(current => current ? { ...current, options: { ...current.options, assetIds: checked ? [...(current.options.assetIds ?? []), asset.id] : (current.options.assetIds ?? []).filter(id => id !== asset.id), requiredAssetIds: (current.options.requiredAssetIds ?? []).filter(id => checked || id !== asset.id) } } : null); }} /><span>{asset.name}<small>{asset.visualDescription || asset.alt || "暂无描述，建议补充后参与匹配"}</small></span></label>)}</div>}
+                </fieldset>}
                 {!pending && <small className="visual-plan-summary">预计生图 {generatedCount} 张 · 复用素材 {activePlacements.length - generatedCount} 张</small>}
               </div>
               {!pending && <ol className="visual-plan-placements">
@@ -372,7 +381,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
             <footer className="visual-plan-footer">
               <button className="button button--quiet" disabled={busy} onClick={closePlan} type="button">暂不配图</button>
               {!pending && <button className="button button--quiet" disabled={busy || !job} onClick={() => void replan()} type="button">重新生成策略</button>}
-              {pending ? <button className="button button--primary" disabled={busy} onClick={() => void generatePlan(pending.articleId, { ...pending.options, targetCount, imageModelId: selectedModel || null, materialMatchThreshold })} type="button"><Sparkles size={16} />{busy ? "正在生成策略…" : "开始生成策略"}</button> : <button className="button button--primary" disabled={busy || !job || stale || targetCount !== job.plan.targetCount} onClick={() => void confirmApply()} type="button">{busy ? "处理中…" : "确认并继续"}</button>}
+              {pending ? <button className="button button--primary" disabled={busy || (targetCount > 0 && targetCount < (pending.options.requiredAssetIds?.length ?? 0))} onClick={() => void generatePlan(pending.articleId, { ...pending.options, targetCount, mode: targetCount === 0 ? "auto" : "fixed", imageModelId: selectedModel || null, materialMatchThreshold })} type="button"><Sparkles size={16} />{busy ? "正在生成策略…" : "开始生成策略"}</button> : <button className="button button--primary" disabled={busy || !job || stale || targetCount !== job.plan.targetCount} onClick={() => void confirmApply()} type="button">{busy ? "处理中…" : "确认并继续"}</button>}
             </footer>
           </section>
         </div>

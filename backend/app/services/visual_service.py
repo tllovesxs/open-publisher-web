@@ -147,9 +147,10 @@ def _candidates_for(block: MarkdownBlock, assets: list[MediaAsset], *, visual_co
             {
                 "assetId": asset.id,
                 # 只用语义字段匹配；name 是管理用标签，会稀释相似度
-                "score": _similarity(query, (
-                    f"{asset.alt}\n{asset.visual_description}"
-                )),
+                "score": max(
+                    _similarity(query, f"{asset.alt}\n{asset.visual_description}"),
+                    _similarity(block.text, f"{asset.alt}\n{asset.visual_description}"),
+                ),
                 "description": _excerpt(f"{asset.alt} {asset.visual_description}", 900),
             }
             for asset in assets
@@ -317,7 +318,7 @@ def _model_plan(
             special = _candidates_for(block, [special_asset], visual_content=visual_content, purpose=purpose)[0]
             candidates_for_block = candidates_for_block[:MAX_CANDIDATES - 1] + [special]
         future_required = set(required_asset_ids[ordinal:])
-        valid_asset = next((c for c in candidates_for_block if c["assetId"] == special_id and c["assetId"] not in used_assets), None)
+        valid_asset = next((c for c in candidates_for_block if c["assetId"] == special_id and c["assetId"] not in used_assets and (c["assetId"] == required_id or c["score"] >= material_match_threshold * 10) and c["assetId"] not in required_asset_ids[ordinal:]), None)
         if valid_asset is None:
             valid_asset = next((c for c in candidates_for_block if c["score"] >= material_match_threshold * 10 and c["assetId"] not in used_assets and c["assetId"] not in future_required), None)
         source, asset_id = ("existing_asset", valid_asset["assetId"]) if valid_asset else ("generate", None)
@@ -337,7 +338,7 @@ def _model_plan(
             "source": source,
             "assetId": asset_id,
             "candidates": candidates_for_block,
-            "selectionReason": _clean_text(raw.get("selectionReason"), 500) or (
+            "selectionReason": (
                 f"素材与该小节匹配度 {valid_asset['score'] // 10}%。"
                 if valid_asset else "没有达到阈值的可用素材，需生成新图。"
             ),

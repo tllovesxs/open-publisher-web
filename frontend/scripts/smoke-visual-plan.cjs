@@ -34,7 +34,7 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
         if (path.endsWith('/raw')) return route.fulfill({ contentType: 'image/png', body: image });
         if (path.endsWith('/visual-plan')) {
           planned++;
-          const count = options.manual ? 1 : body.targetCount;
+          const count = body.mode === 'auto' ? 3 : body.targetCount;
           return route.fulfill({ json: {
             targetCount: count, sourceRevisionId: article.currentRevisionId, sourceContentHash: article.contentHash,
             materialMatchThreshold: body.materialMatchThreshold, assetIds: body.assetIds, mode: body.mode, needsConfirmation: true,
@@ -74,7 +74,7 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
           '/api/auth/me': { id: 'test', username: 'tester', displayName: 'Tester', role: 'user' },
           '/api/settings/image-models': { models: [{ id: 'image-1', name: '模型一', model: 'first' }, { id: 'image-2', name: '模型二', model: 'chosen-model' }] },
           '/api/settings/profiles': { profiles: [] }, '/api/settings/preferences': { disabledNodeIds: [], webSearchMode: 'off' },
-          '/api/articles': { articles: [article] }, '/api/articles/visual-test': article, '/api/media': { assets: [] },
+          '/api/articles': { articles: [article] }, '/api/articles/visual-test': article, '/api/media': { assets: [{ id: 'chosen', name: '相关素材', alt: '正文配图' }] },
         };
         return route.fulfill({ json: responses[path] || {} });
       });
@@ -93,7 +93,7 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
           assert.equal(planned, 0); assert.equal(attempts.size, 0);
           await page.getByRole('button', { name: '开始生成策略', exact: true }).waitFor();
           await page.getByRole('combobox', { name: '配图数量', exact: true }).selectOption('5');
-          await page.getByRole('combobox', { name: '配图数量', exact: true }).selectOption('6');
+          await page.getByRole('combobox', { name: '配图数量', exact: true }).selectOption(String(options.chosenCount ?? 6));
           assert.equal(planned, 0);
           if (process.env.SMOKE_SCREENSHOT && options.cancelBeforePlan) await page.screenshot({ animations: 'disabled', path: process.env.SMOKE_SCREENSHOT.replace('.png', '-start.png') });
           if (!options.cancelBeforePlan) {
@@ -105,6 +105,17 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       return { context, page, editor, calls, errors, attempts, completedImages, changeRemote: () => { article = { ...article, currentRevisionId: 'remote', contentHash: 'remote' }; }, stats: () => ({ applied, planned, maxInflight, generated: [...attempts.values()].reduce((a, b) => a + b, 0) }) };
     }
 
+    // Explicit quantity is preserved in request, plan cards and image calls.
+    for (const count of [1, 2, 4]) {
+      const t = await setup({ chosenCount: count });
+      assert.equal(t.calls.find(c => c.path.endsWith('/visual-plan')).body.mode, 'fixed');
+      assert.equal(t.calls.find(c => c.path.endsWith('/visual-plan')).body.targetCount, count);
+      assert.equal(await t.page.locator('.visual-plan-placements > li').count(), count);
+      await t.page.getByRole('button', { name: '确认并继续', exact: true }).click();
+      await t.page.getByRole('dialog', { name: '确认配图方案' }).waitFor({ state: 'hidden' });
+      assert.equal(t.stats().generated, count);
+      await t.context.close();
+    }
     // Plan and replan never generate. Scope, chosen model and threshold survive.
     {
       const t = await setup({ candidates: true });
@@ -192,12 +203,15 @@ const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       await t.page.getByRole('button', { name: '智能配图', exact: true }).click();
       await t.page.getByRole('dialog', { name: '确认配图方案' }).waitFor();
       assert.equal(t.stats().planned, 0);
+      assert.equal(await t.page.getByRole('combobox', { name: '配图数量', exact: true }).inputValue(), '0');
+      await t.page.getByRole('checkbox', { name: '相关素材', exact: false }).check();
       await t.page.getByRole('button', { name: '开始生成策略', exact: true }).click();
       await t.page.getByRole('button', { name: '确认并继续', exact: true }).waitFor();
       const saveIndex = t.calls.findIndex(c => c.path === '/api/articles' && c.method === 'POST');
       const planIndex = t.calls.findIndex(c => c.path.endsWith('/visual-plan'));
       assert.ok(saveIndex >= 0 && saveIndex < planIndex);
       assert.equal(t.calls[planIndex].body.mode, 'auto');
+      assert.deepEqual(t.calls[planIndex].body.assetIds, ['chosen']);
       await t.page.getByRole('button', { name: '配图任务转后台' }).click();
       await t.editor.fill('规划后继续编辑');
       await t.page.locator('.visual-plan-chip').click();

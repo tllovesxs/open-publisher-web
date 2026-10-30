@@ -107,7 +107,7 @@ def test_plan_matches_asset_and_generates_prompts(factory, article):
     assert architecture["source"] == "existing_asset"
     assert architecture["assetId"] == "a-arch"
     assert architecture["candidates"][0]["assetId"] == "a-arch"
-    assert architecture["candidates"][0]["score"] == 355
+    assert architecture["candidates"][0]["score"] == 1000
     for placement in plan["placements"]:
         assert placement["anchorHeading"]
         assert placement["generationPrompt"]
@@ -408,3 +408,37 @@ def test_visual_planner_uses_owner_node_preference(factory, monkeypatch):
         VisualService(db).plan(markdown=MARKDOWN, target_count=1, owner_user_id="u-test")
         VisualService(db).plan(markdown=MARKDOWN, target_count=1, owner_user_id="u-other")
     assert seen == ["visual", "base"]
+
+
+@pytest.mark.parametrize("count", [1, 2, 4, 6])
+def test_fixed_count_survives_long_article(factory, count):
+    with factory() as db:
+        plan = VisualService(db).plan(markdown=MARKDOWN * 30, target_count=count, mode="fixed")
+    assert len(plan["placements"]) == plan["targetCount"] == count
+
+
+def test_model_asset_suggestion_cannot_bypass_threshold(factory, monkeypatch):
+    from app.agents import llm_client
+    _add_asset(factory, asset_id="unrelated", alt="雪山滑雪冰川")
+    class Planner:
+        api_key_configured = True
+        model = "fake"
+        def complete_json(self, *args, **kwargs):
+            return {"placements": [{"anchorHeading": "产品架构", "anchorExcerpt": "系统由三个服务组成", "source": "existing_asset", "assetId": "unrelated"}]}
+    monkeypatch.setattr(llm_client, "LLMClient", Planner)
+    with factory() as db:
+        plan = VisualService(db).plan(markdown=MARKDOWN, target_count=1, asset_ids=["unrelated"], material_match_threshold=80)
+    assert plan["planner"] == "model"
+    assert plan["placements"][0]["source"] == "generate"
+    assert plan["placements"][0]["assetId"] is None
+
+
+def test_selected_material_match_threshold_and_dedup(factory):
+    text = "系统由三个服务组成，流程从采集到渲染。"
+    _add_asset(factory, asset_id="matching", alt=text)
+    _add_asset(factory, asset_id="unrelated", alt="雪山滑雪冰川")
+    with factory() as db:
+        plan = VisualService(db).plan(markdown=f"## 架构\n\n{text}\n\n## 服务\n\n{text}", target_count=2, asset_ids=["matching", "unrelated"], material_match_threshold=80)
+    assert sum(p["source"] == "existing_asset" for p in plan["placements"]) == 1
+    assert plan["placements"][0]["assetId"] == "matching"
+    assert plan["placements"][1]["source"] == "generate"
