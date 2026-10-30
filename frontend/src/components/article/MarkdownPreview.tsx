@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { localMediaSource } from "../../api/publicWorkspace";
 
 /**
  * Web 版 MarkdownPreview（蓝本 MarkdownPreview 的等价实现，团队自有）：
@@ -28,7 +29,7 @@ export function resolveAssetReferences(markdown: string): string {
   return markdown.replace(
     /\]\(asset:\/\/([A-Za-z0-9][A-Za-z0-9:_-]{0,255})\)/g,
     (_match, assetId: string) =>
-      `](${withMediaAccessToken(`/api/media/${encodeURIComponent(assetId)}/raw`)})`,
+      `](${localMediaSource(assetId) || withMediaAccessToken(`/api/media/${encodeURIComponent(assetId)}/raw`)})`,
   );
 }
 

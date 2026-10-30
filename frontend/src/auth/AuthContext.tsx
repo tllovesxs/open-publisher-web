@@ -28,6 +28,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function storeSession(payload: LoginPayload) {
   localStorage.setItem(TOKEN_KEY, payload.token);
+  localStorage.setItem("opw_user_id", payload.user.id);
   return payload.user;
 }
 
@@ -38,14 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
+      localStorage.removeItem("opw_user_id");
       setLoading(false);
       return;
     }
     api
       .get<AuthUser>("/auth/me")
-      .then((res) => setUser(res.data))
+      .then((res) => { localStorage.setItem("opw_user_id", res.data.id); setUser(res.data); })
       .catch(() => {
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem("opw_user_id");
         setUser(null);
       })
       .finally(() => setLoading(false));
@@ -75,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.post("/auth/logout");
     } finally {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem("opw_user_id");
       setUser(null);
     }
   }, []);

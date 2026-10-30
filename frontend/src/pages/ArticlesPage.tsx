@@ -5,6 +5,8 @@ import { useSearchParams } from "react-router-dom";
 import { useActiveRun } from "../lib/activeRunContext";
 import { usePersistentState } from "../lib/usePersistentState";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { allowPaidAction } from "../auth/loginPrompt";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { bridge } from "../lib/bridge";
 import {
@@ -78,6 +80,7 @@ const LENGTH_OPTIONS = [
 ];
 
 export default function ArticlesPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [articles, setArticles] = useState<ArticleState[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,7 +298,7 @@ export default function ArticlesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     void loadArticles();
@@ -460,6 +463,7 @@ export default function ArticlesPage() {
   };
 
   const startRun = async () => {
+    if (!allowPaidAction()) return;
     if (!prompt.trim()) {
       setError("请先填写创作要求。");
       return;
@@ -499,16 +503,18 @@ export default function ArticlesPage() {
 
   // 智能配图：规划与应用都交给全局 Provider，防止页面切换丢失生图进度。
   const startVisualPlan = async () => {
+    if (!allowPaidAction()) return;
     if (!selected || visualBusy) return;
     setError(null);
     setVisualResultNote(null);
     let article = selected;
     // 蓝本以持久化正文为规划输入，先把用户的编辑落为当前版本。
-    if (draft !== selected.markdown) {
+    const copyExample = selected.articleId.startsWith("example-");
+    if (draft !== selected.markdown || copyExample) {
       try {
         const res = await api.post<ArticleState>("/articles", {
-          articleId: selected.articleId, baseRevisionId: selected.currentRevisionId,
-          baseContentHash: selected.contentHash, title: selected.title, markdown: draft,
+          articleId: copyExample ? crypto.randomUUID() : selected.articleId, baseRevisionId: copyExample ? null : selected.currentRevisionId,
+          baseContentHash: copyExample ? null : selected.contentHash, title: selected.title, markdown: draft,
           reason: "配图规划前保存正文",
         });
         article = res.data;
@@ -528,16 +534,17 @@ export default function ArticlesPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.post("/articles", {
-        articleId: selected.articleId,
-        baseRevisionId: selected.currentRevisionId,
-        baseContentHash: selected.contentHash,
+      const copyExample = Boolean(user && selected.articleId.startsWith("example-"));
+      const saved = await api.post<ArticleState>("/articles", {
+        articleId: copyExample ? crypto.randomUUID() : selected.articleId,
+        baseRevisionId: copyExample ? null : selected.currentRevisionId,
+        baseContentHash: copyExample ? null : selected.contentHash,
         title: selected.title,
         markdown: draft,
         reason: "web 编辑",
       });
       await loadArticles();
-      const fresh = await api.get<ArticleState>(`/articles/${selected.articleId}`);
+      const fresh = await api.get<ArticleState>(`/articles/${saved.data.articleId || selected.articleId}`);
       setSelected(fresh.data);
     } catch {
       setError("保存失败：文章可能已被其他操作修改，请刷新后重试。");

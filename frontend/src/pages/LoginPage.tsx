@@ -3,12 +3,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
-export default function LoginPage() {
+export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => void; onComplete?: () => void } = {}) {
   const navigate = useNavigate();
   const { user, login, register } = useAuth();
   const [searchParams] = useSearchParams();
   const switching = searchParams.get("switch") === "1";
-  const cancel = () => navigate(user ? "/settings" : "/", { replace: true, state: { settingsTab: "account" } });
+  const cancel = () => onCancel ? onCancel() : navigate(user ? "/settings" : "/", { replace: true, state: { settingsTab: "account" } });
   const [mode, setMode] = useState<"login" | "register">(
     searchParams.get("mode") === "register" ? "register" : "login",
   );
@@ -17,11 +17,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!switching || busy) return;
+    if (busy) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") cancel(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [switching, busy, user, navigate]);
+  }, [switching, busy, user, navigate, onCancel]);
 
   const submit = async () => {
     if (busy) return;
@@ -30,7 +30,8 @@ export default function LoginPage() {
     try {
       if (mode === "login") await login(form.username, form.password);
       else await register(form.username, form.password, form.displayName || form.username);
-      navigate("/", { replace: true });
+      if (onComplete) onComplete();
+      else navigate("/", { replace: true });
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(typeof detail === "string" ? detail : "登录失败，请检查账号信息。");
@@ -40,8 +41,8 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
+    <main className="auth-page" style={onCancel ? { minHeight: 0, background: "transparent", padding: 0 } : undefined}>
+      <div className="auth-card" style={{ background: "var(--surface, #fff)", color: "var(--ink)", boxSizing: "border-box", boxShadow: onCancel ? "var(--shadow-overlay)" : undefined, maxWidth: onCancel ? "100%" : undefined }}>
         <div className="auth-brand">
           <strong>稿流</strong>
           <span>AI 内容工作台</span>
@@ -58,6 +59,7 @@ export default function LoginPage() {
           <label>
             <span>用户名</span>
             <input
+              autoFocus={Boolean(onCancel)}
               autoComplete="username"
               onChange={(e) => setForm({ ...form, username: e.target.value })}
               placeholder="username"
@@ -93,7 +95,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {switching && <button className="button button--quiet" style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={cancel} type="button">取消切换</button>}
+        <button className="button button--quiet" style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={cancel} type="button">{switching ? "取消切换" : "取消登录"}</button>
 
         {error && <div className="auth-error" role="alert">{error}</div>}
 

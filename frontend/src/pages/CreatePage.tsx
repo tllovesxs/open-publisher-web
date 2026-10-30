@@ -14,6 +14,7 @@ import type { CreationTemplate } from "../lib/bridge";
 import { api } from "../api/client";
 import { useActiveRun } from "../lib/activeRunContext";
 import { useAuth } from "../auth/AuthContext";
+import { requestLogin } from "../auth/loginPrompt";
 import { PillSelect } from "../components/PillSelect";
 import { appendReferences, readPromptImage, readReferenceFiles } from "../lib/fileImport";
 
@@ -160,7 +161,6 @@ export default function CreatePage() {
     api.get<{ models: ImageModelOption[] }>("/settings/image-models")
       .then((res) => setImageModels(res.data.models ?? []))
       .catch(() => setImageModels([]));
-    if (!user) return;
     api.get<{ templates: MarkdownTemplate[] }>("/templates")
       .then((res) => setTemplates(res.data.templates ?? []))
       .catch(() => setTemplates([]));
@@ -232,6 +232,7 @@ export default function CreatePage() {
 
   const activateProfile = async (profileId: string) => {
     if (profileId === activeProfileId) return;
+    if (!user) { setActiveProfileId(profileId); return; }
     try {
       await api.post(`/settings/profiles/${profileId}/activate`);
       setActiveProfileId(profileId);
@@ -244,7 +245,7 @@ export default function CreatePage() {
   const startCreation = async () => {
     if (starting) return;
     if (!user) {
-      navigate("/login");
+      requestLogin();
       return;
     }
     if (!topic.trim()) {
@@ -259,7 +260,7 @@ export default function CreatePage() {
     if (selectedMedia.length > 0) {
       sections.push(
         `可用素材（仅在匹配时引用，不要杜撰图片内容）：\n${selectedMedia
-          .map((asset) => `- ${asset.name}（/api/media/${asset.id}/raw）：${asset.alt || "未填写描述"}`)
+          .map((asset) => `- ${asset.name}（${asset.id.startsWith("example-") ? "/examples-writing.svg" : `/api/media/${asset.id}/raw`}）：${asset.alt || "未填写描述"}`)
           .join("\n")}`,
       );
     }

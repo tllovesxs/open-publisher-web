@@ -2,6 +2,8 @@ import { Bot, ImagePlus, LoaderCircle, PencilLine, Send, X } from "lucide-react"
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { usePersistentState } from "../../lib/usePersistentState";
 import { api } from "../../api/client";
+import { allowPaidAction } from "../../auth/loginPrompt";
+import { useAuth } from "../../auth/AuthContext";
 import { ToolbarSelect } from "../ui/ToolbarSelect";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -81,6 +83,7 @@ export function AiModifyPane({
   }, [records, busy]);
 
   const submit = async () => {
+    if (!allowPaidAction()) return;
     const requirement = instruction.trim();
     if (!requirement) {
       setError("请先说明要怎么改。");
@@ -281,6 +284,7 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
   const [error, setError] = useState<string | null>(null);
 
   const start = async () => {
+    if (!allowPaidAction()) return;
     if (!instruction.trim()) {
       setError("请填写修改要求。");
       return;
@@ -432,6 +436,7 @@ export function AssistantDrawer({
   onApplySelection?: (replacement: string) => void;
   onClose?: () => void;
 }) {
+  const { user } = useAuth();
   const [session, setSession] = useState<AssistantSessionView | null>(null);
   const [messages, setMessages] = useState<AssistantSessionMessage[]>([]);
   const [profiles, setProfiles] = useState<AssistantModelProfile[]>([]);
@@ -487,6 +492,7 @@ export function AssistantDrawer({
   useEffect(() => {
     let mounted = true;
     const bootstrap = async () => {
+      setSession(null);
       try {
         const [profilesRes, sessionsRes] = await Promise.all([
           api.get<{ profiles: AssistantModelProfile[] }>("/settings/profiles"),
@@ -518,9 +524,10 @@ export function AssistantDrawer({
     return () => {
       mounted = false;
     };
-  }, [articleId]);
+  }, [articleId, user?.id]);
 
   const send = async (options?: { mode?: "chat" | "rewrite"; message?: string }) => {
+    if (!allowPaidAction()) return;
     const text = (options?.message ?? input).trim();
     const mode = options?.mode ?? "chat";
     if (!text || busy) return;

@@ -3,6 +3,8 @@ import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { Check, Copy, ImagePlus, LoaderCircle, Pencil, Rocket, Save, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { allowPaidAction } from "../auth/loginPrompt";
 
 // 素材库：蓝本 MediaAsset 的 Web 版。管理描述、用途、标签、生图提示词，
 // 让视觉规划和创作页能拿到可解释的结构化素材，而不是只剩文件名。
@@ -48,6 +50,7 @@ function toForm(asset: MediaAsset): MediaForm {
 }
 
 export default function MediaPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +83,7 @@ export default function MediaPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, origin, sort]);
+  }, [search, origin, sort, user?.id]);
 
   useEffect(() => {
     void load();
@@ -122,6 +125,7 @@ export default function MediaPage() {
   };
 
   const generate = async () => {
+    if (!allowPaidAction()) return;
     if (!prompt.trim()) {
       setError("请先填写图片描述。");
       return;
@@ -164,6 +168,7 @@ export default function MediaPage() {
   };
 
   const analyzeAsset = async () => {
+    if (!allowPaidAction()) return;
     if (!selected || analyzing) return;
     setAnalyzing(true);
     setError(null);
@@ -213,13 +218,13 @@ export default function MediaPage() {
   };
 
   const copyMarkdown = async (asset: MediaAsset) => {
-    const markdown = `![${asset.alt || asset.name}](/api/media/${asset.id}/raw)`;
+    const markdown = mediaMarkdown(asset);
     await navigator.clipboard.writeText(markdown);
     setCopiedId(asset.id);
     setTimeout(() => setCopiedId(null), 1200);
   };
 
-  const mediaMarkdown = (asset: MediaAsset) => `![${asset.alt || asset.name}](/api/media/${asset.id}/raw)`;
+  const mediaMarkdown = (asset: MediaAsset) => `![${asset.alt || asset.name}](${!user || asset.id.startsWith("example-") ? asset.source : `/api/media/${asset.id}/raw`})`;
 
   const copySelectedMarkdown = async () => {
     const picked = assets.filter((asset) => selectedIds.includes(asset.id));

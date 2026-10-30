@@ -16,29 +16,30 @@ const base = process.env.SMOKE_BASE_URL || 'http://localhost:5173';
         if (/^\/api\/(articles|templates|media)(\/|$)/.test(path)) privateRequests.push(path);
         assert.equal(request.method(), 'GET', 'anonymous browsing must never create model requests or writes');
       });
-      for (const [kind, label] of [['articles', '示例文章'], ['templates', '示例模板'], ['media', '示例素材']]) {
+      for (const [kind, selector] of [['articles', '.article-browser'], ['templates', '.template-workbench'], ['media', 'figure img']]) {
         await page.goto(`${base}/${kind}`);
-        await page.getByRole('heading', { name: label, exact: true }).waitFor();
-        await page.locator('.examples-card').waitFor();
-        assert.equal(await page.locator('.examples-card').count(), 1);
+        await page.locator(selector).first().waitFor();
         assert.equal(new URL(page.url()).pathname, `/${kind}`);
         if (kind === 'media') {
-          await page.waitForFunction(() => document.querySelector('.examples-card img')?.naturalWidth > 0);
+          await page.waitForFunction(() => document.querySelector('figure img')?.naturalWidth > 0);
+        } else if (kind === 'templates') {
+          await page.getByLabel('模板骨架', { exact: true }).waitFor();
+          assert.ok((await page.getByLabel('模板骨架', { exact: true }).inputValue()).startsWith('# '));
         } else {
-          await page.getByText('查看 Markdown 源文', { exact: true }).click();
-          assert.ok((await page.locator('textarea').inputValue()).startsWith('# '));
-          assert.equal(await page.locator('textarea').getAttribute('readonly'), '');
+          await page.getByRole('button').filter({ hasText: '把零散想法变成一篇清晰的文章' }).click();
+          await page.locator('textarea').first().waitFor();
+          assert.ok((await page.locator('textarea').first().inputValue()).startsWith('# '));
         }
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${kind} width=${width}`);
       }
       for (const [kind, label] of [['articles', '文章'], ['templates', '模板'], ['media', '素材库']]) {
         await page.goto(`${base}/examples/${kind}`);
-        await page.locator('.examples-card').waitFor();
+        await page.waitForURL(`${base}/${kind}`);
         assert.equal(await page.locator('.workspace-topbar strong').textContent(), label);
       }
       if (width === 1280) {
         await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '文章', exact: true }).click();
-        await page.getByRole('heading', { name: '示例文章', exact: true }).waitFor();
+        await page.locator('.article-browser').waitFor();
       }
       assert.deepEqual(errors, []);
       assert.deepEqual(privateRequests, []);

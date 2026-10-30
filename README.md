@@ -114,10 +114,13 @@ npm run dev
 
 ### 公共示例资源
 
-未登录时，文章、模板、素材库导航展示只读公共示例：一篇示例文章、一篇实用指南模板、一张原创 SVG 素材。
-登录后这些导航仍进入个人工作区；公共资源可通过 `/examples/articles`、`/examples/templates`、`/examples/media` 访问。
+文章、模板、素材库在登录前后使用相同的列表与工作台，均可看到一篇示例文章、一篇实用指南模板、一张原创 SVG 素材。登录后示例与个人内容一起显示。
+未登录时普通编辑、模板另存与图片上传保存于当前浏览器，不会写入私人后端资源；本机数据不会自动迁入账号。公共示例文件保持只读，登录后文章修改保存为个人副本。
+仅点击设置或执行生成、改写、提取、图片分析等 AI 操作时要求登录；登录弹窗可取消或按 Escape 关闭，取消保留原页面与当前输入。登录成功不会自动执行或收费，需再次点击操作按钮。
+旧 `/examples/articles`、`/examples/templates`、`/examples/media` 地址分别跳转对应工作台。
 示例接口为 `GET /api/examples/{articles|templates|media}`，仅读取版本化静态文件，不查询私人资料、不调用模型、不支持写入。
 匿名浏览验收脚本为 `frontend/scripts/smoke-public-examples.cjs`，使用真实本地接口验证桌面与手机视图、图片加载和私人接口隔离。
+`frontend/scripts/smoke-workspace-login.cjs` 验证本机保存、取消保留草稿、登录后仍显示示例和零付费请求。
 
 本次全面审查结果见 [2026-10-30 功能审查报告](docs/reviews/2026-10-30-functional-audit.md)。
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, Copy, FilePlus2, FileUp, LayoutTemplate, LoaderCircle, Plus, Save, Search, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
+import { allowPaidAction } from "../auth/loginPrompt";
 import { useNavigate } from "react-router-dom";
 
 // 模板库：蓝本 MarkdownTemplate 的结构画像 Web 版。
@@ -180,7 +181,7 @@ export default function TemplatesPage() {
     } catch {
       setError("无法加载模板列表。");
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (selected) setForm(toForm(selected));
@@ -222,6 +223,7 @@ export default function TemplatesPage() {
   };
 
   const extract = async () => {
+    if (!allowPaidAction()) return;
     if (!rightsConfirmed) { setError("请先确认参考文章使用权。"); return; }
     if (!extractSource.trim()) {
       setError("请先粘贴参考文章。");
