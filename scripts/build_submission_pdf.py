@@ -14,7 +14,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs/submission/技术方案.md"
-OUTPUT = ROOT / "output/pdf/技术文档.pdf"
+OUTPUT = ROOT / "output/pdf/技术方案-文字版.pdf"
 
 
 def build():
@@ -93,11 +93,11 @@ def build():
     def footer(canvas, doc):
         canvas.setFont(font_name, 8)
         canvas.setFillColor(colors.HexColor("#63758a"))
-        canvas.drawString(20*mm, 12*mm, "Open Publisher Web | 2026-10-30 | 推文创作与发布工作台")
+        canvas.drawString(20*mm, 12*mm, "稿流 | 2026-10-30 | 推文创作与发布工作台")
         canvas.drawRightString(190*mm, 12*mm, str(doc.page))
     SimpleDocTemplate(str(OUTPUT), pagesize=(210*mm, 297*mm), rightMargin=20*mm,
-        leftMargin=20*mm, topMargin=18*mm, bottomMargin=21*mm, title="Open Publisher Web 技术方案",
-        author="Open Publisher Web").build(story, onFirstPage=footer, onLaterPages=footer)
+        leftMargin=20*mm, topMargin=18*mm, bottomMargin=21*mm, title="稿流技术方案",
+        author="稿流").build(story, onFirstPage=footer, onLaterPages=footer)
     print(OUTPUT)
 
 

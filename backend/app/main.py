@@ -14,7 +14,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     version="0.2.0",
-    description="Open Publisher Web - AI promotional content creation and publishing workbench",
+    description="稿流 · AI 推文创作与发布工作台",
 )
 
 app.add_middleware(

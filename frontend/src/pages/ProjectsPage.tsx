@@ -401,7 +401,7 @@ export default function ProjectsPage() {
                   <input
                     id="p-name"
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                    placeholder="例如：Open Publisher Web"
+                    placeholder="例如：稿流"
                     value={draft.name}
                   />
                 </div>

@@ -61,7 +61,7 @@ export default function LandingPage() {
       </header>
 
       <section className="landing-hero">
-        <p className="page-kicker">Open Publisher Web</p>
+        <p className="page-kicker">稿流</p>
         <h1>
           AI 长文创作
           <br />
@@ -119,7 +119,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="landing-footer">
-        <span>稿流 · Open Publisher Web</span>
+        <span>稿流 · AI 创作与发布工作台</span>
         <button onClick={() => navigate("/landing")} type="button">产品介绍</button>
       </footer>
     </main>

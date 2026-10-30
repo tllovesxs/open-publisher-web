@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Open Publisher Web"
+    app_name: str = "稿流"
     app_env: str = "development"
     database_url: str = (
         "mysql+pymysql://opw:opw_password@localhost:3306/"
