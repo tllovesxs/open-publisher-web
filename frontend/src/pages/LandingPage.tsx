@@ -85,7 +85,7 @@ export default function LandingPage() {
   }, []);
   useEffect(() => {
     if (!playing || reduced || !inView || !visible) return;
-    const timer = window.setInterval(() => setStage(value => (value + 1) % STAGES.length), 9000);
+    const timer = window.setInterval(() => setStage(value => (value + 1) % STAGES.length), 6000);
     return () => window.clearInterval(timer);
   }, [playing, reduced, inView, visible]);
   const select = (index: number) => { setPlaying(false); setStage(index); };
