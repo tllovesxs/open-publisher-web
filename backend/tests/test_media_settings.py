@@ -1,6 +1,7 @@
 """素材库 + 模型设置 API 测试。"""
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -70,11 +71,11 @@ def test_generated_image_rejects_bad_payload_and_size():
 
     service = MediaService.__new__(MediaService)
     # 空文件、非图片文件、超限图片都必须被 magic/size 校验拒绝。
-    with _pytest.raises(Exception):
+    with _pytest.raises(HTTPException):
         service.add_generated(b64_json=base64.b64encode(b"").decode(), mime="image/png", prompt="p")
-    with _pytest.raises(Exception):
+    with _pytest.raises(HTTPException):
         service.add_generated(b64_json=base64.b64encode(b"not image").decode(), mime="image/png", prompt="p")
-    with _pytest.raises(Exception):
+    with _pytest.raises(ValueError):
         service._decode_image_bytes(base64.b64encode(b"x" * (12 * 1024 * 1024 + 1)).decode())
 
 
@@ -298,3 +299,30 @@ def test_media_analyze_rejects_non_image_asset(client, monkeypatch):
     res = client.post(f"/api/media/{asset['id']}/analyze", json={})
     assert res.status_code == 400
     assert "仅支持分析图片素材" in res.json()["detail"]
+
+
+def test_generated_base64_image_is_saved_and_readable(client, monkeypatch):
+    from types import SimpleNamespace
+    import base64
+    import openai
+    from app.services import model_profile_service, customer_models
+
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/agsAAAAASUVORK5CYII=")
+    monkeypatch.setattr(customer_models, "selected_model_id", lambda *args: None)
+    monkeypatch.setattr(model_profile_service, "resolve_image_config", lambda **kwargs: {
+        "base_url": "https://example.test/v1", "model": "gpt-image-1", "api_key": "test-only", "timeout_seconds": 3,
+    })
+    calls = []
+    def generate(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(png).decode(), url=None)])
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(images=SimpleNamespace(generate=generate)))
+    result = client.post("/api/media/generate", json={"prompt": "A quiet landscape", "size": "1536x1024"})
+    assert result.status_code == 201
+    asset = result.json()
+    assert asset["origin"] == "generated"
+    assert len(calls) == 1
+    raw = client.get(f"/api/media/{asset['id']}/raw")
+    assert raw.status_code == 200
+    assert raw.content == png
+    assert raw.headers["content-type"] == "image/png"

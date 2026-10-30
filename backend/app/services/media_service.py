@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from uuid import uuid4
 
 from sqlalchemy import select
