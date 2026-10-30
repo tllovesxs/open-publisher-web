@@ -1,8 +1,23 @@
 import { AvatarMenu } from "./AvatarMenu";
-import { Bell, BookOpenText, Images, LayoutTemplate, PenLine, Settings, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  Bell,
+  BookOpenText,
+  Images,
+  LayoutTemplate,
+  PenLine,
+  Settings,
+  X,
+} from "lucide-react";
 
 // 迁移自蓝本 apps/desktop/src/components/AppNavigation.tsx（团队自有代码），1:1 导航与品牌。
-export type NavKey = "create" | "articles" | "announcements" | "templates" | "media" | "settings";
+export type NavKey =
+  | "create"
+  | "articles"
+  | "announcements"
+  | "templates"
+  | "media"
+  | "settings";
 
 interface AppNavigationProps {
   active: NavKey;
@@ -40,9 +55,15 @@ export function AppNavigation({
     <>
       <aside className={`app-navigation${mobileOpen ? " is-open" : ""}`}>
         <div className="app-navigation__brand">
-          <span className="brand-mark" aria-hidden="true">
+          <Link
+            className="brand-mark"
+            to="/landing"
+            aria-label="稿流产品首页"
+            title="稿流产品首页"
+            onClick={onCloseMobile}
+          >
             <img alt="" src="/gaoliu-mark.svg" />
-          </span>
+          </Link>
           <div>
             <strong>稿流</strong>
             <small>本地内容工作台</small>
@@ -75,7 +96,12 @@ export function AppNavigation({
         </nav>
 
         <div className="app-navigation__footer">
-          <AvatarMenu theme={theme} onToggleTheme={onToggleTheme} runtimeReady={runtimeReady} onNavigate={onCloseMobile} />
+          <AvatarMenu
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            runtimeReady={runtimeReady}
+            onNavigate={onCloseMobile}
+          />
         </div>
       </aside>
       {mobileOpen && (
@@ -89,4 +115,3 @@ export function AppNavigation({
     </>
   );
 }
-
