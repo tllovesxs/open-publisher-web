@@ -10,7 +10,7 @@ const base = process.env.SMOKE_BASE_URL || "http://localhost:5173";
     const exampleRequests = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.url().includes("/api/examples/")) exampleRequests.push(request.url()); });
-    await page.route("**/api/**", route => route.abort("connectionrefused"));
+    await page.route(url => url.pathname.startsWith("/api/"), route => route.abort("connectionrefused"));
     await page.goto(base + "/templates");
     await page.locator(".template-toolbar h2").filter({ hasText: "产品推广" }).waitFor();
     assert.equal(await page.locator(".template-library__list button").count(), 2);
@@ -42,7 +42,7 @@ const base = process.env.SMOKE_BASE_URL || "http://localhost:5173";
     await signedIn.addInitScript(() => localStorage.setItem("opw_access_token", "test-only-token"));
     const memberPage = await signedIn.newPage();
     let failing = true;
-    await memberPage.route("**/api/**", async route => {
+    await memberPage.route(url => url.pathname.startsWith("/api/"), async route => {
       const path = new URL(route.request().url()).pathname;
       if (path === "/api/auth/me") return route.fulfill({ json: { id: "smoke-user", username: "tester", displayName: "测试", role: "user" } });
       if (path === "/api/templates") return failing ? route.fulfill({ status: 503, json: { detail: "unavailable" } }) : route.fulfill({ json: { templates: [{ id: "custom-smoke", name: "我的模板", description: "个人模板", category: "自定义", markdown: "# {{title}}", isBuiltIn: false, mode: "scaffold" }, { id: "product-promotion", name: "产品推广", description: "官方模板", category: "产品推广", markdown: "# {{title}}", isBuiltIn: true, mode: "scaffold" }] } });
