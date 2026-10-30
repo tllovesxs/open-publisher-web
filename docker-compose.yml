@@ -32,7 +32,7 @@ services:
     build: ./backend
     container_name: opw-backend
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-opw}:${MYSQL_PASSWORD:-opw_password}@mysql:3306/${MYSQL_DATABASE:-open_publisher_web}?charset=utf8mb4
       REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:5174}

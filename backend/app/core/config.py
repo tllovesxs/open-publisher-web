@@ -84,7 +84,28 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    def validate_production(self) -> None:
+        if self.app_env.lower() not in {"production", "prod"}:
+            return
+        from cryptography.fernet import Fernet
+
+        invalid = []
+        for name, value, minimum in (
+            ("AUTH_JWT_SECRET", self.auth_jwt_secret, 32),
+            ("AUTH_ADMIN_PASSWORD", self.auth_admin_password, 12),
+        ):
+            if len(value.strip()) < minimum or value.lower().startswith(("dev-", "change_me", "changeme")):
+                invalid.append(name)
+        try:
+            Fernet(self.secret_encryption_key.encode())
+        except (ValueError, TypeError):
+            invalid.append("SECRET_ENCRYPTION_KEY")
+        if invalid:
+            raise RuntimeError("Production requires valid non-placeholder configuration: " + ", ".join(invalid))
+
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    settings.validate_production()
+    return settings

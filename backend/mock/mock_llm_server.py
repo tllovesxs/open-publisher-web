@@ -115,6 +115,27 @@ DEFAULT_RESPONSE: dict = {
     "notes": "mock 优化，保留核心卖点",
 }
 
+MOCK_MARKDOWN = "# 产品推广推文（Mock 演示）\n\n为独立开发者整理产品事实、目标读者与行动入口。\n\n## 从资料开始\n\n先确认产品能力，再组织推广表达；资料未说明的指标不作承诺。\n\n## 保留人工确认\n\n检查事实与版权后再同步草稿，最终发布由用户确认。"
+
+
+def response_message(body):
+    system = next((m.get("content", "") for m in body.get("messages", []) if m.get("role") == "system"), "")
+    names = [t.get("function", {}).get("name") for t in body.get("tools", [])]
+    if "write_article" in names:
+        return {"role": "assistant", "content": None, "tool_calls": [{"id": "call_mock_write",
+            "type": "function", "function": {"name": "write_article",
+                "arguments": json.dumps({"title": "产品推广推文（Mock 演示）",
+                    "markdown": MOCK_MARKDOWN, "reason": "mock-demo"}, ensure_ascii=False)}}]}
+    checks = {"Outline": {"title": "产品推广推文", "sections": [{"heading": "从事实出发", "points": ["明确读者与行动入口"]}]},
+        "Review": {"score": 88, "issues": [], "verdict": "pass"},
+        "RiskCheck": {"level": "low", "issues": []},
+        "ReferenceSafety": {"ok": True, "issues": []}}
+    for marker, value in {**RESPONSES, **checks}.items():
+        if f"[{marker}]" in system:
+            return {"role": "assistant", "content": json.dumps(value, ensure_ascii=False)}
+    content = MOCK_MARKDOWN if "Writer Agent" in system or "深度去 AI 化" in system else json.dumps(DEFAULT_RESPONSE, ensure_ascii=False)
+    return {"role": "assistant", "content": content}
+
 
 class MockHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
@@ -124,20 +145,27 @@ class MockHandler(BaseHTTPRequestHandler):
 
         length = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(length) or b"{}")
-        messages = body.get("messages") or []
-        system = next(
-            (m.get("content", "") for m in messages if m.get("role") == "system"),
-            "",
-        )
-
-        matched = None
-        for marker, value in RESPONSES.items():
-            if f"[{marker}]" in system:
-                matched = value
-                break
-        if matched is None:
-            matched = DEFAULT_RESPONSE
-
+        message = response_message(body)
+        if body.get("stream"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            if message.get("tool_calls"):
+                call = message["tool_calls"][0]
+                deltas = [{"role": "assistant", "tool_calls": [{"index": 0, **call}]}]
+            else:
+                content = message["content"]
+                deltas = [{"content": content[i:i+35]} for i in range(0, len(content), 35)]
+            for delta in [*deltas, {}]:
+                chunk = {"id": "chatcmpl-mock", "object": "chat.completion.chunk",
+                    "created": int(time.time()), "model": body.get("model", "mock"),
+                    "choices": [{"index": 0, "delta": delta, "finish_reason":
+                        ("tool_calls" if message.get("tool_calls") else "stop") if not delta else None}]}
+                self.wfile.write(("data: " + json.dumps(chunk, ensure_ascii=False) + "\n\n").encode())
+                self.wfile.flush()
+            self.wfile.write(b"data: [DONE]\n\n")
+            return
         time.sleep(0.2)  # 模拟一点延迟，让 SSE 可感知
         self._send(
             200,
@@ -149,11 +177,8 @@ class MockHandler(BaseHTTPRequestHandler):
                 "choices": [
                     {
                         "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": json.dumps(matched, ensure_ascii=False),
-                        },
-                        "finish_reason": "stop",
+                        "message": message,
+                        "finish_reason": "tool_calls" if message.get("tool_calls") else "stop",
                     }
                 ],
                 "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},

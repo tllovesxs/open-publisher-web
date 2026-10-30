@@ -1142,11 +1142,14 @@ class WriterService:
             check = self._llm_json(
                 _load_prompt("risk"), f"文章：\n{markdown[:30000]}",
             )
-            level = str(check.get("level") or "low")
-            issues = [str(i) for i in (check.get("issues") or []) if str(i).strip()]
+            level = str(check.get("level") or "unknown")
+            if level not in {"low", "medium", "high"} or not isinstance(check.get("issues"), list):
+                level = "unknown"
+            issues = [str(i) for i in check.get("issues", []) if str(i).strip()] if isinstance(check.get("issues"), list) else []
             self._node_completed(
                 run_id, "risk", {"level": level, "issues": len(issues), "issueDetails": issues,
-                                 "checkedRevisionId": current.get("currentRevisionId")},
+                                 "checkedRevisionId": current.get("currentRevisionId"),
+                                 "checkedContentHash": current.get("contentHash")},
             )
         except (WriterStopped, ArticleConflictError):
             raise

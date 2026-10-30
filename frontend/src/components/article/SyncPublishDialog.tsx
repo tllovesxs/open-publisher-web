@@ -3,6 +3,7 @@ import { CheckCircle2, ExternalLink, LoaderCircle, Monitor, RefreshCw, Send, XCi
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { prepareSyncPost } from "./syncPost";
+import { api } from "../../api/client";
 
 interface SyncAccount {
   type: string;
@@ -40,6 +41,7 @@ declare global {
 }
 
 interface SyncPublishDialogProps {
+  articleId: string;
   title: string;
   markdown: string;
   onClose: () => void;
@@ -54,7 +56,21 @@ const STATUS_LABEL: Record<string, string> = {
 /** 文章同步助手发布通道（依赖 wechatsync-2.0.9 浏览器扩展）：
  * 1. 纯净文章预览，与桌面蓝本相同地由用户选择平台并提交草稿；
  * 2. 通过扩展注入的 window.$syncer 读取已登录平台并提交草稿同步任务（只存草稿，不代发布）。 */
-export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialogProps) {
+export function SyncPublishDialog({ articleId, title, markdown, onClose }: SyncPublishDialogProps) {
+  const [safety, setSafety] = useState<{ level: string; message: string; blocked: boolean; requiresConfirmation: boolean } | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setSafety(null); setConfirmed(false);
+    if (!localStorage.getItem("opw_access_token") || articleId.startsWith("example-")) {
+      setSafety({ level: "unknown", message: "本机或公共示例尚未完成风险检查，请人工核验。", blocked: false, requiresConfirmation: true });
+    } else {
+      api.post(`/articles/${encodeURIComponent(articleId)}/sync-preflight`, { markdown })
+        .then(({ data }) => { if (active) setSafety(data); })
+        .catch(() => { if (active) setError("无法读取风险状态，请返回文章后重试。"); });
+    }
+    return () => { active = false; };
+  }, [articleId, markdown]);
   const [extStatus, setExtStatus] = useState<"checking" | "missing" | "empty" | "error" | "ready">("checking");
   const [accounts, setAccounts] = useState<SyncAccount[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -108,12 +124,17 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
 
   const startSync = async () => {
     const bridge = window.$syncer;
-    if (!bridge || syncing || submitted) return;
+    if (!bridge || syncing || submitted || !safety || safety.blocked || (safety.requiresConfirmation && !confirmed)) return;
     const picked = accounts.filter(item => selected.includes(item.type));
     if (!picked.length) return;
     setSyncing(true); setError("");
     controller.current = new AbortController();
     try {
+      if (localStorage.getItem("opw_access_token") && !articleId.startsWith("example-")) {
+        const { data } = await api.post(`/articles/${encodeURIComponent(articleId)}/sync-preflight`, { markdown, confirm: true });
+        setSafety(data);
+        if (data.blocked || (data.requiresConfirmation && !confirmed)) { setSyncing(false); return; }
+      }
       const post = await prepareSyncPost(title, markdown, controller.current.signal);
       if (!alive.current) return;
       setSubmitted(true);
@@ -180,6 +201,16 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
             <Monitor size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
             文章同步助手 · 同步到平台草稿
           </strong>
+          <small role="status" style={{ color: safety?.blocked ? "var(--danger, #b0434e)" : undefined }}>
+            {safety?.message || "正在核对风险状态…"}
+            {safety?.blocked && "；请修改正文并重新检查后同步。"}
+          </small>
+          {safety?.requiresConfirmation && !safety.blocked && (
+            <label style={{ fontSize: 12 }}>
+              <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
+              我已人工核验事实、版权与风险，确认同步当前正文
+            </label>
+          )}
 
           {extStatus === "checking" && (
             <small style={{ alignItems: "center", color: "var(--muted, #999)", display: "flex", gap: 6 }}>
@@ -241,7 +272,7 @@ export function SyncPublishDialog({ title, markdown, onClose }: SyncPublishDialo
               })}
               <button
                 className="button button--primary"
-                disabled={syncing || submitted || !selected.length}
+                disabled={syncing || submitted || !selected.length || !safety || safety.blocked || (safety.requiresConfirmation && !confirmed)}
                 onClick={startSync}
                 style={{ alignItems: "center", display: "flex", gap: 6, marginLeft: 6 }}
                 type="button"

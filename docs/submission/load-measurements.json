@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-30",
+  "environment": "Local production Vite preview, Edge headless, cold cache, no throttling, mock health/settings APIs; excludes model latency and public network",
+  "samples": [
+    {
+      "domContentLoadedMs": 258,
+      "firstContentfulPaintMs": 788,
+      "scriptBytes": 98102,
+      "scriptCount": 5,
+      "diagramRequests": []
+    },
+    {
+      "domContentLoadedMs": 189,
+      "firstContentfulPaintMs": 264,
+      "scriptBytes": 98102,
+      "scriptCount": 5,
+      "diagramRequests": []
+    },
+    {
+      "domContentLoadedMs": 57,
+      "firstContentfulPaintMs": 112,
+      "scriptBytes": 98102,
+      "scriptCount": 5,
+      "diagramRequests": []
+    }
+  ]
+}

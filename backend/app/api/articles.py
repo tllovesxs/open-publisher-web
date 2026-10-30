@@ -45,6 +45,36 @@ def _conflict() -> HTTPException:
     )
 
 
+class SyncPreflightRequest(BaseModel):
+    markdown: str = Field(max_length=500000)
+    confirm: bool = False
+
+
+@router.post("/{article_id}/sync-preflight")
+def sync_preflight(article_id: str, body: SyncPreflightRequest,
+                   db: Session = Depends(get_db), user: AppUser = Depends(require_user)):
+    from app.services.publish_safety import sync_safety
+    from app.services.run_journal import RunJournal
+
+    article = _store(db).read(article_id, user.id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article was not found")
+    result = sync_safety(db, article, body.markdown)
+    if body.confirm and not result["blocked"]:
+        journal = RunJournal(db)
+        run = journal.create_run(article_id=article_id, agent_id="user",
+                                 operation="sync-preflight", owner_user_id=user.id,
+                                 base_revision_id=article["currentRevisionId"])
+        journal.append(run["id"], "sync.confirmed", {
+            "level": result["level"], "contentHash": result["contentHash"],
+            "revisionId": result["revisionId"], "userId": user.id,
+            "notice": "Browser handoff approved; remote delivery is unverified",
+        })
+        journal.transition(run["id"], "running")
+        journal.transition(run["id"], "completed")
+    return result
+
+
 @router.get("")
 def list_articles(db: Session = Depends(get_db), user: AppUser = Depends(require_user)):
     return {"articles": _store(db).list(user.id)}

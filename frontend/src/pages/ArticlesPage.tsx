@@ -1151,6 +1151,7 @@ export default function ArticlesPage() {
       </div>
       {selected && syncOpen && (
         <SyncPublishDialog
+          articleId={selected.articleId}
           markdown={draft}
           onClose={() => setSyncOpen(false)}
           title={selected.title}
