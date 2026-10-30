@@ -746,7 +746,7 @@ export default function ArticlesPage() {
                       setSyncNoticeOpen(true);
                     }
                   }}
-                  title="通过文章同步发布扩展，把全屏纯净稿同步为多平台草稿"
+                  title="收起侧栏，通过文章同步发布扩展同步为多平台草稿"
                   type="button"
                 >
                   <Upload size={15} />

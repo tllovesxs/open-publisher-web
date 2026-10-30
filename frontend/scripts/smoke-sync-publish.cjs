@@ -66,6 +66,11 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
       await page.getByRole('button', { name: '同步发布', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: '文章同步发布' });
       await dialog.waitFor();
+      assert.equal(await page.locator('.app-navigation').evaluate(el => Math.round(el.getBoundingClientRect().width)), 64);
+      assert.equal(await page.locator('.app-navigation__item > span').first().isVisible(), false);
+      assert.equal(await page.locator('.workspace-topbar').isVisible(), true);
+      assert.equal(await dialog.evaluate(el => Math.round(el.getBoundingClientRect().left)), 64);
+      assert.equal(await dialog.getByRole('button', { name:'纯净预览', exact:true }).isVisible(), true);
       assert.equal(await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '发布', exact: true }).count(), 0);
       if (mode === 'missing') await dialog.getByText('未检测到插件。', { exact: false }).waitFor();
       else if (mode === 'empty') await dialog.getByText('插件已连接，请先登录目标平台，再刷新平台。').waitFor();
@@ -98,6 +103,8 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
         assert.equal(await dialog.evaluate(el => el.scrollWidth > el.clientWidth), false);
       }
       await dialog.getByRole('button', { name: '返回文章', exact: true }).click();
+      await page.setViewportSize({width:1280,height:900});
+      assert.equal(await page.locator('.app-navigation__item > span').first().isVisible(), true);
       await page.goto(base + '/publish-queue');
       await page.waitForURL(base + '/articles');
       assert.deepEqual(errors, []);
