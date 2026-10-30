@@ -261,7 +261,7 @@ export default function CreatePage() {
     // References travel in their dedicated field; the backend selects retrieved
     // evidence or the original-text fallback without duplicating the full input.
 
-    const articleId = `article-${Date.now()}`;
+    const articleId = `article-${crypto.randomUUID()}`;
     try {
       await startActiveRun({
         articleId,

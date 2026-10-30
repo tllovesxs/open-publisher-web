@@ -23,6 +23,7 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
     });
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
+    const previous = { articleId: 'previous-round', title: '流式回归', markdown: '# 流式回归\n\n上一轮正文', currentRevisionId: 'previous-revision', contentHash: 'previous-hash', updatedAt: '2026-10-30T00:00:00Z' };
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route(`${base}/api/**`, async route => {
@@ -31,7 +32,8 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
         '/api/auth/me': { id: 'test', username: 'tester', displayName: 'Tester', role: 'user' },
         '/api/settings/profiles': { profiles: [] },
         '/api/settings/preferences': { disabledNodeIds: [], webSearchMode: 'off' },
-        '/api/articles': { articles: [] },
+        '/api/articles': { articles: [previous] },
+        '/api/articles/previous-round': previous,
         '/api/articles/stream-test': { articleId: 'stream-test', title: '流式回归', markdown: '', currentRevisionId: null, contentHash: null },
         '/api/media': { assets: [] },
       };
@@ -40,6 +42,8 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
     await page.goto(base + '/articles');
     const editor = page.getByRole('textbox', { name: 'Markdown 正文', exact: true });
     await editor.waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('.article-list-item').length === 2);
+    assert.equal(await page.locator('.article-list-item strong').filter({ hasText: '流式回归' }).count(), 2);
     await page.waitForFunction(() => typeof window.__writerStream?.onmessage === 'function');
     await page.evaluate(() => window.__emitWriterEvent('agent.progress', { phase: 'reasoning', elapsedMs: 203000 }));
     await page.getByText('模型正在思考 · 已等待 203 秒', { exact: true }).waitFor();
@@ -91,6 +95,8 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:5183';
     // 等两帧，验证新增事件经过 effect 后仍尊重用户编辑。
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await editor.inputValue(), '用户主动编辑');
+    await page.locator('.article-list-item').filter({ hasText: '文章' }).filter({ hasText: '流式回归' }).last().click();
+    assert.equal(await editor.inputValue(), previous.markdown);
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ catchUpMs, characters: body.length, layouts, longError, reasoningStatus: true, preservedAfterFailure: true, userEditProtected: true, pageErrors: errors }));
   } finally {

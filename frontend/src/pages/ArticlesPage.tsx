@@ -360,7 +360,7 @@ export default function ArticlesPage() {
       })
       .catch(() => {
         if (cancelled) return;
-        setSelected((current) => current ?? {
+        setSelected((current) => current?.articleId === articleId ? current : {
           articleId,
           title: activeRun.title,
           currentRevisionId: null,
@@ -482,7 +482,7 @@ export default function ArticlesPage() {
     }
     setError(null);
     setCreating(false);
-    const articleId = `article-${Date.now()}`;
+    const articleId = `article-${crypto.randomUUID()}`;
     try {
       await startActiveRun({
         articleId,

@@ -669,3 +669,20 @@ def test_draft_is_required_even_for_legacy_disabled_preferences(db, disabled):
 def test_preferences_repair_legacy_disabled_draft():
     from app.api.settings import WritingPreferences
     assert WritingPreferences(disabledNodeIds=["draft", "risk", "risk"]).disabledNodeIds == ["risk"]
+
+
+def test_same_title_generations_keep_separate_articles_and_revisions(db):
+    first = WriterService(db, llm=FakeLLM(markdown="# 同名文章\n\n第一轮正文。"))
+    run = first.start_article_create(article_id="same-title-first", prompt="写文章")
+    assert _wait_terminal(first.journal, run["id"])["status"] == "completed"
+    original = first.store.read("same-title-first")
+    revisions = first.store.list_revisions("same-title-first")
+    second = WriterService(db, llm=FakeLLM(markdown="# 同名文章\n\n第二轮正文。"))
+    run = second.start_article_create(article_id="same-title-second", prompt="写文章")
+    assert _wait_terminal(second.journal, run["id"])["status"] == "completed"
+    assert second.store.read("same-title-first") == original
+    assert second.store.list_revisions("same-title-first") == revisions
+    newer = second.store.read("same-title-second")
+    assert newer["title"] == original["title"] == "同名文章"
+    assert newer["markdown"] != original["markdown"]
+    assert {a["articleId"] for a in second.store.list()} == {"same-title-first", "same-title-second"}
