@@ -278,27 +278,11 @@ export default function ArticlesPage() {
     }
   }, [activeRunForSelected, events]);
 
-  // 模板参数：从模板库跳转过来时，把模板骨架注入创作要求
+  // 兼容旧模板链接，统一进入完整的创作配置链路。
   useEffect(() => {
     const templateId = searchParams.get("template");
-    if (!templateId) return;
-    api
-      .get<{ templates: Array<{ id: string; name: string; markdown: string; usageInstructions: string }> }>("/templates")
-      .then((res) => {
-        const t = res.data.templates.find((item) => item.id === templateId);
-        if (t) {
-          setPrompt((current) =>
-            current
-              ? current
-              : `请按「${t.name}」模板的结构创作：\n\n${t.markdown}\n\n${t.usageInstructions}`,
-          );
-          setCreating(true);
-          setSelected(null);
-        }
-      })
-      .catch(() => undefined);
-    setSearchParams({}, { replace: true });
-  }, [searchParams, setSearchParams]);
+    if (templateId) navigate(`/?template=${encodeURIComponent(templateId)}`, { replace: true });
+  }, [searchParams, navigate]);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);

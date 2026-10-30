@@ -41,7 +41,7 @@ class TemplateUpdateRequest(BaseModel):
 
 class TemplateExtractRequest(BaseModel):
     rightsConfirmed: bool = False
-    markdown: str = Field(min_length=1, max_length=200_000)
+    markdown: str = Field(min_length=1, max_length=2_000_000)
 
 
 @router.get("")

@@ -30,6 +30,9 @@ _TERMINAL = {"completed", "failed", "stopped", "interrupted"}
 
 
 class CreationTemplate(BaseModel):
+    mode: str = "scaffold"
+    referenceMarkdown: str | None = Field(default=None, max_length=2_000_000)
+    sourceFingerprint: str | None = None
     id: str | None = None
     name: str | None = None
     markdown: str | None = None

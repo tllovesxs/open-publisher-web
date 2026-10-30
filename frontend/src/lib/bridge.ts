@@ -29,6 +29,14 @@ export interface ArticleState {
 }
 
 export interface CreationTemplate {
+  mode?: string;
+  referenceMarkdown?: string | null;
+  sourceFingerprint?: string | null;
+  styleProfile?: Record<string, unknown> | null;
+  structureProfile?: Record<string, unknown> | null;
+  layoutProfile?: Record<string, unknown> | null;
+  fixedBlocks?: Array<Record<string, unknown>> | null;
+  variables?: string[] | null;
   id?: string | null;
   name?: string | null;
   markdown?: string | null;

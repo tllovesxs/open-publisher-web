@@ -7,20 +7,7 @@ import { useNavigate } from "react-router-dom";
 // 模板库：蓝本 MarkdownTemplate 的结构画像 Web 版。
 // 不只保存骨架，也保存文风、结构、排版和固定块，供后续创作 Agent 消费。
 
-interface TemplateProfile {
-  tone?: string;
-  readerRelationship?: string;
-  forbiddenPatterns?: string[] | string;
-  preferredEvidence?: string;
-  sectionOrder?: string[] | string;
-  sectionPurposes?: string[] | string;
-  transitionStyle?: string;
-  ctaPosition?: string;
-  headingLevelRule?: string;
-  paragraphLength?: string;
-  listUsage?: string;
-  emphasisStyle?: string;
-}
+type TemplateProfile = Record<string, string | string[] | boolean>;
 
 interface MarkdownTemplate {
   id: string;
@@ -31,7 +18,7 @@ interface MarkdownTemplate {
   styleProfile: TemplateProfile | null;
   structureProfile: TemplateProfile | null;
   layoutProfile: TemplateProfile | null;
-  fixedBlocks: Array<{ name?: string; content?: string; position?: string }> | null;
+  fixedBlocks: Array<{ id?: string; label?: string; name?: string; enabled?: boolean; content?: string; position?: string }> | null;
   variables: string[] | null;
   usageInstructions: string;
   isBuiltIn: boolean;
@@ -54,36 +41,47 @@ interface TemplateForm {
 }
 
 const profileFields: Record<string, Array<[string, string]>> = {
-  style: [["tone", "文章语气"], ["readerRelationship", "与读者的交流方式"], ["forbiddenPatterns", "避免使用的表达"], ["preferredEvidence", "论据偏好"]],
-  structure: [["sectionOrder", "章节顺序"], ["sectionPurposes", "各章节的写作目的"], ["transitionStyle", "段落衔接方式"], ["ctaPosition", "行动建议的位置"]],
-  layout: [["headingLevelRule", "标题层级"], ["paragraphLength", "段落长度"], ["listUsage", "列表使用方式"], ["emphasisStyle", "重点强调方式"]],
+  style: [["tone", "整体语气"], ["audience", "目标读者"], ["perspective", "叙述视角"], ["sentenceStyle", "句式习惯"], ["pacing", "节奏"], ["density", "信息密度"]],
+  structure: [["openingPattern", "开头方式"], ["sectionPattern", "章节组织"], ["conclusionPattern", "结尾方式"], ["headingDepth", "标题层级"], ["paragraphPattern", "段落习惯"]],
+  layout: [["imagePlacement", "图片位置"], ["emphasisRules", "强调规则"]],
 };
 
 function ProfileFields({ kind, value, disabled, onChange }: { kind: string; value: string; disabled: boolean; onChange: (value: string) => void }) {
   const data = JSON.parse(value || "{}") ?? {};
   return <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10, minWidth: 0 }}>
     {profileFields[kind].map(([key, label]) => <label className="field" key={key}><span>{label}</span>
-      <textarea aria-label={label} rows={2} value={Array.isArray(data[key]) ? data[key].join("\n") : String(data[key] ?? "")} onChange={event => {
-        const text = event.target.value;
-        const next = Array.isArray(data[key]) ? text.split("\n") : text;
-        onChange(JSON.stringify({ ...data, [key]: next }));
-      }} />
+      <textarea aria-label={label} rows={2} value={String(data[key] ?? "")} onChange={event => onChange(JSON.stringify({ ...data, [key]: event.target.value }))} />
     </label>)}
+    {kind === "layout" && ([["useLists", "列表"], ["useTables", "表格"], ["useBlockquotes", "引用"], ["useCodeBlocks", "代码块"]] as const).map(([key, label]) =>
+      <label key={key}><input type="checkbox" checked={data[key] === true} onChange={event => onChange(JSON.stringify({ ...data, [key]: event.target.checked }))} />{label}</label>)}
   </fieldset>;
 }
 
 function FixedContentFields({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
-  const blocks: Array<Record<string, string>> = JSON.parse(value || "[]") ?? [];
-  const updateBlock = (index: number, key: string, text: string) => onChange(JSON.stringify(blocks.map((block, i) => i === index ? { ...block, [key]: text } : block)));
+  const blocks: Array<Record<string, string | boolean>> = JSON.parse(value || "[]") ?? [];
+  const updateBlock = (index: number, key: string, value: string | boolean) => onChange(JSON.stringify(blocks.map((block, i) => i === index ? { ...block, [key]: value } : block)));
   return <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10, minWidth: 0 }}>
     {blocks.map((block, index) => <div key={index} style={{ display: "grid", gap: 8 }}>
-      <label className="field"><span>内容名称</span><input value={block.name ?? ""} onChange={event => updateBlock(index, "name", event.target.value)} /></label>
-      <label className="field"><span>固定内容</span><textarea aria-label="固定内容" rows={3} value={block.content ?? ""} onChange={event => updateBlock(index, "content", event.target.value)} /></label>
-      <label className="field"><span>插入位置</span><input value={block.position ?? ""} onChange={event => updateBlock(index, "position", event.target.value)} /></label>
+      <label><input type="checkbox" checked={block.enabled !== false} onChange={event => updateBlock(index, "enabled", event.target.checked)} />启用固定内容</label>
+      <label className="field"><span>内容名称</span><input value={String(block.label ?? block.name ?? "")} onChange={event => updateBlock(index, "label", event.target.value)} /></label>
+      <label className="field"><span>固定内容</span><textarea aria-label="固定内容" rows={3} value={String(block.content ?? "")} onChange={event => updateBlock(index, "content", event.target.value)} /></label>
+      <label className="field"><span>插入位置</span><select value={String(block.position ?? "after_article")} onChange={event => updateBlock(index, "position", event.target.value)}>
+        {[["before_title", "标题前"], ["after_intro", "引言后"], ["before_closing", "结尾前"], ["after_article", "文章后"], ...(!["before_title", "after_intro", "before_closing", "after_article"].includes(String(block.position ?? "after_article")) ? [[String(block.position), `原位置：${block.position}`]] : [])].map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+      </select></label>
       <button className="button button--quiet" type="button" onClick={() => onChange(JSON.stringify(blocks.filter((_, i) => i !== index)))}>移除此段内容</button>
     </div>)}
-    <button className="button button--quiet" type="button" onClick={() => onChange(JSON.stringify([...blocks, { name: "", content: "", position: "" }]))}>添加固定内容</button>
+    <button className="button button--quiet" type="button" onClick={() => onChange(JSON.stringify([...blocks, { id: crypto.randomUUID(), label: "", enabled: true, content: "", position: "after_article" }]))}>添加固定内容</button>
   </fieldset>;
+}
+
+function formPayload(form: TemplateForm) {
+  return { ...form,
+    styleProfile: parseJson<Record<string, unknown>>(form.styleProfile, "文风画像"),
+    structureProfile: parseJson<Record<string, unknown>>(form.structureProfile, "结构画像"),
+    layoutProfile: parseJson<Record<string, unknown>>(form.layoutProfile, "排版画像"),
+    fixedBlocks: parseJson<Array<Record<string, unknown>>>(form.fixedBlocks, "固定块"),
+    variables: form.variables.split(/[,，]/).map(item => item.trim()).filter(Boolean),
+  };
 }
 
 function jsonText(value: unknown) {
@@ -215,10 +213,9 @@ export default function TemplatesPage() {
     try {
       const res = await api.post<MarkdownTemplate>("/templates", {
         ...selected,
-        name: `${selected.name} 副本`,
-        description: selected.description,
+        ...(form ? formPayload(form) : {}),
+        name: `${form?.name ?? selected.name} 副本`,
         category: "自定义",
-        markdown: selected.markdown,
       });
       await load();
       setSelected(res.data);
@@ -309,7 +306,7 @@ export default function TemplatesPage() {
               <>
                 <button
                   className="button button--quiet"
-                  disabled={selected.isBuiltIn}
+                  disabled={selected.isBuiltIn || saving}
                   onClick={() => void save()}
                   type="button"
                 >
@@ -326,7 +323,10 @@ export default function TemplatesPage() {
                 </button>
                 <button
                   className="button button--primary"
-                  onClick={() => navigate(`/articles?template=${selected.id}`)}
+                  onClick={() => {
+                    if (form && JSON.stringify(form) !== JSON.stringify(toForm(selected))) { setError("请先保存修改，或复制另存后用于创作。"); return; }
+                    navigate(`/?template=${encodeURIComponent(selected.id)}`);
+                  }}
                   type="button"
                 >
                   用于创作
@@ -364,6 +364,7 @@ export default function TemplatesPage() {
             <label className="field"><span>描述</span>
               <input disabled={selected.isBuiltIn} onChange={(event) => update({ description: event.target.value })} value={form.description} />
             </label>
+            {selected.mode === "reference" && selected.referenceMarkdown && <details><summary>参考原文（仅用于写法分析）</summary><pre style={{ whiteSpace: "pre-wrap", maxHeight: 320, overflow: "auto" }}>{selected.referenceMarkdown}</pre></details>}
             <label className="field"><span>模板骨架</span>
               <textarea
                 disabled={selected.isBuiltIn}

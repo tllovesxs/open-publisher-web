@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { CreationTemplate } from "../lib/bridge";
 import { api } from "../api/client";
 import { useActiveRun } from "../lib/activeRunContext";
 import { useAuth } from "../auth/AuthContext";
@@ -25,7 +26,7 @@ type LengthPreset = "short" | "medium" | "long" | "custom";
 type Tone = "真人感" | "豆包投毒";
 type Picker = "template" | "media" | "image" | "details" | null;
 
-interface MarkdownTemplate {
+interface MarkdownTemplate extends CreationTemplate {
   id: string;
   name: string;
   description: string;
@@ -178,6 +179,13 @@ export default function CreatePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("template");
+    if (!id || !templates.length) return;
+    if (templates.some(template => template.id === id)) setSelectedTemplateId(id);
+    else setValidation("模板不存在或无权访问，请重新选择。");
+    navigate("/", { replace: true, state: location.state });
+  }, [location.search, templates, navigate, location.state]);
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
   const selectedMedia = mediaAssets.filter((asset) => selectedMediaIds.includes(asset.id));
   const selectedImageModel = imageModels.find((m) => m.id === selectedImageModelId) ?? null;
@@ -248,9 +256,6 @@ export default function CreatePage() {
 
     const sections: string[] = [topic.trim()];
     if (title.trim()) sections.push(`文章标题：${title.trim()}`);
-    if (selectedTemplate) {
-      sections.push(`使用模板「${selectedTemplate.name}」的结构：\n\n${selectedTemplate.markdown}\n\n${selectedTemplate.usageInstructions}`);
-    }
     if (selectedMedia.length > 0) {
       sections.push(
         `可用素材（仅在匹配时引用，不要杜撰图片内容）：\n${selectedMedia
