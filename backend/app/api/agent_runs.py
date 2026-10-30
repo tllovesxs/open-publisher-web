@@ -119,6 +119,8 @@ def create_article_run(
         "disabledNodeIds": body.disabledNodeIds if "disabledNodeIds" in body.model_fields_set else prefs.get("disabledNodeIds", []),
         "materialMatchThreshold": body.materialMatchThreshold,
     }
+    from app.services.workspace_settings import normalize_disabled_nodes
+    creation["disabledNodeIds"] = normalize_disabled_nodes(creation["disabledNodeIds"])
     try:
         return service.start_article_create(
         article_id=body.articleId,

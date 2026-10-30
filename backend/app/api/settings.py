@@ -13,7 +13,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core import secret_box
@@ -567,6 +567,12 @@ class WritingPreferences(BaseModel):
     imageModelId: str | None = Field(default=None, max_length=64)
     embeddingModelId: str | None = Field(default=None, max_length=64)
     rerankModelId: str | None = Field(default=None, max_length=64)
+
+    @field_validator("disabledNodeIds")
+    @classmethod
+    def normalize_nodes(cls, value):
+        from app.services.workspace_settings import normalize_disabled_nodes
+        return normalize_disabled_nodes(value)
 
 class IntegrationSettings(BaseModel):
     trustedHosts: list[str] = Field(default_factory=list, max_length=30)

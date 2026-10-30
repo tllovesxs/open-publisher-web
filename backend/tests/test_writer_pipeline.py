@@ -347,7 +347,7 @@ def test_writer_fallback_fails_on_only_markup(db):
 
 NODES = ["research", "outline", "draft", "natural-style", "review", "reference-safety", "risk", "visual"]
 
-@pytest.mark.parametrize("node", NODES)
+@pytest.mark.parametrize("node", [node for node in NODES if node != "draft"])
 def test_disabled_node_is_not_started(db, node):
     service = WriterService(db, llm=FakeLLM())
     run = service.start_article_create(article_id="disable-" + node, prompt="x", creation={"disabledNodeIds": [node]})
@@ -356,8 +356,7 @@ def test_disabled_node_is_not_started(db, node):
     assert not any(e["type"] == "node.started" and e["payload"]["nodeId"] == node for e in events)
     skipped = [e for e in events if e["type"] == "node.completed" and e["payload"]["nodeId"] == node]
     assert skipped[0]["payload"]["reason"] == "disabled"
-    if node == "draft":
-        assert service.store.read("disable-" + node) is None
+    assert service.store.read("disable-" + node)["markdown"]
 
 
 def test_off_blocks_research_and_unsolicited_tool_calls(db, monkeypatch):
@@ -378,7 +377,7 @@ def test_off_blocks_research_and_unsolicited_tool_calls(db, monkeypatch):
     assert "用户事实" in str(llm.calls[0]["messages"])
 
 
-@pytest.mark.parametrize("node", NODES)
+@pytest.mark.parametrize("node", [node for node in NODES if node != "draft"])
 def test_stop_at_each_stage_prevents_later_stages(db, monkeypatch, node):
     original = WriterService._node_started
     def stop_at(self, run_id, node_id):
@@ -655,3 +654,18 @@ def test_node_models_reach_worker_and_restore_default(db, monkeypatch):
     assert used["review"] is review
     assert used["risk"] is base
     assert service.llm is base
+
+
+@pytest.mark.parametrize("disabled", [["draft"], NODES])
+def test_draft_is_required_even_for_legacy_disabled_preferences(db, disabled):
+    service = WriterService(db, llm=FakeLLM())
+    run = service.start_article_create(article_id="required-draft", prompt="x", creation={"disabledNodeIds": disabled})
+    assert _wait_terminal(service.journal, run["id"])["status"] == "completed"
+    assert service.store.read("required-draft")["markdown"]
+    events = service.journal.events_after(run["id"], 0)
+    assert any(e["type"] == "node.started" and e["payload"]["nodeId"] == "draft" for e in events)
+
+
+def test_preferences_repair_legacy_disabled_draft():
+    from app.api.settings import WritingPreferences
+    assert WritingPreferences(disabledNodeIds=["draft", "risk", "risk"]).disabledNodeIds == ["risk"]

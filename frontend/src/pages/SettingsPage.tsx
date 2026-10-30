@@ -56,7 +56,7 @@ export default function SettingsPage() {
     setCatalogs(c.data);
     setProfiles(p.data.profiles);
     const ids = new Set(p.data.profiles.map(profile => profile.id));
-    setPrefs({ ...w.data, ...Object.fromEntries(EXTRA_MODELS.map(({kind,field}) => [field, c.data[kind].models.some(model => model.id === w.data[field]) ? w.data[field] : null])), profileId: ids.has(w.data.profileId ?? "") ? w.data.profileId : null,
+    setPrefs({ ...w.data, disabledNodeIds: w.data.disabledNodeIds.filter(id => id !== "draft"), ...Object.fromEntries(EXTRA_MODELS.map(({kind,field}) => [field, c.data[kind].models.some(model => model.id === w.data[field]) ? w.data[field] : null])), profileId: ids.has(w.data.profileId ?? "") ? w.data.profileId : null,
       nodeProfileIds: Object.fromEntries(Object.entries(w.data.nodeProfileIds ?? {}).filter(([, id]) => ids.has(id))),
     });
     if (admin) setIntegrations((await api.get<Integrations>("/settings/integrations")).data);
@@ -265,25 +265,25 @@ export default function SettingsPage() {
         <section className="client-settings-card">
           <header className="client-settings-section-heading">
             <span className="client-settings-icon"><FilePenLine size={19} aria-hidden="true" /></span>
-            <div><h2>默认创作流程</h2><p>选择需要的创作环节，取消勾选即可跳过。</p></div>
+            <div><h2>默认创作流程</h2><p>正文撰写为必需环节，其余 7 项按需开启；全部关闭也能生成正文。</p></div>
           </header>
           <div className="client-settings-writing-grid">
             {ARTICLE_WORKFLOW_NODES.map((node, index) => {
               const Icon = STAGE_ICONS[node.id] ?? FilePenLine;
-              const enabled = !prefs.disabledNodeIds.includes(node.id);
+              const enabled = node.required || !prefs.disabledNodeIds.includes(node.id);
               return (
                 <label className={`client-settings-stage${enabled ? " is-enabled" : ""}`} key={node.id}>
                   <span className="client-settings-stage-icon" aria-hidden="true"><Icon size={21} strokeWidth={1.7} /></span>
-                  <span className="client-settings-stage-copy"><strong>{node.label}</strong><small>{node.description}</small></span>
+                  <span className="client-settings-stage-copy"><strong>{node.label}{node.required && <span className="client-settings-required">必需</span>}</strong><small>{node.description}</small></span>
                   <span className="client-settings-stage-number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
-                  <input aria-label={node.label} checked={enabled} onChange={e => setPrefs(p => ({ ...p, disabledNodeIds: e.target.checked ? p.disabledNodeIds.filter(id => id !== node.id) : [...p.disabledNodeIds, node.id] }))} type="checkbox" />
+                  <input aria-label={node.label} checked={enabled} disabled={busy || node.required} onChange={e => setPrefs(p => ({ ...p, disabledNodeIds: e.target.checked ? p.disabledNodeIds.filter(id => id !== node.id) : [...p.disabledNodeIds, node.id] }))} type="checkbox" />
                 </label>
               );
             })}
           </div>
           <div className="client-settings-search-row">
-            <div className="client-settings-search-label"><Globe size={18} aria-hidden="true" /><div><strong>联网检索</strong><p>创作时自动补充相关资料</p></div></div>
-            <ToolbarSelect label="联网检索" onChange={value => setPrefs(p => ({ ...p, webSearchMode: value }))} options={[{ id: "auto", label: "自动" }, { id: "off", label: "关闭" }]} value={prefs.webSearchMode} />
+            <div className="client-settings-search-label"><Globe size={18} aria-hidden="true" /><div><strong>联网检索</strong><p>{prefs.disabledNodeIds.includes("research") ? "资料整理已关闭，本次流程不执行联网检索" : "资料整理时自动补充相关资料"}</p></div></div>
+            <ToolbarSelect disabled={busy || prefs.disabledNodeIds.includes("research")} label="联网检索" onChange={value => setPrefs(p => ({ ...p, webSearchMode: value }))} options={[{ id: "auto", label: "自动" }, { id: "off", label: "关闭" }]} value={prefs.webSearchMode} />
           </div>
           <div className="client-settings-footer">
             <button className="button button--primary" disabled={busy} onClick={() => void act(() => api.put("/settings/preferences", prefs), "写作偏好已保存")} type="button"><Save size={15} />保存写作偏好</button>

@@ -13,7 +13,7 @@ const stages = ['资料整理', '大纲规划', '正文撰写', '自然表达', 
       page.on('pageerror', error => errors.push(error.message));
       const profiles = [{ id: 'a', name: '写作模型', modelId: 'private-model-id', baseUrl: 'https://private.test', capabilities: { contextWindow: 128000 }, keyHint: 'secret-tail', isDefault: true }, { id: 'b', name: '审阅模型', modelId: 'private-second' }].slice(0, count);
       const catalogs = Object.fromEntries(['image','embedding','rerank'].map(kind => { const models = ['one','two'].slice(0, count === 0 ? 2 : kind === 'rerank' && count === 1 ? 0 : count).map(id => ({id:kind + '-' + id,name:kind + '-' + id})); return [kind,{models,defaultId:models[0]?.id ?? null}]; }));
-      let prefs = { imageModelId:null, embeddingModelId:null, rerankModelId:null, disabledNodeIds: ['risk'], webSearchMode: 'off', profileId: null, nodeProfileIds: {} };
+      let prefs = { imageModelId:null, embeddingModelId:null, rerankModelId:null, disabledNodeIds: ['draft', 'risk'], webSearchMode: 'off', profileId: null, nodeProfileIds: {} };
       let saved = 0;
       await page.route(url => url.pathname.startsWith('/api/'), async route => {
         const path = new URL(route.request().url()).pathname;
@@ -97,6 +97,12 @@ const stages = ['资料整理', '大纲规划', '正文撰写', '自然表达', 
       assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
       await settingsNav.getByRole('button', { name: '写作', exact: true }).click();
       assert.equal(await page.locator('.client-settings-stage-icon > svg').count(), 8);
+      assert.equal(await page.getByRole('checkbox', { name: '正文撰写', exact: true }).isChecked(), true);
+      assert.equal(await page.getByRole('checkbox', { name: '正文撰写', exact: true }).isDisabled(), true);
+      await page.getByRole('checkbox', { name: '资料整理', exact: true }).uncheck();
+      assert.equal(await page.getByRole('button', { name: '联网检索', exact: false }).isDisabled(), true);
+      await page.getByRole('checkbox', { name: '资料整理', exact: true }).check();
+      assert.equal(await page.getByRole('button', { name: '联网检索', exact: false }).isDisabled(), false);
       assert.equal(await page.getByRole('checkbox', { name: '风险检查', exact: true }).isChecked(), false);
       await page.getByRole('checkbox', { name: '风险检查', exact: true }).check();
       await page.getByRole('checkbox', { name: '大纲规划', exact: true }).uncheck();

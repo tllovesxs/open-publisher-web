@@ -272,6 +272,8 @@ class WriterService:
         creation: dict,
     ) -> None:
         self._run_id = run_id
+        from app.services.workspace_settings import normalize_disabled_nodes
+        creation = {**creation, "disabledNodeIds": normalize_disabled_nodes(creation.get("disabledNodeIds"))}
         self._creation = creation
         self._rag_context_used = False
         self._node_started_at = {}
