@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, register } = useAuth();
+  const { user, login, register } = useAuth();
   const [searchParams] = useSearchParams();
+  const switching = searchParams.get("switch") === "1";
+  const cancel = () => navigate(user ? "/settings" : "/", { replace: true, state: { settingsTab: "account" } });
   const [mode, setMode] = useState<"login" | "register">(
     searchParams.get("mode") === "register" ? "register" : "login",
   );
@@ -14,7 +16,15 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!switching || busy) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") cancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [switching, busy, user, navigate]);
+
   const submit = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -36,8 +46,8 @@ export default function LoginPage() {
           <strong>稿流</strong>
           <span>AI 内容工作台</span>
         </div>
-        <h1>{mode === "login" ? "登录" : "创建账号"}</h1>
-        <p className="muted">使用用户名和密码继续创作、管理文章与素材。</p>
+        <h1>{mode === "login" ? switching ? "切换账号" : "登录" : "创建账号"}</h1>
+        <p className="muted">{switching && user ? `当前账号：${user.displayName || user.username}。登录新账号后完成切换。` : "使用用户名和密码继续创作、管理文章与素材。"}</p>
 
         <form
           className="auth-form"
@@ -82,6 +92,8 @@ export default function LoginPage() {
             {busy ? "处理中..." : mode === "login" ? "登录" : "注册"}
           </button>
         </form>
+
+        {switching && <button className="button button--quiet" style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={cancel} type="button">取消切换</button>}
 
         {error && <div className="auth-error" role="alert">{error}</div>}
 

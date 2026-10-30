@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRightLeft, Check, FileCheck2, FilePenLine, Globe, Image, Layout, ListTree, Monitor, Moon, Pencil, Save, Search, Settings2, ShieldCheck, Sparkles, Sun, User } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -32,13 +32,14 @@ const STAGE_ICONS: Record<string, typeof Search> = {
 };
 
 export default function SettingsPage() {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [editingProfile, setEditingProfile] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const admin = user?.role === "admin";
   const { setting, setSetting } = useThemeSetting();
-  const [tab, setTab] = useState<string>("model");
+  const [tab, setTab] = useState<string>(location.state?.settingsTab === "account" ? "account" : "model");
   const [catalogs, setCatalogs] = useState<Record<ModelKind, ModelCatalog>>({image:{models:[],defaultId:null},embedding:{models:[],defaultId:null},rerank:{models:[],defaultId:null}});
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [prefs, setPrefs] = useState<Preferences>({imageModelId:null, embeddingModelId:null, rerankModelId:null, disabledNodeIds:[], webSearchMode:"auto", profileId:null, nodeProfileIds:{}});
@@ -182,7 +183,7 @@ export default function SettingsPage() {
             </div>
             <div className="client-settings-account-actions">
               <button className="button button--quiet" disabled={busy} onClick={() => { setDisplayName(user?.displayName || user?.username || ""); setEditingProfile(true); setNotice(""); }} type="button"><Pencil size={15} />编辑资料</button>
-              <button className="button button--quiet" disabled={busy} onClick={() => void act(async () => { await logout(); navigate("/login", { replace: true }); }, "")} type="button"><ArrowRightLeft size={15} />切换账号</button>
+              <button className="button button--quiet" disabled={busy} onClick={() => navigate("/login?switch=1")} type="button"><ArrowRightLeft size={15} />切换账号</button>
             </div>
           </section>
 
