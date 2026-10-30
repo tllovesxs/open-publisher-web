@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { Copy, LoaderCircle, Save, Trash2, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpen, Check, Copy, FilePlus2, LayoutTemplate, LoaderCircle, Plus, Save, Search, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
 import { useNavigate } from "react-router-dom";
@@ -45,17 +45,6 @@ const profileFields: Record<string, Array<[string, string]>> = {
   structure: [["openingPattern", "开头方式"], ["sectionPattern", "章节组织"], ["conclusionPattern", "结尾方式"], ["headingDepth", "标题层级"], ["paragraphPattern", "段落习惯"]],
   layout: [["imagePlacement", "图片位置"], ["emphasisRules", "强调规则"]],
 };
-
-function ProfileFields({ kind, value, disabled, onChange }: { kind: string; value: string; disabled: boolean; onChange: (value: string) => void }) {
-  const data = JSON.parse(value || "{}") ?? {};
-  return <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 10, minWidth: 0 }}>
-    {profileFields[kind].map(([key, label]) => <label className="field" key={key}><span>{label}</span>
-      <textarea aria-label={label} rows={2} value={String(data[key] ?? "")} onChange={event => onChange(JSON.stringify({ ...data, [key]: event.target.value }))} />
-    </label>)}
-    {kind === "layout" && ([["useLists", "列表"], ["useTables", "表格"], ["useBlockquotes", "引用"], ["useCodeBlocks", "代码块"]] as const).map(([key, label]) =>
-      <label key={key}><input type="checkbox" checked={data[key] === true} onChange={event => onChange(JSON.stringify({ ...data, [key]: event.target.checked }))} />{label}</label>)}
-  </fieldset>;
-}
 
 function FixedContentFields({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
   const blocks: Array<Record<string, string | boolean>> = JSON.parse(value || "[]") ?? [];
@@ -126,6 +115,13 @@ export default function TemplatesPage() {
   const [markdown, setMarkdown] = useState("");
   const [extractSource, setExtractSource] = useState("");
   const [extracting, setExtracting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeSection, setActiveSection] = useState("template-outline");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
+  const [mobileListOpen, setMobileListOpen] = useState(false);
+  const isDirty = Boolean(selected && form && JSON.stringify(form) !== JSON.stringify(toForm(selected)));
+  const visibleTemplates = useMemo(() => templates.filter(template => `${template.name} ${template.description} ${template.category}`.toLowerCase().includes(search.trim().toLowerCase())), [templates, search]);
   useEffect(() => { if (!extracting) return; setExtractSeconds(0); const id = window.setInterval(() => setExtractSeconds(n => n + 1), 1000); return () => clearInterval(id); }, [extracting]);
 
   const load = useCallback(async () => {
@@ -166,6 +162,7 @@ export default function TemplatesPage() {
       setMarkdown("");
       await load();
       setSelected(res.data);
+      setCreateOpen(false);
     } catch {
       setError("创建模板失败。");
     }
@@ -195,6 +192,7 @@ export default function TemplatesPage() {
       setExtractSource("");
       await load();
       setSelected(res.data);
+      setExtractOpen(false);
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(
@@ -263,63 +261,54 @@ export default function TemplatesPage() {
   };
 
   return (
-    <section className="articles-layout" style={{ "--article-browser-width": "248px" } as CSSProperties}>
-      <aside aria-label="模板列表" className="article-browser">
-        <div className="article-browser__head">
-          <div>
-            <span className="page-kicker">模板库</span>
-            <strong>模板</strong>
-            {user?.role === "admin" && <button className="text-button" onClick={() => { void api.post("/templates/refresh-official").then(load).catch(() => setError("官方模板刷新失败")); }}>刷新官方模板</button>}
-          </div>
+    <section className="template-workbench">
+      <aside aria-label="模板列表" className={`template-library${mobileListOpen ? " is-open" : ""}`}>
+        <div className="template-library__head">
+          <div><span className="page-kicker">内容工作台</span><h1>模板库</h1><p>{templates.length} 个模板</p></div>
+          <button className="icon-button template-mobile-close" aria-label="关闭模板列表" onClick={() => setMobileListOpen(false)} type="button">×</button>
         </div>
-        <div className="article-list">
-          {templates.map((template) => (
+        <label className="template-search"><Search size={15} /><input aria-label="搜索模板" placeholder="搜索模板" value={search} onChange={event => setSearch(event.target.value)} /></label>
+        <div className="template-library__list">
+          {visibleTemplates.map((template) => (
             <button
               aria-current={selected?.id === template.id ? "true" : undefined}
               className={`article-list-item${selected?.id === template.id ? " is-active" : ""}`}
               key={template.id}
-              onClick={() => setSelected(template)}
+              onClick={() => { setSelected(template); setMobileListOpen(false); }}
               type="button"
             >
-              <span className="article-status article-status--draft">
-                {template.isBuiltIn ? "内置" : template.mode === "reference" ? "提取" : "自定义"}
-              </span>
-              <strong>{template.name}</strong>
-              <span className="article-list-item__meta"><span>{template.category}</span></span>
+              <span className="template-library__item-icon">{template.mode === "reference" ? <BookOpen size={16} /> : <LayoutTemplate size={16} />}</span>
+              <span className="template-library__item-copy"><strong>{template.name}</strong><small>{template.category}</small></span>
+              <span className={`template-type${template.isBuiltIn ? " is-official" : ""}`}>{template.isBuiltIn ? "官方" : template.mode === "reference" ? "提取" : "自定义"}</span>
             </button>
           ))}
+          {!visibleTemplates.length && <p className="template-empty">没有匹配的模板</p>}
         </div>
+        <div className="template-library__footer"><button className="button button--quiet" onClick={() => setCreateOpen(true)} type="button"><Plus size={15} />新建模板</button><button className="button button--quiet" onClick={() => setExtractOpen(true)} type="button"><Wand2 size={15} />从文章提取</button></div>
+        {user?.role === "admin" && <button className="template-refresh" onClick={() => { void api.post("/templates/refresh-official").then(load).catch(() => setError("官方模板刷新失败")); }} type="button">刷新官方模板</button>}
       </aside>
-      <div aria-hidden="true" className="article-browser__resizer" role="separator" tabIndex={-1} />
-      <div className="article-editor">
-        <header className="article-editor__head">
-          <div className="article-editor__title">
-            {selected ? (
-              <>
-                <span className="page-kicker">{selected.category}</span>
-                <strong>{selected.name}</strong>
-              </>
-            ) : <strong>选择模板</strong>}
-          </div>
-          <div className="article-editor__actions">
+      <div className="template-main">
+        <header className="template-toolbar">
+          <button className="icon-button template-mobile-menu" aria-label="打开模板列表" onClick={() => setMobileListOpen(true)} type="button"><LayoutTemplate size={17} /></button>
+          <div className="template-toolbar__title"><span className="page-kicker">{selected?.category ?? "模板库"}</span><h2>{selected?.name ?? "选择一个模板"}</h2></div>
+          <div className="template-toolbar__actions">
             {selected && (
               <>
                 <button
-                  className="button button--quiet"
+                  aria-label="保存模板修改" className="button button--quiet"
                   disabled={selected.isBuiltIn || saving}
                   onClick={() => void save()}
                   type="button"
                 >
                   {saving ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
-                  {saving ? "保存中" : "保存画像"}
+                  {saving ? "保存中" : "保存修改"}
                 </button>
                 <button
                   className="button button--quiet"
                   onClick={() => void duplicate()}
                   type="button"
                 >
-                  <Copy size={15} />
-                  复制另存
+                  <Copy size={15} />复制另存
                 </button>
                 <button
                   className="button button--primary"
@@ -329,7 +318,7 @@ export default function TemplatesPage() {
                   }}
                   type="button"
                 >
-                  用于创作
+                  <Sparkles size={15} />用于创作
                 </button>
                 {!selected.isBuiltIn && (
                   <button
@@ -345,97 +334,34 @@ export default function TemplatesPage() {
             )}
           </div>
         </header>
-
-
-        <div className="article-editor__scroll">
+        <div className="template-content">
         {error && (
           <div className="workflow-task__failure" role="alert"><p>{error}</p></div>
         )}
         {selected && form && (
-          <div style={{ display: "grid", gap: 10, maxWidth: 940 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <label className="field"><span>名称</span>
-                <input disabled={selected.isBuiltIn} onChange={(event) => update({ name: event.target.value })} value={form.name} />
-              </label>
-              <label className="field"><span>分类</span>
-                <input disabled={selected.isBuiltIn} onChange={(event) => update({ category: event.target.value })} value={form.category} />
-              </label>
-            </div>
-            <label className="field"><span>描述</span>
-              <input disabled={selected.isBuiltIn} onChange={(event) => update({ description: event.target.value })} value={form.description} />
-            </label>
-            {selected.mode === "reference" && selected.referenceMarkdown && <details><summary>参考原文（仅用于写法分析）</summary><pre style={{ whiteSpace: "pre-wrap", maxHeight: 320, overflow: "auto" }}>{selected.referenceMarkdown}</pre></details>}
-            <label className="field"><span>模板骨架</span>
-              <textarea
-                disabled={selected.isBuiltIn}
-                onChange={(event) => update({ markdown: event.target.value })}
-                rows={10}
-                value={form.markdown}
-              />
-            </label>
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-              <div className="field"><span>文风设置</span>
-                <ProfileFields kind="style" disabled={selected.isBuiltIn} onChange={(value) => update({ styleProfile: value })} value={form.styleProfile} />
-              </div>
-              <div className="field"><span>结构设置</span>
-                <ProfileFields kind="structure" disabled={selected.isBuiltIn} onChange={(value) => update({ structureProfile: value })} value={form.structureProfile} />
-              </div>
-              <div className="field"><span>排版设置</span>
-                <ProfileFields kind="layout" disabled={selected.isBuiltIn} onChange={(value) => update({ layoutProfile: value })} value={form.layoutProfile} />
-              </div>
-              <div className="field"><span>固定内容</span>
-                <FixedContentFields disabled={selected.isBuiltIn} onChange={(value) => update({ fixedBlocks: value })} value={form.fixedBlocks} />
+          <>
+            <div className="template-overview">
+              <span className="template-overview__icon"><LayoutTemplate size={20} /></span>
+              <div className="template-overview__fields">
+                <label className="field"><span>模板名称</span><input disabled={selected.isBuiltIn} onChange={event => update({ name: event.target.value })} value={form.name} /></label>
+                <label className="field"><span>分类</span><input disabled={selected.isBuiltIn} onChange={event => update({ category: event.target.value })} value={form.category} /></label>
+                <label className="field template-field--wide"><span>用途说明</span><input disabled={selected.isBuiltIn} onChange={event => update({ description: event.target.value })} value={form.description} /></label>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <label className="field"><span>变量</span>
-                <input disabled={selected.isBuiltIn} onChange={(event) => update({ variables: event.target.value })} value={form.variables} />
-              </label>
-              <label className="field"><span>使用说明</span>
-                <input disabled={selected.isBuiltIn} onChange={(event) => update({ usageInstructions: event.target.value })} value={form.usageInstructions} />
-              </label>
-            </div>
-          </div>
+            {selected.mode === "reference" && selected.referenceMarkdown && <details className="template-reference"><summary><BookOpen size={15} />参考原文 <span>只用于写法分析</span></summary><pre>{selected.referenceMarkdown}</pre></details>}
+            <section className="template-section" id="template-outline"><div className="template-section__heading"><div><span>01</span><div><h3>模板骨架</h3><p>安排文章结构，并用变量标记需要替换的内容。</p></div></div><span className="template-section__meta">{form.markdown.length.toLocaleString()} 字符</span></div><label className="field"><textarea className="template-outline-input" aria-label="模板骨架" disabled={selected.isBuiltIn} onChange={event => update({ markdown: event.target.value })} rows={12} value={form.markdown} /></label></section>
+            <section className="template-section" id="template-style"><div className="template-section__heading"><div><span>02</span><div><h3>文风规范</h3><p>明确文章面向谁，以及表达节奏和语气。</p></div></div></div><div className="template-field-grid template-field-grid--three">{profileFields.style.map(([key,label]) => <label className="field" key={key}><span>{label}</span><textarea aria-label={label} rows={2} disabled={selected.isBuiltIn} value={String((JSON.parse(form.styleProfile) as Record<string, unknown>)[key] ?? "")} onChange={event => { const data=JSON.parse(form.styleProfile); update({styleProfile:JSON.stringify({...data,[key]:event.target.value})}); }} /></label>)}</div></section>
+            <section className="template-section" id="template-structure"><div className="template-section__heading"><div><span>03</span><div><h3>结构规范</h3><p>定义开篇、章节推进、段落和结尾方式。</p></div></div></div><div className="template-field-grid template-field-grid--two">{profileFields.structure.map(([key,label]) => <label className="field" key={key}><span>{label}</span><textarea aria-label={label} rows={2} disabled={selected.isBuiltIn} value={String((JSON.parse(form.structureProfile) as Record<string, unknown>)[key] ?? "")} onChange={event => { const data=JSON.parse(form.structureProfile); update({structureProfile:JSON.stringify({...data,[key]:event.target.value})}); }} /></label>)}</div></section>
+            <section className="template-section" id="template-layout"><div className="template-section__heading"><div><span>04</span><div><h3>排版规范</h3><p>控制列表、表格、代码块、图片和重点的呈现。</p></div></div></div><div className="template-field-grid template-field-grid--two">{profileFields.layout.map(([key,label]) => <label className="field" key={key}><span>{label}</span><textarea aria-label={label} rows={2} disabled={selected.isBuiltIn} value={String((JSON.parse(form.layoutProfile) as Record<string, unknown>)[key] ?? "")} onChange={event => { const data=JSON.parse(form.layoutProfile); update({layoutProfile:JSON.stringify({...data,[key]:event.target.value})}); }} /></label>)}</div><div className="template-toggles"><span>内容元素</span>{([["useLists","列表"],["useTables","表格"],["useBlockquotes","引用"],["useCodeBlocks","代码块"]] as const).map(([key,label]) => <label key={key}><input type="checkbox" disabled={selected.isBuiltIn} checked={(JSON.parse(form.layoutProfile) as Record<string, unknown>)[key] === true} onChange={event => { const data=JSON.parse(form.layoutProfile); update({layoutProfile:JSON.stringify({...data,[key]:event.target.checked})}); }} /><span>{label}</span></label>)}</div></section>
+            <section className="template-section" id="template-blocks"><div className="template-section__heading"><div><span>05</span><div><h3>固定内容</h3><p>设置需要保留的说明或固定文案。</p></div></div></div><FixedContentFields disabled={selected.isBuiltIn} onChange={value => update({fixedBlocks:value})} value={form.fixedBlocks} /></section>
+            <section className="template-section" id="template-usage"><div className="template-section__heading"><div><span>06</span><div><h3>使用说明</h3><p>补充 Agent 应遵守的特定要求。</p></div></div></div><label className="field"><textarea aria-label="使用说明" disabled={selected.isBuiltIn} rows={4} value={form.usageInstructions} onChange={event => update({usageInstructions:event.target.value})} /></label><label className="field template-variables"><span>变量</span><input aria-label="变量" disabled={selected.isBuiltIn} value={form.variables} onChange={event => update({variables:event.target.value})} /></label></section>
+          </>
         )}
-
-        <div style={{ display: "grid", gap: 12, maxWidth: 940, marginTop: 20 }}>
-          <div className="panel" style={{ display: "grid", gap: 10 }}>
-            <h2 style={{ margin: 0 }}>新建模板</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <input onChange={(event) => setName(event.target.value)} placeholder="模板名称" value={name} />
-              <input onChange={(event) => setDescription(event.target.value)} placeholder="一句话描述" value={description} />
-            </div>
-            <textarea
-              onChange={(event) => setMarkdown(event.target.value)}
-              placeholder="Markdown 模板骨架"
-              rows={6}
-              value={markdown}
-            />
-            <button className="button button--primary" onClick={() => void create()} type="button">创建模板</button>
-          </div>
-
-          <div className="panel" style={{ display: "grid", gap: 10 }}>
-            <h2 style={{ margin: 0 }}>从参考文章提取</h2>
-            <p className="muted" style={{ fontSize: 12 }}>
-              只提取结构与表达方式；事实内容会被替换为变量。提取会同时生成文风、结构、排版画像。
-            </p>
-            <textarea
-              onChange={(event) => setExtractSource(event.target.value)}
-              placeholder="粘贴参考文章……"
-              rows={7}
-              value={extractSource}
-            />
-              <label><input type="checkbox" checked={rightsConfirmed} onChange={e => setRightsConfirmed(e.target.checked)} /> 我拥有参考文章版权或已取得使用许可</label>
-              {extracting && <p role="status">提取中，已等待 {extractSeconds} 秒；最长等待 180 秒，超时后可重试。</p>}
-
-            <button className="button button--quiet" disabled={extracting} onClick={() => void extract()} type="button">
-              {extracting ? <LoaderCircle className="spin" size={15} /> : <Wand2 size={15} />}
-              {extracting ? "提取中……" : "提取模板"}
-            </button>
-          </div>
         </div>
-        </div>
+        {selected && form && <nav aria-label="模板章节" className="template-outline-nav">{[["template-outline","骨架"],["template-style","文风"],["template-structure","结构"],["template-layout","排版"],["template-blocks","固定内容"],["template-usage","使用说明"]].map(([id,label],i)=><a className={activeSection===id?"is-active":""} href={`#${id}`} key={id} onClick={()=>setActiveSection(id)}><span>0{i+1}</span>{label}</a>)}</nav>}
+        <footer className="template-savebar"><div>{isDirty ? <><span className="template-dirty-dot" />有未保存的修改</> : <><Check size={14} />已保存</>}</div><div><button className="button button--quiet" onClick={() => setCreateOpen(true)} type="button"><FilePlus2 size={15} />新建</button><button className="button button--primary" disabled={!isDirty || selected?.isBuiltIn || saving} onClick={() => void save()} type="button"><Save size={15} />{saving ? "保存中" : "保存修改"}</button></div></footer>
       </div>
+      {(createOpen || extractOpen) && <div className="template-modal-backdrop" onClick={() => {setCreateOpen(false);setExtractOpen(false);}}><section aria-label={createOpen?"新建模板":"从参考文章提取"} aria-modal="true" className="template-modal" onClick={event=>event.stopPropagation()} role="dialog"><header><div><span className="page-kicker">模板库</span><h2>{createOpen?"新建模板":"从参考文章提取"}</h2></div><button className="icon-button" aria-label="关闭" onClick={()=>{setCreateOpen(false);setExtractOpen(false);}} type="button">×</button></header>{error && <div role="alert" className="workflow-task__failure"><p>{error}</p></div>}{createOpen?<div className="template-modal__body"><label className="field"><span>模板名称</span><input autoFocus onChange={event=>setName(event.target.value)} placeholder="例如：产品发布说明" value={name}/></label><label className="field"><span>用途说明</span><input onChange={event=>setDescription(event.target.value)} placeholder="简要说明模板适用场景" value={description}/></label><label className="field"><span>模板骨架</span><textarea rows={9} onChange={event=>setMarkdown(event.target.value)} placeholder="# {{title}}\n\n## {{section}}\n{{content}}" value={markdown}/></label></div>:<div className="template-modal__body"><p className="muted">分析结构和表达方式，将具体事实替换为变量；参考原文只用于写法分析。</p><label className="field"><span>参考文章</span><textarea rows={12} onChange={event=>setExtractSource(event.target.value)} placeholder="粘贴 Markdown 或纯文本" value={extractSource}/></label><label className="template-rights"><input type="checkbox" checked={rightsConfirmed} onChange={event=>setRightsConfirmed(event.target.checked)}/>我拥有参考文章版权或已取得使用许可</label>{extracting&&<p role="status">提取中，已等待 {extractSeconds} 秒；最长等待 180 秒。</p>}</div>}<footer><button className="button button--quiet" onClick={()=>{setCreateOpen(false);setExtractOpen(false);}} type="button">取消</button><button className="button button--primary" disabled={createOpen?(!name.trim()||!markdown.trim()):extracting||!rightsConfirmed||!extractSource.trim()} onClick={()=>void (createOpen?create():extract())} type="button">{extracting?<LoaderCircle className="spin" size={15}/>:createOpen?<Plus size={15}/>:<Wand2 size={15}/ >}{extracting?"处理中":createOpen?"创建模板":"提取模板"}</button></footer></section></div>}
     </section>
   );
 }
