@@ -1,0 +1,3 @@
+# Preserve generated document bytes on Windows checkouts.
+*.pdf binary
+*.png binary
