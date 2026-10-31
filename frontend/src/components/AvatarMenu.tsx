@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { useLayoutEffect } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronUp, CircleUserRound, LogIn, LogOut, Moon, Sun, UserPlus } from "lucide-react";
+import { ArrowRightLeft, ChevronUp, CircleUserRound, LogIn, LogOut, Moon, Sun, UserPlus } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import "./AvatarMenu.css";
 
@@ -76,6 +76,15 @@ export function AvatarMenu({ runtimeReady, onNavigate, theme, onToggleTheme }: {
                 <strong>{user.displayName || user.username}</strong>
                 <small>@{user.username}{user.role === "admin" ? " · 管理员" : ""}</small>
               </div>
+              <button
+                className="avatar-menu__item"
+                onClick={() => { setOpen(false); onNavigate(); navigate("/login?switch=1"); }}
+                role="menuitem"
+                type="button"
+              >
+                <ArrowRightLeft aria-hidden="true" size={15} />
+                切换账号
+              </button>
               <button
                 className="avatar-menu__item"
                 onClick={async () => {
