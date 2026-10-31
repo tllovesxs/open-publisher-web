@@ -57,6 +57,10 @@ export function useThemeSetting(): {
       setResolved(applyTheme(next));
     };
     window.addEventListener(THEME_EVENT, sync);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY || event.key === null) sync();
+    };
+    window.addEventListener("storage", onStorage);
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystem = () => {
       if (getThemeSetting() === "system") setResolved(applyTheme("system"));
@@ -64,6 +68,7 @@ export function useThemeSetting(): {
     media.addEventListener("change", onSystem);
     return () => {
       window.removeEventListener(THEME_EVENT, sync);
+      window.removeEventListener("storage", onStorage);
       media.removeEventListener("change", onSystem);
     };
   }, []);

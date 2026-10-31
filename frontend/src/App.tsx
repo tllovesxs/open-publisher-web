@@ -159,6 +159,8 @@ function SettingsLogin() {
 }
 
 export default function App() {
+  // Keep public routes and login dialogs subscribed even outside the workspace.
+  useThemeSetting();
   return (
     <BrowserRouter>
       <AuthProvider>

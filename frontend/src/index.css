@@ -126,7 +126,9 @@ html[data-theme='dark'] body {
 }
 .auth-page {
   align-items: center;
-  background: var(--bg-base);
+  background: var(--canvas);
+  color: var(--ink);
+  box-sizing: border-box;
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -134,7 +136,8 @@ html[data-theme='dark'] body {
 }
 
 .auth-card {
-  background: var(--bg-elevated);
+  background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--border);
   border-radius: 16px;
   display: grid;
@@ -163,9 +166,9 @@ html[data-theme='dark'] body {
 }
 
 .auth-form input {
-  background: var(--bg-base);
+  background: var(--canvas);
   border: 1px solid var(--border);
-  color: var(--text);
+  color: var(--ink);
   padding: 9px 10px;
 }
 
