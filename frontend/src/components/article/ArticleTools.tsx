@@ -104,10 +104,10 @@ export function AiModifyPane({
         await new Promise((resolve) => setTimeout(resolve, 500));
         const status = await api.get<{ status: string }>(`/agent-runs/${run.data.id}`);
         if (status.data.status === "completed") {
-          const journal = await api.get<{ events: Array<{ type: string; payload: Record<string, unknown> }> }>(
+          const journal = await api.get<Array<{ type: string; payload: Record<string, unknown> }>>(
             `/agent-runs/${run.data.id}/events?after=0`,
           );
-          const ready = journal.data.events.find((event) => event.type === "rewrite.candidate_ready");
+          const ready = journal.data.find((event) => event.type === "rewrite.candidate_ready");
           const replacement = String((ready?.payload?.replacements as string[] | undefined)?.[0] ?? "");
           if (!ready || !replacement) {
             setError("运行完成但没有候选结果。");
@@ -303,10 +303,10 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
         await new Promise((r) => setTimeout(r, 500));
         const status = await api.get<{ status: string }>(`/agent-runs/${run.data.id}`);
         if (status.data.status === "completed") {
-          const events = await api.get<{ events: Array<{ type: string; payload: Record<string, unknown> }> }>(
+          const events = await api.get<Array<{ type: string; payload: Record<string, unknown> }>>(
             `/agent-runs/${run.data.id}/events?after=0`,
           );
-          const ready = events.data.events.find((e) => e.type === "rewrite.candidate_ready");
+          const ready = events.data.find((e) => e.type === "rewrite.candidate_ready");
           if (ready) {
             setCandidate({
               replacements: ready.payload.replacements as string[],
