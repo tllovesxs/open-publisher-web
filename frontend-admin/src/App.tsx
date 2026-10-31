@@ -46,7 +46,6 @@ const emptyForm = {
 };
 
 const VIEWS = [
-  { view: "operations", title: "运营概览", desc: "用量、成本和账号运营状态。" },
   { view: "text", title: "文本模型", desc: "用于文章撰写、修改和内容检查。" },
   { view: "image", title: "生图模型", desc: "文章配图使用的图像生成模型。" },
   { view: "embedding", title: "资料检索模型", desc: "理解参考资料，帮助写作时找到相关内容。" },
@@ -301,8 +300,8 @@ function AiConfigPage() {
             <small>管理控制台</small>
           </div>
         </div>
-        <nav className="admin-nav" aria-label="模型设置">
-          <span className="nav-title">运营</span>
+        <nav className="admin-nav" aria-label="管理导航">
+          <span className="nav-title">运营管理</span>
           <button className={activeView === "operations" ? "nav-link active" : "nav-link"} onClick={() => setActiveView("operations")} type="button">运营工作区</button>
           <span className="nav-title">模型设置</span>
           {VIEWS.map((item) => (
@@ -325,8 +324,8 @@ function AiConfigPage() {
       </aside>
       <main className="admin-main">
         <div className="admin-main-head">
-          <h1>{VIEWS.find((v) => v.view === activeView)?.title ?? "管理控制台"}</h1>
-          <p className="muted">{VIEWS.find((v) => v.view === activeView)?.desc}</p>
+          <h1>{activeView === "operations" ? "运营工作区" : VIEWS.find((v) => v.view === activeView)?.title ?? "管理控制台"}</h1>
+          <p className="muted">{activeView === "operations" ? "用户、用量、价格与管理员操作。" : VIEWS.find((v) => v.view === activeView)?.desc}</p>
         </div>
       {activeView === "operations" && <AdminOperations />}
       <ModelPanel id="sec-current" hidden={activeView !== "text"} title="文本模型配置" actions={<>

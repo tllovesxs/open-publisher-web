@@ -148,7 +148,16 @@ def update_user(user_id: str, body: UserUpdateIn, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail="不能停用当前管理员账号")
     if user_id == admin.id and changes.get("role") == "user":
         raise HTTPException(status_code=409, detail="不能移除当前管理员权限")
-    if changes.get("isActive") is False and row.role == "admin" and db.scalar(select(func.count()).select_from(AppUser).where(AppUser.role == "admin", AppUser.is_active.is_(True))) <= 1:
+    removes_admin_access = (
+        row.role == "admin"
+        and row.is_active
+        and (changes.get("isActive") is False or changes.get("role") == "user")
+    )
+    if removes_admin_access and db.scalar(
+        select(func.count()).select_from(AppUser).where(
+            AppUser.role == "admin", AppUser.is_active.is_(True)
+        )
+    ) <= 1:
         raise HTTPException(status_code=409, detail="至少保留一个可用管理员账号")
     if "displayName" in changes and changes["displayName"] is not None:
         row.display_name = changes["displayName"].strip()
