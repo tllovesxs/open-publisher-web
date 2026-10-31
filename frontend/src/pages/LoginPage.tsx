@@ -42,7 +42,7 @@ export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => v
 
   return (
     <main className="auth-page" style={onCancel ? { minHeight: 0, background: "transparent", padding: 0 } : undefined}>
-      <div className="auth-card" style={{ background: "var(--surface, #fff)", color: "var(--ink)", boxSizing: "border-box", boxShadow: onCancel ? "var(--shadow-overlay)" : undefined, maxWidth: onCancel ? "100%" : undefined }}>
+      <div className="auth-card" style={{ boxSizing: "border-box", boxShadow: onCancel ? "var(--shadow-overlay)" : undefined, maxWidth: onCancel ? "100%" : undefined }}>
         <div className="auth-brand">
           <strong>稿流</strong>
           <span>AI 内容工作台</span>

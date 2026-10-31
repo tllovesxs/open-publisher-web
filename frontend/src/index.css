@@ -10,17 +10,11 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1200px 800px at 18% 0%, #d8e9ff 0%, transparent 60%),
-    radial-gradient(1000px 700px at 85% 12%, #ffe9f2 0%, transparent 55%),
-    linear-gradient(180deg, #eef3f9 0%, #e6ecf4 100%);
+  background: #f3ece3;
 }
 
 html[data-theme='dark'] body {
-  background:
-    radial-gradient(1200px 800px at 18% 0%, #1d2b45 0%, transparent 60%),
-    radial-gradient(1000px 700px at 85% 12%, #2b1d33 0%, transparent 55%),
-    linear-gradient(180deg, #14171c 0%, #101318 100%);
+  background: #0d0d0d;
 }
 
 /* ===== Web 版补充：表单必填/选填标识（蓝本 field__head 布局 + 右侧标签） ===== */

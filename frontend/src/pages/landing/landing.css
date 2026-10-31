@@ -18,6 +18,28 @@
   scroll-behavior: smooth;
   scrollbar-color: var(--gl-rule) var(--gl-bg);
 }
+:root[data-theme="light"] .gl-home {
+  --gl-bg: #f3ece3;
+  --gl-surface: #fffaf4;
+  --gl-raised: #f7efe6;
+  --gl-text: #26221f;
+  --gl-muted: #766b63;
+  --gl-accent: #c9503b;
+  --gl-dark-ink: #fffaf4;
+  --gl-rule: #d8c8bb;
+  color-scheme: light;
+}
+:root[data-theme="dark"] .gl-home {
+  --gl-bg: #0d0d0d;
+  --gl-surface: #171615;
+  --gl-raised: #211e1c;
+  --gl-text: #fff8f1;
+  --gl-muted: #b9aaa0;
+  --gl-accent: #e2765d;
+  --gl-dark-ink: #211815;
+  --gl-rule: #51443d;
+  color-scheme: dark;
+}
 .gl-home *, .gl-home *::before, .gl-home *::after { box-sizing: border-box; }
 .gl-home ::selection { background: var(--gl-accent); color: var(--gl-dark-ink); }
 .gl-home a { color: inherit; text-decoration: none; text-underline-offset: 5px; }

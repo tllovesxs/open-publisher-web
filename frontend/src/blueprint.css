@@ -6,38 +6,38 @@
      readable veil above it, so wallpaper and system-theme tones can remain
      visible without becoming application artwork. */
   --app-background: transparent;
-  --content-background: #ffffff;
-  --glass-surface: rgb(255 255 255 / 42%);
-  --glass-surface-strong: rgb(255 255 255 / 62%);
-  --glass-border: rgb(255 255 255 / 58%);
-  --glass-border-subtle: rgb(120 120 120 / 16%);
-  --glass-shadow: 0 10px 32px rgb(40 40 40 / 8%);
+  --content-background: #fffaf4;
+  --glass-surface: rgb(255 252 247 / 88%);
+  --glass-surface-strong: rgb(255 253 249 / 96%);
+  --glass-border: rgb(112 78 54 / 18%);
+  --glass-border-subtle: rgb(112 78 54 / 14%);
+  --glass-shadow: 0 10px 32px rgb(73 47 29 / 10%);
   --glass-blur: 24px;
   --panel-radius: 18px;
   --canvas: var(--content-background);
   --sidebar: var(--glass-surface);
-  --surface: #ffffff;
-  --surface-raised: #fbfbfb;
-  --surface-muted: #f5f5f5;
-  --ink: #1a1c1f;
-  --ink-soft: #35373a;
-  --muted: #707070;
-  --faint: #9a9a9a;
-  --border: rgb(15 23 42 / 11%);
-  --border-strong: rgb(15 23 42 / 17%);
-  --accent: #339cff;
-  --accent-hover: #178bfa;
-  --accent-strong: #178bfa;
-  --accent-soft: #e9f4ff;
-  --accent-ink: #0764bd;
-  --info: #316d9c;
-  --info-soft: #edf5fb;
-  --success: #287458;
-  --success-soft: #eaf6ef;
-  --warning: #966d21;
-  --warning-soft: #fff7e7;
-  --danger: #b0434e;
-  --danger-soft: #fceef0;
+  --surface: #fffdf9;
+  --surface-raised: #fff8f0;
+  --surface-muted: #f3ece3;
+  --ink: #26221f;
+  --ink-soft: #4d443e;
+  --muted: #766b63;
+  --faint: #9c8f85;
+  --border: rgb(92 64 45 / 16%);
+  --border-strong: rgb(92 64 45 / 26%);
+  --accent: #c9503b;
+  --accent-hover: #a94031;
+  --accent-strong: #a94031;
+  --accent-soft: #f8dfd7;
+  --accent-ink: #8e3528;
+  --info: #6d665f;
+  --info-soft: #eee8e1;
+  --success: #48715e;
+  --success-soft: #e4efe8;
+  --warning: #956c2d;
+  --warning-soft: #f8edd6;
+  --danger: #a54145;
+  --danger-soft: #f8e2e1;
   /* Legacy aliases stay available for existing components, but no longer
      introduce a synthetic colour gradient. */
   --glass-highlight: inset 0 1px rgb(255 255 255 / 64%);
@@ -48,7 +48,7 @@
   --chrome-highlight: rgb(255 255 255 / 62%);
   --chrome-hover: rgb(255 255 255 / 48%);
   --chrome-active: rgb(255 255 255 / 62%);
-  --shadow-overlay: 0 0 0 1px rgb(15 23 42 / 3%), 0 2px 7px rgb(15 23 42 / 5%), 0 16px 32px rgb(15 23 42 / 9%);
+  --shadow-overlay: 0 0 0 1px rgb(92 64 45 / 5%), 0 2px 7px rgb(92 64 45 / 7%), 0 16px 32px rgb(92 64 45 / 12%);
   --sidebar-width: 184px;
   --topbar-height: 56px;
   font-synthesis: none;
@@ -58,37 +58,37 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --app-background: transparent;
-  --content-background: #202020;
+  --content-background: #101010;
   /* A dark Mica surface needs a stable charcoal base. The slight evergreen
      bias lets the native wallpaper tone read at the edge without turning the
      chrome into a broad green-grey slab. */
-  --glass-surface: rgb(20 24 20 / 86%);
-  --glass-surface-strong: rgb(27 31 27 / 92%);
-  --glass-border: rgb(255 255 255 / 10%);
-  --glass-border-subtle: rgb(255 255 255 / 6%);
+  --glass-surface: rgb(18 17 16 / 94%);
+  --glass-surface-strong: rgb(25 23 21 / 97%);
+  --glass-border: rgb(255 239 226 / 12%);
+  --glass-border-subtle: rgb(255 239 226 / 8%);
   --glass-shadow: 0 12px 34px rgb(0 0 0 / 28%);
   --glass-blur: 24px;
   --panel-radius: 18px;
   --canvas: var(--content-background);
   --sidebar: var(--glass-surface);
-  --surface: #202020;
-  --surface-raised: #272727;
-  --surface-muted: #303030;
-  --ink: #ffffff;
-  --ink-soft: #e2e2e2;
-  --muted: #adadad;
-  --faint: #858585;
-  --border: rgb(255 255 255 / 13%);
-  --border-strong: rgb(255 255 255 / 21%);
-  --accent: #339cff;
-  --accent-hover: #5aaeff;
-  --accent-strong: #5aaeff;
-  --accent-soft: #153e62;
-  --accent-ink: #acd9ff;
-  --info: #8fc3e8;
-  --info-soft: #283b49;
-  --success: #85c6a3;
-  --success-soft: #263d31;
+  --surface: #171615;
+  --surface-raised: #211e1c;
+  --surface-muted: #292522;
+  --ink: #fff8f1;
+  --ink-soft: #e8ddd4;
+  --muted: #b9aaa0;
+  --faint: #8e7e73;
+  --border: rgb(255 239 226 / 14%);
+  --border-strong: rgb(255 239 226 / 24%);
+  --accent: #e2765d;
+  --accent-hover: #f18a70;
+  --accent-strong: #f18a70;
+  --accent-soft: #4c2922;
+  --accent-ink: #ffc1ae;
+  --info: #c0aaa0;
+  --info-soft: #332b27;
+  --success: #94c7a8;
+  --success-soft: #263b31;
   --warning: #e9bf70;
   --warning-soft: #433720;
   --danger: #eb928d;
@@ -493,6 +493,15 @@ p {
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(14px);
 }
+
+/* The chrome uses theme tokens instead of a fixed white veil, so the
+   workspace and public/login surfaces switch together. */
+.workspace-topbar,
+.lifecycle-rail { background: color-mix(in srgb, var(--surface) 92%, transparent); }
+.app-navigation__item:hover { background: color-mix(in srgb, var(--surface) 78%, transparent); }
+.app-navigation__item.is-active { background: color-mix(in srgb, var(--surface) 94%, transparent); }
+.auth-page { background: var(--canvas); }
+.auth-card { background: var(--surface); color: var(--ink); }
 
 .workspace-topbar > strong {
   font-size: 14px;

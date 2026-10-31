@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowRight, ArrowUpRight, Pause, Play } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { useThemeSetting } from "../lib/theme";
 import MetallicPaint from "../components/MetallicPaint/MetallicPaint";
 import exampleArticle from "../data/example-article.v1.md?raw";
 import "./landing/landing.css";
@@ -30,10 +31,10 @@ function StructureImage({ compact = false }: { compact?: boolean }) {
   return <picture><source media={compact ? "(max-width: 1100px)" : "(max-width: 640px)"} srcSet="/landing-writing-structure-mobile.svg" /><img src="/landing-writing-structure.svg" width="960" height="360" alt="搭建文章结构：确定核心观点，安排内容顺序，补充过渡衔接。" /></picture>;
 }
 
-function Brand({ still }: { still: boolean }) {
+function Brand({ still, dark }: { still: boolean; dark: boolean }) {
   return <a className="gl-brand" href="#gl-content" aria-label="稿流首页">
     <img src="/gaoliu-mark.svg" width="36" height="36" alt="" />
-    <MetallicPaint text="稿流" dpr={2} className="gl-wordmark" fontFamily="Microsoft YaHei, PingFang SC, sans-serif" fontWeight={800} color="#eee7ff" density={2.1} softness={0.18} dispersion={0.12} distortion={0.05} edgeBend={0.7} speed={0.45} scale={1.1} mouseTilt={0.25} intro={false} paused={still} />
+    <MetallicPaint text="稿流" dpr={2} className="gl-wordmark" fontFamily="Microsoft YaHei, PingFang SC, sans-serif" fontWeight={800} color={dark ? "#f2e7de" : "#2b2521"} density={2.1} softness={0.18} dispersion={0.12} distortion={0.05} edgeBend={0.7} speed={0.45} scale={1.1} mouseTilt={0.25} intro={false} paused={still} />
   </a>;
 }
 
@@ -64,6 +65,7 @@ function StageOutput({ stage }: { stage: number }) {
 
 export default function LandingPage() {
   const { user } = useAuth();
+  const { resolved: theme } = useThemeSetting();
   const [stage, setStage] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [motionPaused, setMotionPaused] = useState(false);
@@ -102,7 +104,7 @@ export default function LandingPage() {
   return <main className={`gl-home${still ? " gl-home--still" : ""}`}>
     <a className="gl-skip" href="#gl-content">跳到主要内容</a>
     <header className="gl-nav"><div className="gl-frame gl-nav__inner">
-      <Brand still={still} /><nav aria-label="产品导航"><a href="#experience">创作示例</a><a href="#capabilities">产品能力</a><a href="#faq">常见问题</a></nav>
+      <Brand still={still} dark={theme === "dark"} /><nav aria-label="产品导航"><a href="#experience">创作示例</a><a href="#capabilities">产品能力</a><a href="#faq">常见问题</a></nav>
       <Link className="gl-nav-login" to={user ? "/articles" : "/login"}>{user ? "我的稿件" : "登录"}<ArrowUpRight size={16} /></Link>
     </div></header>
     <div className="gl-frame" id="gl-content" tabIndex={-1}>
@@ -148,7 +150,7 @@ export default function LandingPage() {
         ["同步发布有什么限制？", "当前同步通道依赖文章同步助手浏览器扩展，以及扩展中已登录的平台账号。只提交平台草稿，需由你到平台确认发布；可用平台以扩展实际返回的账号为准。手机上能否使用取决于浏览器扩展支持。"],
       ].map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div></section>
       <section className="gl-close" aria-labelledby="gl-close-title"><div><h2 id="gl-close-title">下一篇，就从你的想法开始。</h2><p>把资料带进来，把判断留给自己。</p></div><Link className="gl-button" to="/">开始创作<ArrowUpRight size={19} /></Link></section>
-      <footer className="gl-footer"><Brand still={still} /><span>让想法成稿，让好内容流动。</span><button type="button" className="gl-text-link" disabled={reduced} onClick={() => setMotionPaused(value => !value)}>{reduced ? "已减少动态效果" : motionPaused ? "恢复品牌动效" : "暂停品牌动效"}</button></footer>
+      <footer className="gl-footer"><Brand still={still} dark={theme === "dark"} /><span>让想法成稿，让好内容流动。</span><button type="button" className="gl-text-link" disabled={reduced} onClick={() => setMotionPaused(value => !value)}>{reduced ? "已减少动态效果" : motionPaused ? "恢复品牌动效" : "暂停品牌动效"}</button></footer>
     </div>
   </main>;
 }
