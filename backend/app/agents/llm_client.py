@@ -120,17 +120,18 @@ class LLMClient:
             return self._client.chat.completions.create(**retry_kwargs)
 
     def _record_usage(self, *, usage: dict | None = None, status: str = "succeeded", latency_ms: int | None = None, image_count: int = 0) -> None:
-        if not self.usage_recorder:
+        recorder = getattr(self, "usage_recorder", None)
+        if not recorder:
             return
         usage = usage or {}
         try:
-            self.usage_recorder({
-                "serviceType": self.usage_service_type,
-                "operation": self.usage_operation,
+            recorder({
+                "serviceType": getattr(self, "usage_service_type", "text"),
+                "operation": getattr(self, "usage_operation", "llm"),
                 "modelId": self.model,
-                "provider": self.provider,
-                "profileId": self.profile_id,
-                "runId": self.usage_run_id,
+                "provider": getattr(self, "provider", "custom"),
+                "profileId": getattr(self, "profile_id", None),
+                "runId": getattr(self, "usage_run_id", None),
                 "inputTokens": usage.get("inputTokens", usage.get("prompt_tokens")),
                 "outputTokens": usage.get("outputTokens", usage.get("completion_tokens")),
                 "imageCount": image_count,

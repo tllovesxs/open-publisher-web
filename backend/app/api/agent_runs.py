@@ -103,17 +103,25 @@ def create_article_run(
     from app.agents.llm_client import LLMClient
     prefs = read_preferences(db, "user:" + user.id)
     config = resolve_llm_profile_config(db, profile_id=body.profileId or preferred_profile_id(db, prefs), owner_user_id=user.id)
-    node_llms = {}
+    def make_llm(node_config, **kwargs):
+        try:
+            return LLMClient(config=node_config, **kwargs)
+        except TypeError as exc:
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return LLMClient(config=node_config)
+
+    node_llm_configs = {}
     if not body.profileId:
         for node_id in (prefs.get("nodeProfileIds") or {}):
             node_config = resolve_llm_profile_config(db, profile_id=preferred_profile_id(db, prefs, node_id), owner_user_id=user.id)
-            node_llms[node_id] = LLMClient(config=node_config)
+            node_llm_configs[node_id] = node_config
     recorder = UsageRecorder(db, user_id=user.id, operation="article-create", resource_id=body.articleId, provider=config.get("provider", "custom"))
     node_llms = {
-        node_id: LLMClient(config=node_config, usage_recorder=recorder, usage_operation="article-create")
-        for node_id, node_config in node_llms.items()
+        node_id: make_llm(node_config, usage_recorder=recorder, usage_operation="article-create")
+        for node_id, node_config in node_llm_configs.items()
     }
-    service = WriterService(db, llm=LLMClient(config=config, usage_recorder=recorder, usage_operation="article-create"), node_llms=node_llms)
+    service = WriterService(db, llm=make_llm(config, usage_recorder=recorder, usage_operation="article-create"), node_llms=node_llms)
     creation = {
         "_ownerUserId": user.id,
         "modelSelections": {key: prefs.get(key) for key in ("embeddingModelId", "rerankModelId")},
