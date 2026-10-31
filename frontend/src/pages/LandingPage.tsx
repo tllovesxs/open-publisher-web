@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowDown, ArrowRight, ArrowUpRight, Pause, Play } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import MetallicPaint from "../components/MetallicPaint/MetallicPaint";
-import exampleArticle from "../../../backend/app/data/example-article.v1.md?raw";
+import exampleArticle from "../data/example-article.v1.md?raw";
 import "./landing/landing.css";
 
 const STAGES = ["研究", "写作", "审阅", "配图"];
