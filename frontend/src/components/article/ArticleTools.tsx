@@ -1,5 +1,6 @@
 import { Bot, ImagePlus, LoaderCircle, PencilLine, Send, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { usePersistentState } from "../../lib/usePersistentState";
 import { api } from "../../api/client";
 import { allowPaidAction } from "../../auth/loginPrompt";
@@ -334,8 +335,9 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
 
   const replaceWhole = (replacement: string) => onApply(replacement, candidate?.summary ?? "");
 
-  return (
-    <div className="studio-modal__scrim" onClick={onClose} role="presentation">
+  return createPortal(
+    <div className="studio-modal">
+      <div className="studio-modal__scrim" onClick={onClose} role="presentation" />
       <section
         aria-label="AI 改写"
         aria-modal="true"
@@ -394,7 +396,8 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
           </div>
         )}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -880,6 +883,18 @@ export function RevisionHistoryDrawer({
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -913,29 +928,46 @@ export function RevisionHistoryDrawer({
     }
   };
 
-  return (
-    <div className="studio-modal__scrim" onClick={onClose} role="presentation">
+  return createPortal(
+    <div className="studio-modal">
+      <div className="studio-modal__scrim" onClick={onClose} role="presentation" />
       <section
         aria-label="版本历史"
         aria-modal="true"
-        className="creation-picker__dialog"
-        onClick={(event) => event.stopPropagation()}
+        className="creation-picker__dialog article-revision-dialog"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+          }
+          if (event.key !== "Tab") return;
+          const controls = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }}
+        ref={dialogRef}
         role="dialog"
-        style={{ maxWidth: 620 }}
+        tabIndex={-1}
       >
         <header>
           <div>
-            <span className="page-kicker">历史</span>
             <h2>版本记录</h2>
           </div>
           <button aria-label="关闭" className="icon-button" onClick={onClose} type="button">×</button>
         </header>
-        <div style={{ display: "grid", gap: 8, maxHeight: 480, overflowY: "auto" }}>
+        <div className="article-revision-dialog__body">
           {loading && <p className="muted">加载中……</p>}
           {!loading && revisions.length === 0 && <p className="muted">还没有版本记录。</p>}
           {revisions.map((revision) => (
-            <div className="panel" key={revision.revisionId} style={{ margin: 0, padding: 10 }}>
-              <div style={{ alignItems: "center", display: "flex", gap: 8, justifyContent: "space-between" }}>
+            <div className="panel article-revision-dialog__item" key={revision.revisionId}>
+              <div className="article-revision-dialog__row">
                 <strong>#{revision.revisionNumber} {revision.title}</strong>
                 {revision.isCurrent ? (
                   <span className="article-status article-status--published">当前</span>
@@ -950,7 +982,7 @@ export function RevisionHistoryDrawer({
                   </button>
                 )}
               </div>
-              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              <p className="muted article-revision-dialog__meta">
                 {new Date(revision.createdAt).toLocaleString()} · {revision.reason || "无说明"}
               </p>
             </div>
@@ -958,7 +990,8 @@ export function RevisionHistoryDrawer({
           {error && <p className="workflow-task__failure">{error}</p>}
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
