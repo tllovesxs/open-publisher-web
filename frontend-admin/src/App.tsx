@@ -1,3 +1,4 @@
+import { AdminSelect } from "./AdminSelect";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, LoaderCircle, LogOut, Plus, RefreshCw, Settings2, Star, Trash2, XCircle } from "lucide-react";
 import { api } from "./api";
@@ -391,7 +392,7 @@ function AiConfigPage() {
               <label><span>最大输出 tokens</span><input min={256} max={200000} type="number" value={form.capabilities.maxTokens} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, maxTokens: Number(e.target.value) } })} /></label>
               <label><span>上下文 tokens</span><input min={1024} max={4000000} type="number" value={form.capabilities.contextWindow} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, contextWindow: Number(e.target.value) } })} /></label>
               <label className="check-field"><input type="checkbox" checked={form.capabilities.reasoning} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, reasoning: e.target.checked } })} /><span>启用模型思考</span></label>
-              <label><span>思考等级</span><select value={form.capabilities.thinkingLevel} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, thinkingLevel: e.target.value } })}><option value="auto">自动</option><option value="off">关闭</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
+              <label><span>思考等级</span><AdminSelect label="思考等级" value={form.capabilities.thinkingLevel} onChange={value => setForm({ ...form, capabilities: { ...form.capabilities, thinkingLevel: value } })} options={[{ id: "auto", label: "自动" }, { id: "off", label: "关闭" }, { id: "low", label: "低" }, { id: "medium", label: "中" }, { id: "high", label: "高" }]} /></label>
               <label className="check-field"><input type="checkbox" checked={form.capabilities.vision} onChange={e => setForm({ ...form, capabilities: { ...form.capabilities, vision: e.target.checked } })} /><span>支持图片理解</span></label>
               <div className="config-form-actions"><button className="quiet" disabled={busy} onClick={() => { setShowForm(false); setEditingProfileId(null); setForm(emptyForm); setNotices(current => ({ ...current, text: {} })); }} type="button">取消</button><button className="primary" disabled={busy} type="submit">保存配置</button></div>
             </form>

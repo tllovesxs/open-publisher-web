@@ -1,3 +1,4 @@
+import { AdminSelect } from "./AdminSelect";
 import { useSuccessMessage } from "./useSuccessMessage";
 import { forwardRef, useEffect, useImperativeHandle, useState, type FormEvent } from "react";
 import { Plus, Star, Trash2, X } from "lucide-react";
@@ -104,11 +105,7 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
       <label><span>服务地址</span><input disabled={busy} maxLength={500} onChange={e => setDraft({ ...draft, baseUrl: e.target.value })} placeholder={kind === "embedding" ? "留空沿用文本模型服务地址" : "https://api.example.com/v1"} required={kind !== "embedding"} value={draft.baseUrl} /></label>
       {kind === "image" && <p className="muted config-form-hint">填写 API 服务地址，而非控制台网页。硅基流动：https://api.siliconflow.cn/v1。文章配图使用文生图模型；Qwen-Image-Edit 需要原图，当前流程不支持。</p>}
       {kind !== "image" && <>
-        <label><span>接口协议</span><select aria-label="接口协议" disabled={busy} value={draft.protocol} onChange={e => setDraft({ ...draft, protocol: e.target.value })}>
-          <option value="auto">自动识别</option>
-          {kind === "embedding" ? <option value="openai">OpenAI 兼容嵌入</option> : <option value="compatible">兼容排序接口（硅基流动 / vLLM）</option>}
-          <option value="tei">HuggingFace TEI</option>
-        </select></label>
+        <label><span>接口协议</span><AdminSelect label="接口协议" disabled={busy} value={draft.protocol} onChange={value => setDraft({ ...draft, protocol: value })} options={[{ id: "auto", label: "自动识别" }, { id: kind === "embedding" ? "openai" : "compatible", label: kind === "embedding" ? "OpenAI 兼容嵌入" : "兼容排序接口（硅基流动 / vLLM）" }, { id: "tei", label: "HuggingFace TEI" }]} /></label>
         <p className="muted config-form-hint">{kind === "embedding" ? "请选择 Embedding 模型，例如 Qwen/Qwen3-Embedding-8B。自动模式使用 OpenAI 兼容嵌入；TEI 原生服务请选择 TEI。" : "请选择 Reranker 模型，例如 Qwen/Qwen3-Reranker-8B。自动模式识别硅基流动，其余地址沿用 TEI；其他云端服务请选择兼容排序接口。"} 硅基流动地址：https://api.siliconflow.cn/v1。推荐等待时限 30 秒。</p>
       </>}
       <label><span>模型名称</span><input disabled={busy} maxLength={200} onChange={e => setDraft({ ...draft, modelId: e.target.value })} placeholder="服务提供方的模型名称" required value={draft.modelId} /></label>
