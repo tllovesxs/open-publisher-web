@@ -1,0 +1,46 @@
+{
+  "catalogVersion": "2026-10-31",
+  "currency": "USD",
+  "notice": "随应用版本发布的官方公开价目快照。请在升级时复核来源页面；实际账单以服务商为准。",
+  "entries": [
+    {
+      "serviceType": "text",
+      "provider": "openai",
+      "modelId": "gpt-4o-mini",
+      "aliases": [],
+      "inputPricePerMillion": 0.15,
+      "outputPricePerMillion": 0.60,
+      "imagePrice": null,
+      "requestPrice": null,
+      "sourceUrl": "https://openai.com/api/pricing/",
+      "effectiveDate": "2024-07-18",
+      "notes": "标准文本输入与输出；不含缓存输入、Batch API 等折扣。"
+    },
+    {
+      "serviceType": "text",
+      "provider": "deepseek",
+      "modelId": "deepseek-chat",
+      "aliases": [],
+      "inputPricePerMillion": 0.28,
+      "outputPricePerMillion": 0.42,
+      "imagePrice": null,
+      "requestPrice": null,
+      "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "effectiveDate": "2025-02-08",
+      "notes": "按未命中缓存输入估算；当前用量事件未拆分缓存命中。"
+    },
+    {
+      "serviceType": "text",
+      "provider": "deepseek",
+      "modelId": "deepseek-reasoner",
+      "aliases": [],
+      "inputPricePerMillion": 0.28,
+      "outputPricePerMillion": 0.42,
+      "imagePrice": null,
+      "requestPrice": null,
+      "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "effectiveDate": "2025-02-08",
+      "notes": "按未命中缓存输入估算；当前用量事件未拆分缓存命中。"
+    }
+  ]
+}

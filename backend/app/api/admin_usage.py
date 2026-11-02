@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.models.usage import AdminAuditLog, ModelPricing, UsageEvent
 from app.models.user import AppUser
 from app.services.usage import audit
+from app.services.official_pricing import configured_model_matches, read_official_catalog
 
 router = APIRouter(prefix="/admin", tags=["admin-console"])
 
@@ -141,6 +142,17 @@ def _pricing_out(row: ModelPricing) -> dict:
 def list_pricing(db: Session = Depends(get_db), admin: AppUser = Depends(require_admin)):
     del admin
     return {"pricing": [_pricing_out(row) for row in db.scalars(select(ModelPricing).order_by(ModelPricing.service_type, ModelPricing.provider, ModelPricing.model_id)).all()]}
+
+
+@router.get("/pricing/catalog")
+def pricing_catalog(db: Session = Depends(get_db), admin: AppUser = Depends(require_admin)):
+    del admin
+    catalog = read_official_catalog()
+    return {
+        "catalogVersion": catalog["catalogVersion"],
+        "notice": catalog["notice"],
+        "matches": configured_model_matches(db),
+    }
 
 
 @router.post("/pricing", status_code=201)

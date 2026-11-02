@@ -11,6 +11,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.usage import AdminAuditLog, ModelPricing, UsageEvent
+from app.services.official_pricing import official_price_for
 
 
 def _number(value: Any) -> int | None:
@@ -39,13 +40,14 @@ def _pricing(db: Session, service_type: str, provider: str, model_id: str) -> Mo
     )
 
 
-def _cost(pricing: ModelPricing | None, input_tokens: int | None, output_tokens: int | None, image_count: int, request_count: int) -> tuple[Decimal | None, dict | None]:
+def _cost(pricing: ModelPricing | dict | None, input_tokens: int | None, output_tokens: int | None, image_count: int, request_count: int) -> tuple[Decimal | None, dict | None]:
     if pricing is None:
         return None, None
-    input_price = _decimal(pricing.input_price_per_million)
-    output_price = _decimal(pricing.output_price_per_million)
-    image_price = _decimal(pricing.image_price)
-    request_price = _decimal(pricing.request_price)
+    get = pricing.get if isinstance(pricing, dict) else lambda key: getattr(pricing, key)
+    input_price = _decimal(get("inputPricePerMillion") if isinstance(pricing, dict) else get("input_price_per_million"))
+    output_price = _decimal(get("outputPricePerMillion") if isinstance(pricing, dict) else get("output_price_per_million"))
+    image_price = _decimal(get("imagePrice") if isinstance(pricing, dict) else get("image_price"))
+    request_price = _decimal(get("requestPrice") if isinstance(pricing, dict) else get("request_price"))
     cost = Decimal("0")
     priced = False
     if input_tokens and input_price is not None:
@@ -65,7 +67,10 @@ def _cost(pricing: ModelPricing | None, input_tokens: int | None, output_tokens:
         "outputPricePerMillion": str(output_price) if output_price is not None else None,
         "imagePrice": str(image_price) if image_price is not None else None,
         "requestPrice": str(request_price) if request_price is not None else None,
-        "currency": pricing.currency,
+        "currency": get("currency"),
+        "source": "official" if isinstance(pricing, dict) else "custom",
+        "sourceUrl": get("sourceUrl") if isinstance(pricing, dict) else None,
+        "effectiveDate": get("effectiveDate") if isinstance(pricing, dict) else None,
     }
     return (cost if priced else None), snapshot
 
@@ -94,6 +99,8 @@ def record_usage(
     image_count = _number(image_count) or 0
     request_count = _number(request_count) or 0
     pricing = _pricing(db, service_type, provider, model_id)
+    if pricing is None:
+        pricing = official_price_for(service_type, provider, model_id)
     cost, snapshot = _cost(pricing, input_tokens, output_tokens, image_count, request_count)
     event = UsageEvent(
         id=str(uuid4()), user_id=user_id, run_id=run_id, resource_id=resource_id,
@@ -101,7 +108,7 @@ def record_usage(
         model_id=model_id, profile_id=profile_id, input_tokens=input_tokens,
         output_tokens=output_tokens, image_count=image_count, status=status,
         latency_ms=latency_ms, estimated_cost=cost,
-        currency=pricing.currency if pricing and cost is not None else None,
+        currency=(pricing.get("currency") if isinstance(pricing, dict) else pricing.currency) if pricing and cost is not None else None,
         pricing_snapshot=snapshot,
     )
     db.add(event)
