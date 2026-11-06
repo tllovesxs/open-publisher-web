@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import SideRays from "../components/SideRays/SideRays";
 
 export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => void; onComplete?: () => void } = {}) {
   const navigate = useNavigate();
@@ -41,12 +42,42 @@ export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => v
   };
 
   return (
-    <main className="auth-page" style={onCancel ? { minHeight: 0, background: "transparent", padding: 0 } : undefined}>
-      <div className="auth-card" style={{ boxSizing: "border-box", boxShadow: onCancel ? "var(--shadow-overlay)" : undefined, maxWidth: onCancel ? "100%" : undefined }}>
-        <div className="auth-brand">
+    <main className={`auth-page${onCancel ? " auth-page--dialog" : ""}`} style={onCancel ? { minHeight: 0, background: "transparent", padding: 0 } : undefined}>
+      {!onCancel && (
+        <section className="auth-visual" aria-label="稿流 AI 内容创作">
+          <div className="auth-visual__image" aria-hidden="true" />
+          <SideRays
+            className="auth-visual__rays"
+            rayColor1="#d8a85f"
+            rayColor2="#8c72b8"
+            origin="top-left"
+            speed={1.1}
+            intensity={1.45}
+            spread={2.4}
+            density={6}
+            sharpness={0.25}
+            glow={1.1}
+            dust={0.14}
+            opacity={0.78}
+            followMouse
+            mouseInfluence={0.48}
+          />
+          <div className="auth-visual__glow" />
+          <div className="auth-visual__grid" />
+          <div className="auth-visual__content">
+            <span className="auth-visual__eyebrow">GAOLIU · AI WRITING</span>
+            <h2>让灵感流动<br /><em>让文字成稿</em></h2>
+            <p>从一个想法开始，快速生成清晰、有温度的内容。</p>
+            <div className="auth-visual__line" aria-hidden="true" />
+          </div>
+        </section>
+      )}
+      <section className={onCancel ? undefined : "auth-form-panel"}>
+        <div className="auth-card" style={{ boxSizing: "border-box", boxShadow: onCancel ? "var(--shadow-overlay)" : undefined, maxWidth: onCancel ? "100%" : undefined }}>
+          <div className="auth-brand">
           <strong>稿流</strong>
           <span>AI 内容工作台</span>
-        </div>
+          </div>
         <h1>{mode === "login" ? switching ? "切换账号" : "登录" : "创建账号"}</h1>
         <p className="muted">{switching && user ? `当前账号：${user.displayName || user.username}。登录新账号后完成切换。` : "使用用户名和密码继续创作、管理文章与素材。"}</p>
 
@@ -115,7 +146,8 @@ export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => v
         >
           了解稿流 →
         </button>
-      </div>
+        </div>
+      </section>
     </main>
   );
 }
