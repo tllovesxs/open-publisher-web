@@ -67,7 +67,7 @@ export default function LandingPage() {
   const { user } = useAuth();
   const { resolved: theme, setSetting: setThemeSetting } = useThemeSetting();
   const [stage, setStage] = useState(0);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [motionPaused, setMotionPaused] = useState(false);
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [inView, setInView] = useState(false);
