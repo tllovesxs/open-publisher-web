@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowRight, ArrowUpRight, Pause, Play } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Moon, Pause, Play, Sun } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useThemeSetting } from "../lib/theme";
 import MetallicPaint from "../components/MetallicPaint/MetallicPaint";
@@ -65,7 +65,7 @@ function StageOutput({ stage }: { stage: number }) {
 
 export default function LandingPage() {
   const { user } = useAuth();
-  const { resolved: theme } = useThemeSetting();
+  const { resolved: theme, setSetting: setThemeSetting } = useThemeSetting();
   const [stage, setStage] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [motionPaused, setMotionPaused] = useState(false);
@@ -105,7 +105,18 @@ export default function LandingPage() {
     <a className="gl-skip" href="#gl-content">跳到主要内容</a>
     <header className="gl-nav"><div className="gl-frame gl-nav__inner">
       <Brand still={still} dark={theme === "dark"} /><nav aria-label="产品导航"><a href="#experience">创作示例</a><a href="#capabilities">产品能力</a><a href="#faq">常见问题</a></nav>
-      <Link className="gl-nav-login" to={user ? "/articles" : "/login"}>{user ? "我的稿件" : "登录"}<ArrowUpRight size={16} /></Link>
+      <div className="gl-nav-actions">
+        <button
+          className="gl-theme-toggle"
+          type="button"
+          onClick={() => setThemeSetting(theme === "light" ? "dark" : "light")}
+          aria-label={theme === "light" ? "切换到深色主题" : "切换到浅色主题"}
+          title={theme === "light" ? "切换到深色主题" : "切换到浅色主题"}
+        >
+          {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
+        <Link className="gl-nav-login" to={user ? "/articles" : "/login"}>{user ? "我的稿件" : "登录"}<ArrowUpRight size={16} /></Link>
+      </div>
     </div></header>
     <div className="gl-frame" id="gl-content" tabIndex={-1}>
       <div className="gl-opening">

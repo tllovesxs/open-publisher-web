@@ -62,6 +62,21 @@
 .gl-nav nav { display: flex; gap: 32px; }
 .gl-nav nav a, .gl-nav-login { font-size: 14px; color: var(--gl-muted); }
 .gl-nav-login { display: inline-flex; align-items: center; gap: 10px; }
+.gl-nav-actions { display: inline-flex; align-items: center; gap: 10px; }
+.gl-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--gl-muted);
+  transition: background-color .18s, color .18s;
+}
+.gl-theme-toggle:hover { background: var(--gl-raised); color: var(--gl-text); }
 .gl-nav :is(a, button) { min-height: 44px; align-content: center; }
 .gl-nav a:hover, .gl-text-link:hover, .gl-demo-foot a:hover { color: var(--gl-text); text-decoration: underline; }
 .gl-opening { display: grid; grid-template-columns: .83fr 1.17fr; gap: 64px; padding-top: 56px; align-items: start; }
