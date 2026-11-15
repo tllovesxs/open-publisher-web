@@ -43,6 +43,13 @@ export function AvatarMenu({ runtimeReady, onNavigate, theme, onToggleTheme }: {
     return () => { window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
   }, [open]);
   const initial = (user?.displayName || user?.username || "").trim().charAt(0).toUpperCase();
+  const creditBadge = !user
+    ? ""
+    : user.unlimitedCredits
+      ? "无限积分"
+      : user.isVip
+        ? "VIP · 免积分"
+        : `${typeof user.creditBalance === "number" ? user.creditBalance : 0} 积分`;
 
   return (
     <div className="avatar-menu avatar-menu--sidebar" ref={rootRef}>
@@ -75,6 +82,7 @@ export function AvatarMenu({ runtimeReady, onNavigate, theme, onToggleTheme }: {
                 <span className="account-popover__avatar" aria-hidden="true">{initial || "·"}</span>
                 <strong>{user.displayName || user.username}</strong>
                 <small>@{user.username}{user.role === "admin" ? " · 管理员" : ""}</small>
+                <span className="account-popover__credits" aria-label="积分状态">{creditBadge}</span>
               </div>
               <button
                 className="avatar-menu__item"

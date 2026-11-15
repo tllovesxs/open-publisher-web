@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, admin_usage, admin_users, agent_runs, articles, assistant, auth, health, media, projects, publishing, rag, revisions, runs, templates
+from app.api import admin, admin_usage, admin_users, agent_runs, articles, assistant, auth, credits, health, media, projects, publishing, rag, revisions, runs, templates
 from app.api import settings as settings_api
 from app.api import model_configs
 from app.api import examples
@@ -28,6 +28,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(examples.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(credits.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(admin_users.router, prefix="/api", dependencies=[Depends(require_admin)])
 app.include_router(admin_usage.router, prefix="/api", dependencies=[Depends(require_admin)])

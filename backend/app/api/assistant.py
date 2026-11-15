@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.models.assistant import AssistantMessage, AssistantSession
 from app.models.user import AppUser
 from app.services.model_profile_service import resolve_llm_profile_config
+from app.services import credits
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
@@ -175,6 +176,10 @@ def assistant_chat(
     user: AppUser = Depends(require_user),
 ):
     """兼容旧前端的无状态调用；不落库。"""
+    try:
+        credits.ensure_chat_credit(db, user)
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
     history = [
         AssistantMessage(id="local", role=message.role, content=message.text)
         for message in body.messages
@@ -184,6 +189,10 @@ def assistant_chat(
         article_context=body.articleContext, profile_id=body.profileId,
         mode=body.mode, attachments=body.attachments,
     )
+    try:
+        credits.spend_chat_credit(db, user)
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
     return {
         "reply": reply,
         "profileId": config["profileId"],
@@ -241,6 +250,10 @@ def chat_with_assistant_session(
     user: AppUser = Depends(require_user),
 ):
     session = _owned_session(db, session_id, user)
+    try:
+        credits.ensure_chat_credit(db, user)
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
     _save_message(db, session_id=session.id, role="user", content=body.message)
     if body.profileId:
         session.active_profile_id = body.profileId
@@ -257,6 +270,10 @@ def chat_with_assistant_session(
         profile_id=body.profileId or session.active_profile_id,
         mode=body.mode, attachments=body.attachments,
     )
+    try:
+        credits.spend_chat_credit(db, user)
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
     _save_message(
         db, session_id=session.id, role="assistant", content=reply,
         profile_id=config["profileId"],

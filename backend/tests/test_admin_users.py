@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -8,6 +8,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.user import AppUser
+from app.models.credit import CreditLedger
 
 
 @pytest.fixture()
@@ -63,3 +64,25 @@ def test_admin_can_demote_user_when_another_active_admin_remains(users_client):
 
     assert response.status_code == 200
     assert response.json()["role"] == "user"
+
+
+def test_admin_updates_credit_and_privilege_flags(users_client):
+    client, factory = users_client
+    seed_user(factory, "u-target", "target")
+
+    response = client.patch("/api/admin/users/u-target", json={
+        "creditBalance": 25,
+        "isVip": True,
+        "unlimitedCredits": True,
+    })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["creditBalance"] == 25
+    assert body["isVip"] is True
+    assert body["unlimitedCredits"] is True
+    with factory() as db:
+        ledger = db.scalars(
+            select(CreditLedger).where(CreditLedger.source == "admin_adjust")
+        ).all()
+        assert [row.amount for row in ledger] == [15]

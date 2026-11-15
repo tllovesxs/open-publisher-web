@@ -18,6 +18,7 @@ from app.core.rate_limit import rate_limit_auth
 from app.core.config import get_settings
 from app.core.users import (SyncUserDatabase, UserManager, create_access_token, get_user_db, get_user_manager)
 from app.models.user import AppUser
+from app.services import credits
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,6 +52,10 @@ def _user_out(user: AppUser) -> dict:
         "username": user.username,
         "displayName": user.display_name,
         "role": user.role,
+        "creditBalance": user.credit_balance,
+        "isVip": bool(user.is_vip),
+        "vipExpiresAt": user.vip_expires_at.isoformat() if user.vip_expires_at else None,
+        "unlimitedCredits": bool(user.unlimited_credits),
         "createdAt": user.created_at.isoformat() if user.created_at else None,
     }
 
@@ -93,6 +98,7 @@ async def register(
     )
     try:
         user = await user_manager.create(user_create)
+        credits.grant_signup_credits(user_db.session, user)
     except exceptions.UserAlreadyExists as exc:
         raise HTTPException(status_code=409, detail="用户名已存在") from exc
     except exceptions.InvalidPasswordException as exc:

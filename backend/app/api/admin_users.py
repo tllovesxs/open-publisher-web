@@ -1,6 +1,7 @@
 """Administrator user directory and audited account controls."""
 
 from uuid import uuid4
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +17,7 @@ from app.models.media import MediaAsset
 from app.models.usage import UsageEvent
 from app.models.user import AppUser
 from app.services.usage import audit
+from app.services import credits
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 
@@ -33,6 +35,10 @@ class UserUpdateIn(BaseModel):
     displayName: str | None = Field(default=None, min_length=1, max_length=120)
     role: str | None = Field(default=None, pattern="^(user|admin)$")
     isActive: bool | None = None
+    creditBalance: int | None = Field(default=None, ge=0, le=1_000_000_000)
+    isVip: bool | None = None
+    vipExpiresAt: datetime | None = None
+    unlimitedCredits: bool | None = None
 
 
 class PasswordResetIn(BaseModel):
@@ -48,6 +54,10 @@ def _user_summary(row, metrics: dict | None = None) -> dict:
         "displayName": row.display_name,
         "role": row.role,
         "isActive": row.is_active,
+        "creditBalance": row.credit_balance,
+        "isVip": bool(row.is_vip),
+        "vipExpiresAt": row.vip_expires_at.isoformat() if row.vip_expires_at else None,
+        "unlimitedCredits": bool(row.unlimited_credits),
         "createdAt": row.created_at.isoformat() if row.created_at else None,
         "lastLoginAt": row.last_login_at.isoformat() if row.last_login_at else None,
         "usageCalls": int(metrics.get("calls") or 0),
@@ -104,8 +114,11 @@ def create_user(body: UserCreateIn, db: Session = Depends(get_db), admin: AppUse
         id=f"u-{uuid4().hex[:32]}", username=username,
         display_name=body.displayName.strip(), hashed_password=password_helper.hash(body.password),
         role=body.role, is_active=True,
+        credit_balance=0,
     )
     db.add(row)
+    db.flush()
+    credits.grant_signup_credits(db, row)
     audit(db, actor_user_id=admin.id, action="user.create", subject_type="user", subject_id=row.id, changes={"role": row.role, "isActive": True})
     db.commit()
     db.refresh(row)
@@ -167,6 +180,16 @@ def update_user(user_id: str, body: UserUpdateIn, db: Session = Depends(get_db),
         row.role = changes["role"]
     if "isActive" in changes and changes["isActive"] is not None:
         row.is_active = changes["isActive"]
+    if "creditBalance" in changes and changes["creditBalance"] is not None:
+        amount = changes["creditBalance"] - row.credit_balance
+        if amount:
+            credits.adjust_balance(db, user_id=row.id, amount=amount, reason="管理员调整")
+    if "isVip" in changes and changes["isVip"] is not None:
+        row.is_vip = changes["isVip"]
+    if "vipExpiresAt" in changes:
+        row.vip_expires_at = changes["vipExpiresAt"]
+    if "unlimitedCredits" in changes and changes["unlimitedCredits"] is not None:
+        row.unlimited_credits = changes["unlimitedCredits"]
     audit(db, actor_user_id=admin.id, action="user.update", subject_type="user", subject_id=row.id, changes={"fields": {key: value for key, value in changes.items() if key != "password"}})
     db.commit()
     db.refresh(row)

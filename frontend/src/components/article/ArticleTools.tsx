@@ -439,7 +439,7 @@ export function AssistantDrawer({
   onApplySelection?: (replacement: string) => void;
   onClose?: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [session, setSession] = useState<AssistantSessionView | null>(null);
   const [messages, setMessages] = useState<AssistantSessionMessage[]>([]);
   const [profiles, setProfiles] = useState<AssistantModelProfile[]>([]);
@@ -569,6 +569,7 @@ export function AssistantDrawer({
         ]);
         if (mode === "rewrite") setPendingSuggestion(res.data.reply);
       }
+      await refreshUser();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(typeof detail === "string" ? detail : "助手暂时不可用，请稍后重试或联系管理员。");

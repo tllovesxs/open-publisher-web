@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ArrowRightLeft, Check, FileCheck2, FilePenLine, Globe, Image, Layout, ListTree, Monitor, Moon, Pencil, Save, Search, Settings2, ShieldCheck, Sparkles, Sun, User } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowRightLeft, CalendarCheck, Check, Coins, CreditCard, FileCheck2, FilePenLine, Globe, Image, Infinity as InfinityIcon, Layout, ListTree, Monitor, Moon, Pencil, Save, Search, Settings2, ShieldCheck, Sparkles, Sun, User } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
@@ -17,6 +17,7 @@ const EXTRA_MODELS = [
   { kind: "rerank", field: "rerankModelId", label: "检索排序模型", description: "对检索到的资料进一步排序", icon: ListTree },
 ] as const;
 interface Preferences { imageModelId: string | null; embeddingModelId: string | null; rerankModelId: string | null; disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null; nodeProfileIds: Record<string, string> }
+interface CreditsSummary { balance: number; unlimited: boolean; isVip: boolean; vipExpiresAt?: string | null; checkedInToday: boolean; dailyCheckinBonus: number }
 
 const TABS = [
   { id: "model", label: "模型", icon: Settings2 },
@@ -32,7 +33,7 @@ const STAGE_ICONS: Record<string, typeof Search> = {
 };
 
 export default function SettingsPage() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [editingProfile, setEditingProfile] = useState(false);
@@ -45,6 +46,8 @@ export default function SettingsPage() {
   const [prefs, setPrefs] = useState<Preferences>({imageModelId:null, embeddingModelId:null, rerankModelId:null, disabledNodeIds:[], webSearchMode:"auto", profileId:null, nodeProfileIds:{}});
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [credits, setCredits] = useState<CreditsSummary | null>(null);
+  const [creditBusy, setCreditBusy] = useState(false);
 
   const act = async (fn: () => Promise<unknown>, success = "已保存") => {
     setBusy(true); setNotice("");
@@ -62,6 +65,33 @@ export default function SettingsPage() {
       nodeProfileIds: Object.fromEntries(Object.entries(w.data.nodeProfileIds ?? {}).filter(([, id]) => ids.has(id))),
     });
   }, ""); }, []);
+
+  const loadCredits = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await api.get<CreditsSummary>("/me/credits");
+      setCredits(res.data);
+    } catch {
+      setCredits(null);
+    }
+  }, [user?.id]);
+
+  useEffect(() => { void loadCredits(); }, [loadCredits]);
+
+  const handleCheckin = async () => {
+    setCreditBusy(true); setNotice("");
+    try {
+      const res = await api.post<CreditsSummary>("/me/checkin");
+      setCredits(res.data);
+      await refreshUser();
+      setNotice(`签到成功，积分 +${res.data.dailyCheckinBonus}`);
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setNotice(typeof detail === "string" ? detail : "签到失败，请稍后重试。");
+    } finally {
+      setCreditBusy(false);
+    }
+  };
 
   const defaultProfile = profiles.find(p => p.id === prefs.profileId) ?? profiles.find(p => p.isDefault) ?? profiles[0];
   const modelSelect = (label: string, profileId: string | null, onChange: (value: string) => void, inherit = false, models = profiles, defaultId?: string | null) => (
@@ -185,6 +215,47 @@ export default function SettingsPage() {
               <button className="button button--quiet" disabled={busy} onClick={() => { setDisplayName(user?.displayName || user?.username || ""); setEditingProfile(true); setNotice(""); }} type="button"><Pencil size={15} />编辑资料</button>
               <button className="button button--quiet" disabled={busy} onClick={() => navigate("/login?switch=1")} type="button"><ArrowRightLeft size={15} />切换账号</button>
             </div>
+          </section>
+
+          <section className="client-settings-card client-settings-credits">
+            <header className="client-settings-section-heading">
+              <span className="client-settings-icon"><Coins size={19} aria-hidden="true" /></span>
+              <div><h2>积分与权益</h2><p>非 VIP 用户通过每日签到获得对话积分；VIP 对话免积分。</p></div>
+            </header>
+            <div className="client-settings-credit-grid">
+              <div className="client-settings-credit-item">
+                <small>可用积分</small>
+                <strong>{credits?.unlimited ? <><InfinityIcon size={20} />无限</> : (credits?.balance ?? 0)}</strong>
+              </div>
+              <div className="client-settings-credit-item">
+                <small>当前权益</small>
+                <strong>{credits?.unlimited ? "无限测试账号" : credits?.isVip ? "VIP 免积分" : "普通用户"}</strong>
+              </div>
+              <div className="client-settings-credit-item">
+                <small>每日签到</small>
+                <strong>{credits?.checkedInToday ? "今日已签到" : `+${credits?.dailyCheckinBonus ?? 1} 积分`}</strong>
+              </div>
+            </div>
+            <div className="client-settings-credit-actions">
+              <button
+                className="button button--primary"
+                disabled={creditBusy || !credits || credits.unlimited || credits.isVip || credits.checkedInToday}
+                onClick={() => void handleCheckin()}
+                type="button"
+              >
+                <CalendarCheck size={15} />
+                {credits?.checkedInToday ? "今日已签到" : "立即签到"}
+              </button>
+              <button
+                className="button button--quiet"
+                disabled={creditBusy}
+                onClick={() => setNotice("充值功能即将开放，当前暂不支持支付。")}
+                type="button"
+              >
+                <CreditCard size={15} />充值入口
+              </button>
+            </div>
+            {credits?.vipExpiresAt && <p className="client-settings-hint">VIP 有效期至 {new Date(credits.vipExpiresAt).toLocaleString("zh-CN")}</p>}
           </section>
 
           {editingProfile && (

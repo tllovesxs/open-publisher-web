@@ -6,6 +6,10 @@ export interface AuthUser {
   username: string;
   displayName: string;
   role: "user" | "admin" | string;
+  creditBalance?: number;
+  isVip?: boolean;
+  vipExpiresAt?: string | null;
+  unlimitedCredits?: boolean;
 }
 
 interface LoginPayload {
@@ -22,6 +26,7 @@ interface AuthContextValue {
   register: (username: string, password: string, displayName: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   updateProfile: (displayName: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,6 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.data);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const res = await api.get<AuthUser>("/auth/me");
+    setUser(res.data);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
@@ -83,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, updateProfile }), [user, loading, login, register, logout, updateProfile]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, updateProfile, refreshUser }), [user, loading, login, register, logout, updateProfile, refreshUser]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -9,6 +9,7 @@ from app.models.assistant import AssistantMessage, AssistantSession
 from app.models.app_secret import AppSecret, SecretAudit
 from app.models.settings_profile import ImageConfig, ModelProfile
 from app.models.user import AppUser
+from app.models.credit import CreditLedger
 from app.models.usage import AdminAuditLog, ModelPricing, UsageEvent
 from app.models.agent_runtime import AgentSession, AgentRun, AgentRunEvent, ToolExecution
 from app.models.publishing import (
@@ -42,6 +43,7 @@ __all__ = [
     "PublishReceipt",
     "ModelProfile",
     "AppUser",
+    "CreditLedger",
     "AppSecret",
     "SecretAudit",
     "UsageEvent",

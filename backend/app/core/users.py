@@ -48,6 +48,7 @@ class SyncUserDatabase(BaseUserDatabase[AppUser, str]):
         data.setdefault("display_name", username)
         data.setdefault("role", "user")
         data.setdefault("is_active", True)
+        data.setdefault("credit_balance", 0)
         user = AppUser(
             id=f"u-{uuid.uuid4().hex[:32]}",
             username=username,
