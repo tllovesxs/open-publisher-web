@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_user
 from app.db.session import get_db
 from app.models.user import AppUser
+from app.services import credits
 from app.schemas.blueprint import ArticleWriteRequest
 from app.services.article_store import (
     ArticleConflictError,
@@ -210,11 +211,16 @@ def plan_article_visual(
             "code": "ARTICLE_NOT_FOUND", "message": "Article was not found", "retryable": False,
         })
     try:
+        credits.ensure_model_call(db, user, "visual_plan")
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+    try:
         plan = VisualService(db).plan(
             markdown=article["markdown"], target_count=body.targetCount,
             asset_ids=body.assetIds, material_match_threshold=body.materialMatchThreshold,
             owner_user_id=user.id, mode=body.mode, required_asset_ids=body.requiredAssetIds,
         )
+        credits.record_model_call(db, user, "visual_plan")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return {
@@ -264,6 +270,10 @@ def apply_article_visual(
         })
     service = VisualService(db)
     try:
+        credits.ensure_model_call(db, user, "visual_apply")
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+    try:
         result = service.apply(
             article_id=article_id,
             base_revision_id=body.baseRevisionId,
@@ -272,6 +282,7 @@ def apply_article_visual(
             owner_user_id=user.id,
             image_model_id=body.imageModelId,
         )
+        credits.record_model_call(db, user, "visual_apply")
     except ArticleConflictError:
         raise _conflict() from None
     except ArticlePermissionError:

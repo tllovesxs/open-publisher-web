@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api/client";
+import { resetCreditStatus } from "../lib/creditStatus";
 
 export interface AuthUser {
   id: string;
@@ -62,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (username: string, password: string, admin = false) => {
     const res = await api.post<LoginPayload>(admin ? "/auth/admin/login" : "/auth/login", { username, password });
     const nextUser = storeSession(res.data);
+    resetCreditStatus();
+    resetCreditStatus();
     setUser(nextUser);
     return nextUser;
   }, []);
@@ -69,6 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(async (username: string, password: string, displayName: string) => {
     const res = await api.post<LoginPayload>("/auth/register", { username, password, displayName });
     const nextUser = storeSession(res.data);
+    resetCreditStatus();
+    resetCreditStatus();
     setUser(nextUser);
     return nextUser;
   }, []);
@@ -89,6 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem("opw_user_id");
+      resetCreditStatus();
+      resetCreditStatus();
       setUser(null);
     }
   }, []);

@@ -78,15 +78,37 @@
 .client-settings-stage input:disabled { cursor: default; }
 
 .client-settings-account-actions { display: flex; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
+.client-settings-credit-layout { display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 18px; align-items: start; }
+.client-settings-credit-summary { display: grid; gap: 16px; min-width: 0; }
 .client-settings-credit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .client-settings-credit-item { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
 .client-settings-credit-item small { color: var(--muted); font-size: 11px; }
-.client-settings-credit-item strong { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 18px; line-height: 1.25; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.client-settings-credit-item strong { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 26px; line-height: 1.15; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .client-settings-credit-item strong svg { flex-shrink: 0; color: var(--accent); }
 .client-settings-credit-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
 .client-settings-credit-actions .button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; }
+.client-settings-credit-actions .button { white-space: nowrap; }
+.client-settings-checkin-panel { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
+.client-settings-checkin-panel header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.client-settings-checkin-panel header strong { font-size: 13px; font-weight: 650; }
+.client-settings-checkin-panel header span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.client-settings-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.client-settings-calendar > span:not(.client-settings-calendar-day) { color: var(--muted); font-size: 10px; line-height: 18px; text-align: center; }
+.client-settings-calendar-day { display: grid; align-content: center; justify-items: center; height: 44px; border-radius: 8px; color: var(--ink-soft); font-size: 13px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.client-settings-calendar-day.is-empty { visibility: hidden; }
+.client-settings-calendar-day.is-checked { background: var(--accent-soft); color: var(--accent-ink); font-weight: 650; }
+.client-settings-calendar-day.is-today { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.client-settings-calendar-day.is-checked.is-today { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+.client-settings-calendar-day.is-future { opacity: .72; }
+.client-settings-calendar-day strong { font-weight: 620; }
+.client-settings-calendar-day em { font-style: normal; font-size: 9px; font-weight: 650; }
+.client-settings-milestones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.client-settings-milestone { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; padding: 7px 4px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+.client-settings-milestone.is-earned { border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.client-settings-checkin-panel small { color: var(--muted); font-size: 10px; line-height: 1.5; }
 .client-settings-profile-form label { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
 .client-settings-profile-form input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
 .client-settings-profile-form input:read-only { background: var(--surface-muted); color: var(--muted); }
 @media (max-width: 760px) { .client-settings-account-actions { width: 100%; } .client-settings-account-actions .button { flex: 1; } }
+@media (max-width: 860px) { .client-settings-credit-layout { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .client-settings-credit-grid { grid-template-columns: 1fr; } .client-settings-credit-actions { width: 100%; } .client-settings-credit-actions .button { flex: 1; } }

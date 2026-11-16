@@ -6,6 +6,8 @@ import { api } from "../../api/client";
 import { allowPaidAction } from "../../auth/loginPrompt";
 import { useAuth } from "../../auth/AuthContext";
 import { ToolbarSelect } from "../ui/ToolbarSelect";
+import { CreditBadge } from "../ui/CreditBadge";
+import { refreshCreditStatus } from "../../lib/creditStatus";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
@@ -101,6 +103,7 @@ export function AiModifyPane({
         selectedTexts: selection?.text.trim() ? [selection.text] : [],
         profileId: profileId || null,
       });
+      void refreshCreditStatus();
       for (let i = 0; i < 360; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         const status = await api.get<{ status: string }>(`/agent-runs/${run.data.id}`);
@@ -135,8 +138,9 @@ export function AiModifyPane({
         }
       }
       setError("AI 修改超时，请稍后重试。");
-    } catch {
-      setError("AI 修改暂时不可用，请检查模型设置或联系管理员。");
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(typeof detail === "string" && detail ? detail : "AI 修改暂时不可用，请检查模型设置或联系管理员。");
     } finally {
       setBusy(false);
     }
@@ -251,6 +255,7 @@ export function AiModifyPane({
           value={instruction}
         />
         <div className="article-ai-modify__actions">
+          <CreditBadge action="rewrite_candidate" label="AI 修改" />
           <span>Ctrl + Enter 发送</span>
           <button
             aria-label="发送 AI 修改要求"
@@ -299,6 +304,7 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
         instruction: instruction.trim(),
         selectedTexts: initialSelection?.text.trim() ? [initialSelection.text] : [],
       });
+      void refreshCreditStatus();
       // 轮询直到完成（改写通常只有一轮模型调用）
       for (let i = 0; i < 600; i += 1) {
         await new Promise((r) => setTimeout(r, 500));
@@ -327,8 +333,9 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
       }
       setError("改写超时。");
       setBusy(false);
-    } catch {
-      setError("改写暂时不可用，请检查模型设置或联系管理员。");
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(typeof detail === "string" && detail ? detail : "改写暂时不可用，请检查模型设置或联系管理员。");
       setBusy(false);
     }
   };
@@ -388,7 +395,8 @@ export function RewriteDialog({ articleId, markdown, onClose, onApply, initialSe
               />
             </div>
             {error && <p className="workflow-task__failure">{error}</p>}
-            <div>
+            <div className="rewrite-dialog__submit">
+              <CreditBadge action="rewrite_candidate" label="AI 改写" />
               <button className="button button--primary" disabled={busy} onClick={() => void start()} type="button">
                 {busy ? "生成候选中……" : "生成改写候选"}
               </button>
@@ -457,7 +465,6 @@ export function AssistantDrawer({
     top: 88,
   });
   const dragStartRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
-
   useEffect(() => {
     const clamp = () => setPosition((current) => ({
       left: Math.min(Math.max(12, current.left), Math.max(12, window.innerWidth - 120)),
@@ -850,9 +857,12 @@ export function AssistantDrawer({
             </button>
           </div>
         </div>
-        <small className="article-assistant-window__hint">
-          Enter 发送 · Shift+Enter 换行 · 上下文：当前编辑器正文
-        </small>
+        <div className="article-assistant-window__hint-row">
+          <small className="article-assistant-window__hint">
+            Enter 发送 · Shift+Enter 换行
+          </small>
+          <CreditBadge chat />
+        </div>
       </div>
     </aside>
   );

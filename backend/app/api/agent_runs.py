@@ -19,6 +19,7 @@ from app.core.auth import require_user
 from app.db.session import get_db
 from app.models.user import AppUser
 from app.services.article_store import ArticleStore
+from app.services import credits
 from app.services.run_journal import RunJournal, RunJournalError
 from app.services.writer_service import WriterLocked, WriterService
 
@@ -94,6 +95,10 @@ def create_article_run(
     user: AppUser = Depends(require_user),
 ):
     store = ArticleStore(db)
+    try:
+        credits.ensure_model_call(db, user, "article_create")
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
     article = store.read(body.articleId, user.id)
     if article and article.get("ownerId") not in (None, user.id):
         raise HTTPException(status_code=404, detail={"code": "ARTICLE_NOT_FOUND"})
@@ -139,7 +144,7 @@ def create_article_run(
     from app.services.workspace_settings import normalize_disabled_nodes
     creation["disabledNodeIds"] = normalize_disabled_nodes(creation["disabledNodeIds"])
     try:
-        return service.start_article_create(
+        result = service.start_article_create(
         article_id=body.articleId,
         prompt=body.prompt,
         tone=body.tone,
@@ -151,6 +156,8 @@ def create_article_run(
         owner_user_id=user.id,
         creation=creation,
         )
+        credits.record_model_call(db, user, "article_create")
+        return result
     except WriterLocked:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -179,14 +186,20 @@ def create_rewrite_candidate(
 
     from app.services.model_profile_service import resolve_llm_profile_config
     from app.agents.llm_client import LLMClient
+    try:
+        credits.ensure_model_call(db, user, "rewrite_candidate")
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
     config = resolve_llm_profile_config(db, profile_id=body.profileId, owner_user_id=user.id)
     service = RewriteService(db, llm=LLMClient(config=config, usage_recorder=UsageRecorder(db, user_id=user.id, operation="rewrite", resource_id=body.articleId, provider=config.get("provider", "custom")), usage_operation="rewrite"))
     try:
-        return service.start_rewrite(
+        result = service.start_rewrite(
             article_id=body.articleId, markdown=body.markdown,
             instruction=body.instruction, selected_texts=body.selectedTexts,
             conversation=body.conversation, owner_user_id=user.id, input_images=body.inputImages,
         )
+        credits.record_model_call(db, user, "rewrite_candidate")
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 

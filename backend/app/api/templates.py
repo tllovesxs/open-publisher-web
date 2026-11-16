@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_user, require_admin
 from app.db.session import get_db
 from app.models.user import AppUser
+from app.services import credits
 from app.services.template_service import TemplateService
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -119,9 +120,15 @@ def extract_template(
     if not body.rightsConfirmed:
         raise HTTPException(status_code=400, detail="请确认你有权使用参考文章提取模板")
     try:
-        return TemplateService(db).extract_from_article(
+        credits.ensure_model_call(db, user, "template_extract")
+    except credits.InsufficientCreditsError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+    try:
+        result = TemplateService(db).extract_from_article(
             body.markdown, owner_user_id=user.id,
         )
+        credits.record_model_call(db, user, "template_extract")
+        return result
     except ValueError as exc:  # 配置类问题（未激活档案 / Key 未注入）
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except Exception as exc:  # noqa: BLE001 - LLM 调用/解析失败统一 502

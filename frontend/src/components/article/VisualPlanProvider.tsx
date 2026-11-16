@@ -3,6 +3,8 @@ import { ImagePlus, LoaderCircle, Sparkles, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { useActiveRun } from "../../lib/activeRunContext";
+import { CreditBadge } from "../ui/CreditBadge";
+import { refreshCreditStatus } from "../../lib/creditStatus";
 
 interface VisualPlanPlacement {
   id: string;
@@ -198,6 +200,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
         requiredAssetIds: options.requiredAssetIds ?? [],
       });
       if (options.runKey) sessionStorage.setItem(options.runKey, "1");
+      void refreshCreditStatus();
       if (!res.data.placements.length) { setJob(null); setError("视觉规划认为本文不需要配图。"); return; }
       setPending(null);
       installPlan(articleId, { ...res.data, imageModelId: options.imageModelId ?? null }, options.snapshot ?? null);
@@ -305,6 +308,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
       const res = await api.post<VisualApplyResult>(`/articles/${current.articleId}/visual-apply`, { ...binding, placements: resolved });
       if (res.data.insertedCount !== placements.length) throw new Error(res.data.skipped[0]?.reason || "配图未全部插入，请重新生成策略。");
       setCompleted({ articleId: current.articleId, article: res.data.article, snapshot, insertedCount: res.data.insertedCount, skipped: res.data.skipped });
+      void refreshCreditStatus();
       setJob(null); setExcludedIds([]); generated.current.clear();
     } catch (err) {
       if ((err as { response?: { status?: number } }).response?.status === 409) { setStale(true); setError(STALE_MESSAGE); }
@@ -330,7 +334,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
               {error && <div className="workflow-task__failure" role="alert"><p>{error}</p></div>}
               {job && targetCount !== job.plan.targetCount && <p role="status">配图数量已调整，请点击“重新生成策略”更新方案。</p>}
               {stale && <div className="workflow-task__failure" role="status"><strong>当前策略已过期</strong><p>请保存当前正文后重新生成策略，旧方案不能直接插入。</p></div>}
-              {pending ? <div className="visual-plan-intro"><Sparkles size={28} /><h3>为这篇文章设计配图策略</h3><p>选择配图数量与素材偏好，点击下方按钮后开始分析正文、推荐配图位置和内容。</p><span>生成策略会消耗模型 Token。图片将在下一步确认后生成。</span></div> : <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>}
+              {pending ? <div className="visual-plan-intro"><Sparkles size={28} /><h3>为这篇文章设计配图策略</h3><p>选择配图数量与素材偏好，点击下方按钮后开始分析正文、推荐配图位置和内容。</p><span><CreditBadge action="visual_plan" label="策略" /> 图片将在下一步确认后生成。</span></div> : <p className="muted">系统按 {materialMatchThreshold}% 匹配阈值给出默认方案，每张图都可以改用已选素材或 AI 生图。确认前不会生成图片。</p>}
               {pending && targetCount > 0 && targetCount < (pending.options.requiredAssetIds?.length ?? 0) && <p role="alert">配图数量不能少于指定必须插入的素材数量，请调整数量或取消对应素材。</p>}
               <div className="visual-plan-settings">
                 <label>生图模型 <select aria-label="生图模型" disabled={busy} onChange={event => setSelectedModel(event.target.value)} value={selectedModel}>
@@ -351,7 +355,7 @@ export function VisualPlanProvider({ children }: { children: ReactNode }) {
                   <p className="muted">只匹配勾选的素材；未选素材时使用 AI 生图。匹配按素材描述与正文关键词计算，分数不是语义准确率。</p>
                   {materialsError ? <p role="alert">素材加载失败，请关闭后重新打开。</p> : !materials.length ? <p className="muted">素材库暂无图片，可先上传并补充图片描述。</p> : <div>{materials.map(asset => <label key={asset.id}><input type="checkbox" disabled={busy || ((pending.options.assetIds?.length ?? 0) >= 20 && !pending.options.assetIds?.includes(asset.id))} checked={pending.options.assetIds?.includes(asset.id) ?? false} onChange={event => { const checked = event.target.checked; setPending(current => current ? { ...current, options: { ...current.options, assetIds: checked ? [...(current.options.assetIds ?? []), asset.id] : (current.options.assetIds ?? []).filter(id => id !== asset.id), requiredAssetIds: (current.options.requiredAssetIds ?? []).filter(id => checked || id !== asset.id) } } : null); }} /><span>{asset.name}<small>{asset.visualDescription || asset.alt || "暂无描述，建议补充后参与匹配"}</small></span></label>)}</div>}
                 </fieldset>}
-                {!pending && <small className="visual-plan-summary">预计生图 {generatedCount} 张 · 复用素材 {activePlacements.length - generatedCount} 张</small>}
+                {!pending && <div className="visual-plan-summary-row"><small className="visual-plan-summary">预计生图 {generatedCount} 张 · 复用素材 {activePlacements.length - generatedCount} 张</small><CreditBadge action="visual_apply" label="应用" /></div>}
               </div>
               {!pending && <ol className="visual-plan-placements">
                 {job?.plan.placements.map((placement, index) => {

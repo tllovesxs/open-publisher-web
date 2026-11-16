@@ -18,7 +18,19 @@ const EXTRA_MODELS = [
   { kind: "rerank", field: "rerankModelId", label: "检索排序模型", description: "对检索到的资料进一步排序", icon: ListTree },
 ] as const;
 interface Preferences { imageModelId: string | null; embeddingModelId: string | null; rerankModelId: string | null; disabledNodeIds: string[]; webSearchMode: "auto" | "off"; profileId: string | null; nodeProfileIds: Record<string, string> }
-interface CreditsSummary { balance: number; unlimited: boolean; isVip: boolean; vipExpiresAt?: string | null; checkedInToday: boolean; dailyCheckinBonus: number }
+interface CreditMonthMilestone { threshold: number; reward: number; achieved: boolean }
+interface CreditMonthDay { date: string; dailyAmount: number; bonusAmount: number; amount: number; checked: boolean }
+interface CreditsSummary {
+  balance: number;
+  unlimited: boolean;
+  isVip: boolean;
+  vipExpiresAt?: string | null;
+  checkedInToday: boolean;
+  dailyCheckinBonus: number;
+  dailyCheckinRange?: number[];
+  month?: { year: number; month: number; count: number; checkedDates: string[]; days?: CreditMonthDay[]; milestones: CreditMonthMilestone[] };
+  lastCheckin?: { dailyAmount: number; bonusAmount: number; monthlyCount: number } | null;
+}
 
 const TABS = [
   { id: "model", label: "模型", icon: Settings2 },
@@ -49,6 +61,9 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [credits, setCredits] = useState<CreditsSummary | null>(null);
   const [creditBusy, setCreditBusy] = useState(false);
+  const todayDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
+  const checkinMonth = credits?.month;
+  const rewardByDate = new Map((checkinMonth?.days ?? []).map(day => [day.date, day]));
 
   const act = async (fn: () => Promise<unknown>, success = "已保存") => {
     setBusy(true); setNotice("");
@@ -85,7 +100,9 @@ export default function SettingsPage() {
       const res = await api.post<CreditsSummary>("/me/checkin");
       setCredits(res.data);
       await refreshUser();
-      setNotice(`签到成功，积分 +${res.data.dailyCheckinBonus}`);
+      const reward = res.data.lastCheckin;
+      const earned = (reward?.dailyAmount ?? 0) + (reward?.bonusAmount ?? 0) || res.data.dailyCheckinBonus;
+      setNotice(`签到成功，积分 +${earned}${reward?.bonusAmount ? `，含累计签到奖励 +${reward.bonusAmount}` : ""}`);
     } catch (error) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setNotice(typeof detail === "string" ? detail : "签到失败，请稍后重试。");
@@ -215,38 +232,77 @@ export default function SettingsPage() {
               <span className="client-settings-icon"><Coins size={19} aria-hidden="true" /></span>
               <div><h2>积分与权益</h2><p>非 VIP 用户通过每日签到获得对话积分；VIP 对话免积分。</p></div>
             </header>
-            <div className="client-settings-credit-grid">
-              <div className="client-settings-credit-item">
-                <small>可用积分</small>
-                <strong>{credits?.unlimited ? <><InfinityIcon size={20} />无限</> : (credits?.balance ?? 0)}</strong>
+            <div className="client-settings-credit-layout">
+              <div className="client-settings-credit-summary">
+                <div className="client-settings-credit-grid">
+                  <div className="client-settings-credit-item">
+                    <small>可用积分</small>
+                    <strong>{credits?.unlimited ? <><InfinityIcon size={20} />无限</> : (credits?.balance ?? 0)}</strong>
+                  </div>
+                  <div className="client-settings-credit-item">
+                    <small>当前权益</small>
+                    <strong>{credits?.unlimited ? "无限测试账号" : credits?.isVip ? "VIP 免积分" : "普通用户"}</strong>
+                  </div>
+                  <div className="client-settings-credit-item">
+                    <small>每日签到</small>
+                    <strong>{credits?.checkedInToday ? "今日已签" : `+${credits?.dailyCheckinRange?.[0] ?? 20}~${credits?.dailyCheckinRange?.[1] ?? 50} 积分`}</strong>
+                  </div>
+                </div>
+                <div className="client-settings-credit-actions">
+                  <button
+                    className="button button--primary"
+                    disabled={creditBusy || !credits || credits.unlimited || credits.isVip || credits.checkedInToday}
+                    onClick={() => void handleCheckin()}
+                    type="button"
+                  >
+                    <CalendarCheck size={15} />
+                    {credits?.checkedInToday ? "今日已签到" : "立即签到"}
+                  </button>
+                  <button
+                    className="button button--quiet"
+                    disabled={creditBusy}
+                    onClick={() => setNotice("充值功能即将开放，当前暂不支持支付。")}
+                    type="button"
+                  >
+                    <CreditCard size={15} />充值入口
+                  </button>
+                </div>
               </div>
-              <div className="client-settings-credit-item">
-                <small>当前权益</small>
-                <strong>{credits?.unlimited ? "无限测试账号" : credits?.isVip ? "VIP 免积分" : "普通用户"}</strong>
-              </div>
-              <div className="client-settings-credit-item">
-                <small>每日签到</small>
-                <strong>{credits?.checkedInToday ? "今日已签到" : `+${credits?.dailyCheckinBonus ?? 1} 积分`}</strong>
-              </div>
-            </div>
-            <div className="client-settings-credit-actions">
-              <button
-                className="button button--primary"
-                disabled={creditBusy || !credits || credits.unlimited || credits.isVip || credits.checkedInToday}
-                onClick={() => void handleCheckin()}
-                type="button"
-              >
-                <CalendarCheck size={15} />
-                {credits?.checkedInToday ? "今日已签到" : "立即签到"}
-              </button>
-              <button
-                className="button button--quiet"
-                disabled={creditBusy}
-                onClick={() => setNotice("充值功能即将开放，当前暂不支持支付。")}
-                type="button"
-              >
-                <CreditCard size={15} />充值入口
-              </button>
+
+              <aside aria-label="本月签到记录" className="client-settings-checkin-panel">
+                <header>
+                  <strong>{checkinMonth ? `${checkinMonth.month} 月签到` : "本月签到"}</strong>
+                  <span>已签 {checkinMonth?.count ?? 0} 天</span>
+                </header>
+                <div className="client-settings-calendar">
+                  {["日", "一", "二", "三", "四", "五", "六"].map(label => <span key={label}>{label}</span>)}
+                  {checkinMonth && Array.from({ length: new Date(checkinMonth.year, checkinMonth.month - 1, 1).getDay() }, (_, index) => <span key={`blank-${index}`} className="client-settings-calendar-day is-empty" />)}
+                  {checkinMonth && Array.from({ length: new Date(checkinMonth.year, checkinMonth.month, 0).getDate() }, (_, index) => {
+                    const day = index + 1;
+                    const dateLabel = `${checkinMonth.year}-${String(checkinMonth.month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                    const reward = rewardByDate.get(dateLabel);
+                    return (
+                      <span
+                        className={`client-settings-calendar-day${reward?.checked ? " is-checked" : ""}${dateLabel === todayDate ? " is-today" : ""}${dateLabel > todayDate ? " is-future" : ""}`}
+                        key={day}
+                        title={reward ? `${reward.dailyAmount} 积分${reward.bonusAmount ? ` + 累计奖励 ${reward.bonusAmount} 积分` : ""}` : undefined}
+                      >
+                        <strong>{day}</strong>
+                        {reward && <em>+{reward.amount}</em>}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="client-settings-milestones">
+                  {(checkinMonth?.milestones ?? [{ threshold: 7, reward: 50, achieved: false }, { threshold: 14, reward: 80, achieved: false }, { threshold: 21, reward: 120, achieved: false }]).map(milestone => (
+                    <span className={`client-settings-milestone${milestone.achieved ? " is-earned" : ""}`} key={milestone.threshold}>
+                      {milestone.threshold} 天 +{milestone.reward}
+                      {milestone.achieved && <Check aria-hidden="true" size={12} />}
+                    </span>
+                  ))}
+                </div>
+                <small>每日奖励浮动发放；累计第 7、14、21 天额外奖励。</small>
+              </aside>
             </div>
             {credits?.vipExpiresAt && <p className="client-settings-hint">VIP 有效期至 {new Date(credits.vipExpiresAt).toLocaleString("zh-CN")}</p>}
           </section>

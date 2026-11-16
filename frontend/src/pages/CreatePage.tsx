@@ -17,6 +17,8 @@ import { useAuth } from "../auth/AuthContext";
 import { requestLogin } from "../auth/loginPrompt";
 import { PillSelect } from "../components/PillSelect";
 import { appendReferences, readPromptImage, readReferenceFiles } from "../lib/fileImport";
+import { CreditBadge } from "../components/ui/CreditBadge";
+import { refreshCreditStatus } from "../lib/creditStatus";
 
 
 // 蓝本 CreatePage 的 Web 迁移（团队自有代码，1:1 结构与类名）。
@@ -305,9 +307,11 @@ export default function CreatePage() {
           assetIds: selectedMediaIds,
         },
       });
+      void refreshCreditStatus();
       navigate(`/articles?open=${encodeURIComponent(articleId)}`);
     } catch (error) {
-      setValidation(error instanceof Error ? error.message : "创作请求失败，请稍后重试。");
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setValidation(typeof detail === "string" && detail ? detail : error instanceof Error ? error.message : "创作请求失败，请稍后重试。");
     } finally {
       setStarting(false);
     }
@@ -416,6 +420,7 @@ export default function CreatePage() {
               />
             </div>
             <div className="creation-composer__actions">
+            <CreditBadge action="article_create" label="创作" />
             <span className="creation-composer__summary">{templateLabel}</span>
             <PillSelect
               ariaLabel="写作模型"
