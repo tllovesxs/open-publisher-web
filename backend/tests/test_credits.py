@@ -41,7 +41,7 @@ def client():
 def test_register_reports_initial_credits(client):
     test_client, factory = client
     response = test_client.post("/api/auth/register", json={
-        "username": "credit-user", "password": "secret-pass-1", "displayName": "Credit",
+        "username": "credit-user", "password": "test-password", "displayName": "Credit",
     })
     assert response.status_code == 201
     assert response.json()["user"]["creditBalance"] == 10
@@ -56,7 +56,7 @@ def test_register_reports_initial_credits(client):
 def test_checkin_once_per_day_and_reports_balance(client):
     test_client, factory = client
     user = test_client.post("/api/auth/register", json={
-        "username": "checkin-user", "password": "secret-pass-1",
+        "username": "checkin-user", "password": "test-password",
     }).json()["user"]
     app.dependency_overrides[require_user] = lambda: SimpleNamespace(id=user["id"])
 
