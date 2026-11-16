@@ -30,3 +30,9 @@ work/
 worklog/
 docs/reviews/
 *.tsbuildinfo
+
+# Local runtime and browser artifacts
+.playwright-cli/
+.taste-skill/
+backend/data/
+output/
