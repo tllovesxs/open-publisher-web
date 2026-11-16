@@ -129,6 +129,10 @@ export default function TemplatesPage() {
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const isDirty = Boolean(selected && form && JSON.stringify(form) !== JSON.stringify(toForm(selected)));
   const visibleTemplates = useMemo(() => templates.filter(template => `${template.name} ${template.description} ${template.category}`.toLowerCase().includes(search.trim().toLowerCase())), [templates, search]);
+  const templateGroups = useMemo(() => [
+    { key: "official", title: "官方模板", items: visibleTemplates.filter(template => template.isBuiltIn) },
+    { key: "custom", title: "我的模板", items: visibleTemplates.filter(template => !template.isBuiltIn) },
+  ].filter(group => group.items.length > 0), [visibleTemplates]);
   useEffect(() => { if (!extracting) return; setExtractSeconds(0); const id = window.setInterval(() => setExtractSeconds(n => n + 1), 1000); return () => clearInterval(id); }, [extracting]);
 
   useEffect(() => {
@@ -174,7 +178,9 @@ export default function TemplatesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get<{ templates: MarkdownTemplate[]; libraryUnavailable?: boolean }>("/templates");
+      const res = await api.get<{ templates: MarkdownTemplate[]; libraryUnavailable?: boolean }>(
+        user ? "/templates" : "/templates/public",
+      );
       setLibraryUnavailable(Boolean(res.data.libraryUnavailable));
       setError(null);
       setTemplates(res.data.templates);
@@ -322,18 +328,23 @@ export default function TemplatesPage() {
         </div>
         <label className="template-search"><Search size={15} /><input aria-label="搜索模板" placeholder="搜索模板" value={search} onChange={event => setSearch(event.target.value)} /></label>
         <div className="template-library__list">
-          {visibleTemplates.map((template) => (
-            <button
-              aria-current={selected?.id === template.id ? "true" : undefined}
-              className={`article-list-item${selected?.id === template.id ? " is-active" : ""}`}
-              key={template.id}
-              onClick={() => { setSelected(template); setMobileListOpen(false); }}
-              type="button"
-            >
-              <span className="template-library__item-icon">{template.mode === "reference" ? <BookOpen size={16} /> : <LayoutTemplate size={16} />}</span>
-              <span className="template-library__item-copy"><strong>{template.name}</strong><small>{template.category}</small></span>
-              <span className={`template-type${template.isBuiltIn ? " is-official" : ""}`}>{template.isBuiltIn ? "官方" : template.mode === "reference" ? "提取" : "自定义"}</span>
-            </button>
+          {templateGroups.map(group => (
+            <section className="template-library__group" key={group.key}>
+              <h2 className="template-library__group-title">{group.title}</h2>
+              {group.items.map((template) => (
+                <button
+                  aria-current={selected?.id === template.id ? "true" : undefined}
+                  className={`article-list-item${selected?.id === template.id ? " is-active" : ""}`}
+                  key={template.id}
+                  onClick={() => { setSelected(template); setMobileListOpen(false); }}
+                  type="button"
+                >
+                  <span className="template-library__item-icon">{template.mode === "reference" ? <BookOpen size={16} /> : <LayoutTemplate size={16} />}</span>
+                  <span className="template-library__item-copy"><strong>{template.name}</strong><small>{template.category}</small></span>
+                  {!template.isBuiltIn && <span className="template-type">{template.mode === "reference" ? "提取" : "自定义"}</span>}
+                </button>
+              ))}
+            </section>
           ))}
           {!visibleTemplates.length && <p className="template-empty">没有匹配的模板</p>}
         </div>

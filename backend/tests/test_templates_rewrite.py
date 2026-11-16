@@ -35,13 +35,25 @@ def db():
     session.close()
 
 
-def test_builtin_template_seeded(db):
+def test_builtin_templates_seeded(db):
     templates = TemplateService(db).list()
     builtin = [t for t in templates if t["isBuiltIn"]]
-    assert len(builtin) == 1
-    assert builtin[0]["id"] == "product-promotion"
-    assert builtin[0]["name"] == "产品推广"
-    assert "{{" in builtin[0]["markdown"] or builtin[0]["markdown"]
+    assert len(builtin) == 7
+    assert sorted(t["id"] for t in builtin) == sorted([
+        "product-promotion",
+        "experience-review",
+        "viewpoint-analysis",
+        "project-case-review",
+        "feature-update-note",
+        "beginner-guide",
+        "comparison-review",
+    ])
+    for template in builtin:
+        assert template["name"]
+        assert template["category"]
+        assert template["markdown"].strip()
+        assert template["usageInstructions"].strip()
+        assert template["mode"] == "scaffold"
 
 
 def test_custom_template_create_and_delete(db):
@@ -52,6 +64,7 @@ def test_custom_template_create_and_delete(db):
     )
     assert created["isBuiltIn"] is False
     assert created["mode"] == "scaffold"
+    assert created["id"] not in [t["id"] for t in service.list_built_in()]
     service.delete(created["id"])
     assert created["id"] not in [t["id"] for t in service.list()]
     with pytest.raises(ValueError):

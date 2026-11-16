@@ -7,6 +7,7 @@ import { ConfigurationKeyEditor } from "./ConfigurationKeyEditor";
 import AdminLoginPage from "./AdminLoginPage";
 import { AdminAuthProvider, useAdminAuth } from "./AuthContext";
 import AdminOperations from "./AdminOperations";
+import { StatusNotice } from "./StatusNotice";
 
 interface ModelStatus {
   baseUrl: string;
@@ -453,8 +454,8 @@ function AiConfigPage() {
         <ModelConfigurationManager externalBusy={busy} revision={configurationRevision} kind="rerank" onSelectionChange={() => setNotices(current => ({ ...current, rerank: {} }))} onChanged={load} ref={rerankManager} visible={activeView === "rerank"} />
       </ModelPanel>
 
-{message && <div className="success" role="status">{message}</div>}
-      {error && <div className="error" role="alert">{error}</div>}
+{message && <StatusNotice message={message} onDismiss={() => setMessage(null)} />}
+      {error && <StatusNotice message={error} onDismiss={() => setError(null)} tone="danger" />}
     </main>
     </div>
   );

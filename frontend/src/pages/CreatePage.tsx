@@ -94,6 +94,13 @@ function toneInstruction(tone: Tone) {
   return toneOptions.find((option) => option.id === tone)?.instruction ?? toneOptions[0]!.instruction;
 }
 
+function templateOutline(markdown?: string | null) {
+  return (markdown?.match(/^#{2,3} +[^\n]+/gm) ?? []).map((line) => ({
+    level: line.startsWith("## ") ? 1 : 2,
+    label: line.replace(/^#+ +/, ""),
+  })).filter((item) => !item.label.includes("{{")).slice(0, 4);
+}
+
 
 export default function CreatePage() {
   const navigate = useNavigate();
@@ -161,7 +168,7 @@ export default function CreatePage() {
     api.get<{ models: ImageModelOption[] }>("/settings/image-models")
       .then((res) => setImageModels(res.data.models ?? []))
       .catch(() => setImageModels([]));
-    api.get<{ templates: MarkdownTemplate[] }>("/templates")
+    api.get<{ templates: MarkdownTemplate[] }>(user ? "/templates" : "/templates/public")
       .then((res) => setTemplates(res.data.templates ?? []))
       .catch(() => setTemplates([]));
     api.get<{ assets: MediaAsset[] }>("/media")
@@ -470,6 +477,13 @@ export default function CreatePage() {
                   <strong>{template.name}</strong>
                   <span>{template.description || template.usageInstructions || "使用已保存的结构、排版与文风。"}</span>
                   <small>{template.mode === "reference" ? "高保真参考" : template.category}</small>
+                  {templateOutline(template.markdown).length > 0 && (
+                    <ul aria-label={`${template.name}大纲预览`} className="creation-picker__outline">
+                      {templateOutline(template.markdown).map((item, index) => (
+                        <li data-level={item.level} key={`${item.label}-${index}`}><span>{item.label}</span></li>
+                      ))}
+                    </ul>
+                  )}
                   {selectedTemplate?.id === template.id && <Check size={16} />}
                 </button>
               ))}

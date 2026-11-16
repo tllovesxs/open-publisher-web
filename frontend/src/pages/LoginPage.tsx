@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { StatusNotice } from "../components/ui/StatusNotice";
 
 export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => void; onComplete?: () => void } = {}) {
   const navigate = useNavigate();
@@ -97,7 +98,7 @@ export default function LoginPage({ onCancel, onComplete }: { onCancel?: () => v
 
         <button className="button button--quiet" style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={cancel} type="button">{switching ? "取消切换" : "取消登录"}</button>
 
-        {error && <div className="auth-error" role="alert">{error}</div>}
+        {error && <StatusNotice message={error} tone="danger" />}
 
         <button
           className="auth-switch"

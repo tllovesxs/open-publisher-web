@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useState, type FormEvent } 
 import { Plus, Star, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { ConfigurationKeyEditor } from "./ConfigurationKeyEditor";
+import { StatusNotice } from "./StatusNotice";
 
 export type ModelKind = "image" | "embedding" | "rerank";
 export interface ConfigurationManagerHandle { toggleCurrent: () => void; selectedId: () => string | null }
@@ -115,6 +116,6 @@ export const ModelConfigurationManager = forwardRef<ConfigurationManagerHandle, 
       <p className="muted config-form-hint">密钥随当前配置独立保存。新增配置不会覆盖已有配置。</p>
       <div className="config-form-actions"><button className="quiet" disabled={busy} onClick={cancel} type="button">取消</button><button className="primary" disabled={busy} type="submit">{busy ? "保存中..." : "保存配置"}</button></div>
     </form>}
-    {error && <div className="error" role="alert">{error}</div>}{message && <div className="success" role="status">{message}</div>}
+    {error && <StatusNotice message={error} onDismiss={() => setError("")} tone="danger" />}{message && <StatusNotice message={message} onDismiss={() => setMessage("")} />}
   </div>;
 });

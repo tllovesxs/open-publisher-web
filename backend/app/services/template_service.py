@@ -1,6 +1,6 @@
 """模板服务：蓝本 TemplatesPage / template-service 的 Web 版。
 
-- 内置"产品推广"模板来自蓝本 product-promotion.v1.json 原文（启动时 seed）
+- 内置模板来自本地数据包；通用结构参考权威写作指南提炼为原创骨架。
 - 自定义模板落库；内置模板不可删除
 - extract：对齐蓝本参考分析、画像规范与本地兜底，参考原文只作写法样本
 """
@@ -18,41 +18,73 @@ from sqlalchemy.orm import Session
 from app.models.template import ArticleTemplate
 from app.services.template_profiles import local_reference, normalize_profiles, variables_in
 
-_BUILTIN_JSON = Path(__file__).resolve().parent.parent / "data" / "product-promotion.v1.json"
+_BUILTIN_JSONS = (
+    Path(__file__).resolve().parent.parent / "data" / "product-promotion.v1.json",
+    Path(__file__).resolve().parent.parent / "data" / "article-structures.v1.json",
+)
 
 
-def _doc_template() -> dict:
-    raw = json.loads(_BUILTIN_JSON.read_text(encoding="utf-8"))
-    template = raw["template"]
-    template["id"] = "product-promotion"
-    template["name"] = "产品推广"
-    template["category"] = "产品推广"
-    template["isBuiltIn"] = True
-    template["mode"] = "scaffold"
-    return template
+_TEMPLATE_FIELDS = {
+    "name": "name",
+    "description": "description",
+    "markdown": "markdown",
+    "style_profile": "styleProfile",
+    "structure_profile": "structureProfile",
+    "layout_profile": "layoutProfile",
+    "fixed_blocks": "fixedBlocks",
+    "variables": "variables",
+    "usage_instructions": "usageInstructions",
+}
+
+
+def _builtin_templates() -> list[dict]:
+    templates: list[dict] = []
+    seen_ids: set[str] = set()
+    for path in _BUILTIN_JSONS:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        items = raw.get("templates", [])
+        if "template" in raw:
+            items = [raw["template"]]
+        for raw_template in items:
+            template = dict(raw_template)
+            template_id = str(template.get("id") or "").strip()
+            if not template_id or template_id in seen_ids:
+                raise ValueError(f"内置模板 ID 无效或重复：{template_id}")
+            if not isinstance(template.get("markdown"), str) or not template["markdown"].strip():
+                raise ValueError(f"内置模板正文为空：{template_id}")
+            seen_ids.add(template_id)
+            template["id"] = template_id
+            template.setdefault("name", template_id)
+            template.setdefault("description", "")
+            template.setdefault("category", "通用结构")
+            template["isBuiltIn"] = True
+            template["mode"] = "scaffold"
+            templates.append(template)
+    return templates
 
 
 def seed_builtin_templates(db: Session, refresh: bool = False) -> None:
     """幂等：不存在才插入内置模板。"""
-    t = _doc_template()
-    existing = db.get(ArticleTemplate, t["id"])
-    if existing is not None and refresh:
-        for field, key in {"name":"name", "description":"description", "markdown":"markdown", "style_profile":"styleProfile", "structure_profile":"structureProfile", "layout_profile":"layoutProfile", "fixed_blocks":"fixedBlocks", "variables":"variables", "usage_instructions":"usageInstructions"}.items():
-            setattr(existing, field, t.get(key))
-        db.commit()
-    if existing is None:
-        db.add(ArticleTemplate(
-            id=t["id"], name=t["name"], description=t.get("description", ""),
-            category=t["category"], markdown=t["markdown"],
-            style_profile=t.get("styleProfile", {}),
-            structure_profile=t.get("structureProfile", {}),
-            layout_profile=t.get("layoutProfile", {}),
-            fixed_blocks=t.get("fixedBlocks", []),
-            variables=t.get("variables", []),
-            usage_instructions=t.get("usageInstructions", ""),
-            is_built_in=True, mode="scaffold",
-        ))
-        db.commit()
+    for t in _builtin_templates():
+        existing = db.get(ArticleTemplate, t["id"])
+        if existing is not None and refresh:
+            for field, key in _TEMPLATE_FIELDS.items():
+                setattr(existing, field, t.get(key))
+            db.commit()
+            continue
+        if existing is None:
+            db.add(ArticleTemplate(
+                id=t["id"], name=t["name"], description=t.get("description", ""),
+                category=t["category"], markdown=t["markdown"],
+                style_profile=t.get("styleProfile", {}),
+                structure_profile=t.get("structureProfile", {}),
+                layout_profile=t.get("layoutProfile", {}),
+                fixed_blocks=t.get("fixedBlocks", []),
+                variables=t.get("variables", []),
+                usage_instructions=t.get("usageInstructions", ""),
+                is_built_in=True, mode="scaffold",
+            ))
+            db.commit()
 
 
 def _out(t: ArticleTemplate) -> dict:
@@ -83,6 +115,14 @@ class TemplateService:
                 ArticleTemplate.owner_user_id.is_(None),
                 ArticleTemplate.is_built_in.is_(True),
             ))
+        rows = self.db.scalars(query).all()
+        return [_out(t) for t in rows]
+
+    def list_built_in(self) -> list[dict]:
+        """未登录展示用：只返回官方初始模板，不暴露任何自定义模板。"""
+        query = select(ArticleTemplate).where(
+            ArticleTemplate.is_built_in.is_(True)
+        ).order_by(ArticleTemplate.id)
         rows = self.db.scalars(query).all()
         return [_out(t) for t in rows]
 

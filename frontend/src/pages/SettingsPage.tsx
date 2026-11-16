@@ -5,6 +5,7 @@ import { ToolbarSelect } from "../components/ui/ToolbarSelect";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useThemeSetting } from "../lib/theme";
+import { StatusNotice } from "../components/ui/StatusNotice";
 import "./SettingsPage.css";
 import { ARTICLE_WORKFLOW_NODES } from "../workflow/articleNodes";
 
@@ -123,15 +124,7 @@ export default function SettingsPage() {
           ))}
         </nav>
         <div className="client-settings-content">
-      {notice && (
-        <div role="status" style={{
-          alignItems: "center", background: "var(--success-soft, #f0fff4)", border: "1px solid var(--success, #48bb78)",
-          borderRadius: 8, color: "var(--success, #22543d)", display: "flex", fontSize: 13, gap: 8,
-          marginBottom: 16, padding: "10px 14px",
-        }}>
-          <Save size={14} /> {notice}
-        </div>
-      )}
+      {notice && <StatusNotice message={notice} onDismiss={() => setNotice("")} />}
 
       {tab === "model" && (
         <section className="client-settings-card">

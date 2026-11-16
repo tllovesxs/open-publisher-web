@@ -102,6 +102,7 @@ export const localAdapter: AxiosAdapter = async config => {
 export function useLocalAdapter(config: InternalAxiosRequestConfig): boolean {
   const path = (config.url || "").split("?")[0];
   const guest = !localStorage.getItem("opw_access_token");
+  if (config.method === "get" && path === "/templates/public") return false;
   const exampleRead = config.method === "get" && /^\/(articles|templates|media)\/example-/.test(path);
   const body = typeof config.data === "string" ? JSON.parse(config.data || "{}") : config.data;
   if (exampleRead || (path === "/articles" && isExample(body?.articleId || ""))) return true;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { useAdminAuth } from "./AuthContext";
+import { StatusNotice } from "./StatusNotice";
 
 export default function AdminLoginPage() {
   const { login } = useAdminAuth();
@@ -53,7 +54,7 @@ export default function AdminLoginPage() {
           />
         </label>
         <button className="primary" disabled={busy} type="submit">{busy ? "登录中..." : "登录管理端"}</button>
-        {error && <div className="error">{error}</div>}
+        {error && <StatusNotice message={error} tone="danger" />}
       </form>
     </main>
   );

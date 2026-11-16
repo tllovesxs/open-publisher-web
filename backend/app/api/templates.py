@@ -49,6 +49,11 @@ def list_templates(db: Session = Depends(get_db), user: AppUser = Depends(requir
     return {"templates": TemplateService(db).list(owner_user_id=user.id)}
 
 
+@router.get("/public")
+def list_public_templates(db: Session = Depends(get_db)):
+    return {"templates": TemplateService(db).list_built_in()}
+
+
 @router.post("", status_code=201)
 def create_template(
     body: TemplateCreateRequest,

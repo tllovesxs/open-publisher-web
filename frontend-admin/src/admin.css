@@ -348,22 +348,76 @@ button:disabled { cursor: default; opacity: 0.55; }
 
 /* ---------- 状态提示 ---------- */
 
-.success {
-  background: var(--success-soft);
-  border: 1px solid rgb(40 116 88 / 25%);
-  border-radius: 12px;
-  color: var(--success);
+.admin-note {
+  align-items: flex-start;
+  animation: admin-note-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  display: flex;
   font-size: 13px;
-  padding: 10px 14px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 8px 10px 12px;
 }
 
-.error {
+.admin-note > svg {
+  flex-shrink: 0;
+}
+
+.admin-note--success {
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 28%, transparent);
+  color: var(--success);
+}
+
+.admin-note--danger {
   background: var(--danger-soft);
-  border: 1px solid rgb(176 67 78 / 25%);
-  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
   color: var(--danger);
-  font-size: 13px;
-  padding: 10px 14px;
+}
+
+.admin-note__message {
+  flex: 1;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding-top: 2px;
+}
+
+.admin-note__close {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  flex-shrink: 0;
+  height: 28px;
+  place-items: center;
+  transition: background 140ms ease;
+  width: 28px;
+}
+
+.admin-note__close:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.admin-note__close:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+@keyframes admin-note-enter {
+  from {
+    opacity: 0.72;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .muted { color: var(--muted); font-size: 13px; }
@@ -473,7 +527,7 @@ button:disabled { cursor: default; opacity: 0.55; }
 .profile .actions { margin-left: auto; }
 .profile-badge { border-radius: 6px; padding: 2px 6px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; }
 .profile-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.success, .error { overflow-wrap: anywhere; line-height: 1.6; }
+.admin-note { overflow-wrap: anywhere; }
 @media (max-width: 600px) {
  .section-head { flex-wrap: wrap; }
  .config-form { grid-template-columns: 1fr; }
@@ -515,3 +569,9 @@ button:disabled { cursor: default; opacity: 0.55; }
 .admin-select__option[aria-selected=true] { color: var(--accent-ink); font-weight: 600; }
 .user-filters > .admin-select { flex: 0 1 150px; }
 @media (prefers-reduced-motion: reduce) { .admin-select__trigger, .admin-select__trigger > svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .admin-note {
+    animation: none;
+    transition: none;
+  }
+}

@@ -1,6 +1,7 @@
 import { useSuccessMessage } from "./useSuccessMessage";
 import { useState } from "react";
 import { api } from "./api";
+import { StatusNotice } from "./StatusNotice";
 
 export function ConfigurationKeyEditor({ endpoint, configured, hint, onChanged }: { endpoint: string; configured?: boolean; hint?: string; onChanged: () => Promise<void> }) {
   const [value, setValue] = useState("");
@@ -19,6 +20,6 @@ export function ConfigurationKeyEditor({ endpoint, configured, hint, onChanged }
   return <div className="configuration-key-editor">
     <div className="key-editor"><input aria-label="当前配置访问密钥" autoComplete="new-password" disabled={busy} onChange={event => setValue(event.target.value)} placeholder="填写当前所选配置的访问密钥" type="password" value={value} /><button className="primary" disabled={busy} onClick={() => void update()} type="button">保存密钥</button>{configured && <button className="quiet" disabled={busy} onClick={() => void update(true)} type="button">移除密钥</button>}</div>
     <p className="muted">{configured ? `此配置密钥已配置${hint ? ` ${hint}` : ""}` : "此配置尚未填写密钥"}</p>
-    {error && <div className="error" role="alert">{error}</div>}{message && <div className="success" role="status">{message}</div>}
+    {error && <StatusNotice message={error} onDismiss={() => setError("")} tone="danger" />}{message && <StatusNotice message={message} onDismiss={() => setMessage("")} />}
   </div>;
 }

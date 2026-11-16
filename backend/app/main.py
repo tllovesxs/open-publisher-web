@@ -37,7 +37,7 @@ app.include_router(runs.router, prefix="/api", dependencies=[Depends(require_use
 app.include_router(revisions.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(articles.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(agent_runs.router, prefix="/api", dependencies=[Depends(require_user)])
-app.include_router(templates.router, prefix="/api", dependencies=[Depends(require_user)])
+app.include_router(templates.router, prefix="/api")
 app.include_router(assistant.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(media.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(settings_api.router, prefix="/api")
