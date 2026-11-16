@@ -125,14 +125,256 @@ html[data-theme='dark'] body {
   flex: none;
 }
 .auth-page {
-  align-items: center;
-  background: var(--canvas);
+  align-items: stretch;
+  background:
+    radial-gradient(circle at 18% 45%, rgb(91 124 191 / 18%), transparent 32%),
+    linear-gradient(90deg, #101a32 0%, #172748 59.7%, rgb(183 204 245 / 90%) 59.7%, rgb(224 233 248 / 96%) 60%, #f4f7fb 60.3%, #f8fafc 100%);
   color: var(--ink);
   box-sizing: border-box;
   display: flex;
+  gap: 0;
   justify-content: center;
   min-height: 100vh;
-  padding: 24px;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: 0;
+}
+
+.auth-page:not(.auth-page--dialog) {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.auth-visual {
+  --visual-offset-x: clamp(24px, 7vw, 134px);
+  align-items: flex-start;
+  background-color: #000;
+  /* 保留原图色泽，不叠加压暗渐变或蓝色滤光。 */
+  background-image: none;
+  background-position: calc(50% + var(--visual-offset-x)) center;
+  background-repeat: no-repeat;
+  /* 同时约束宽高：大窗口也完整展示卷轴，避免按宽度放大后上下裁切。 */
+  background-size: contain;
+  background-origin: content-box;
+  box-sizing: border-box;
+  border-right: 0;
+  color: #f6f8ff;
+  display: flex;
+  flex: 0 0 60%;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: 0 3vw;
+  position: relative;
+}
+
+.auth-visual__image {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: inherit;
+  background: url('/login-scroll.png') center / contain no-repeat;
+  background-origin: content-box;
+  /* 向右延展卷轴，并让右侧边缘自然融入深色分界。 */
+  transform: translateX(var(--visual-offset-x)) scaleX(1.58);
+  transform-origin: center;
+  animation: auth-scroll-roll 14s ease-in-out infinite;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 62%, rgb(0 0 0 / 96%) 74%, rgb(0 0 0 / 68%) 86%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 62%, rgb(0 0 0 / 96%) 74%, rgb(0 0 0 / 68%) 86%, transparent 100%);
+  pointer-events: none;
+}
+
+@keyframes auth-scroll-roll {
+  0%,
+  100% {
+    transform: translateX(var(--visual-offset-x)) scaleX(1.58) translateY(0);
+  }
+
+  50% {
+    transform: translateX(var(--visual-offset-x)) scaleX(1.58) translateY(-24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-visual__image {
+    animation: none;
+  }
+}
+
+.auth-visual__rays {
+  background:
+    radial-gradient(ellipse 38% 68% at var(--light-x, 12%) var(--light-y, 12%), rgb(216 168 95 / 22%), transparent 62%),
+    radial-gradient(ellipse 42% 72% at 64% 58%, rgb(140 114 184 / 13%), transparent 68%);
+  inset: 0;
+  width: auto;
+  height: auto;
+  opacity: .94;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.auth-visual__rays .side-rays__canvas {
+  mix-blend-mode: screen;
+  position: absolute;
+  z-index: 1;
+}
+
+.auth-form-panel {
+  align-items: center;
+  /* 从画布黑色渐入柔和暖灰，淡化右侧底板的厚重感。 */
+  background: linear-gradient(90deg, #080908 0%, #0b0c0b 18%, #141512 40%, #1c1d19 70%, #22231f 100%);
+  border-left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 40%;
+  justify-content: center;
+  min-width: 0;
+  padding: clamp(24px, 5vw, 80px);
+  position: relative;
+}
+
+/* 将分界过渡带延伸到左侧，让卷轴暗部自然融入右侧底色。 */
+.auth-form-panel::before {
+  background: linear-gradient(90deg, transparent 0%, rgb(8 9 8 / 20%) 28%, rgb(8 9 8 / 72%) 68%, #080908 100%);
+  content: "";
+  inset: 0 auto 0 -220px;
+  pointer-events: none;
+  position: absolute;
+  width: 220px;
+  z-index: 0;
+}
+
+.auth-form-panel .auth-card {
+  /* 以小窗口的卡片宽度为基准，不随大窗口继续拉宽。 */
+  max-width: 360px;
+  --ink: #eee9df;
+  --muted: #aaa397;
+  --accent: #d5b582;
+  --border: rgb(214 190 149 / 16%);
+  --canvas: #20211f;
+  --surface: #191a18;
+  border-radius: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+/* 仅协调独立登录页，不影响其他页面和弹窗登录。 */
+.auth-page:not(.auth-page--dialog) .auth-card {
+  box-shadow: 0 18px 48px rgb(0 0 0 / 18%), inset 0 1px 0 rgb(255 241 214 / 4%);
+}
+
+.auth-form-panel .auth-form input:focus-visible {
+  outline: 2px solid rgb(213 181 130 / 55%);
+  outline-offset: 2px;
+}
+
+.auth-form-panel .auth-form button[type="submit"] {
+  background: #cbb080;
+  border: 1px solid #d7bf96;
+  color: #201b13;
+  transition: background .2s ease-in-out;
+}
+
+.auth-form-panel .auth-form button[type="submit"]:hover {
+  background: #dbc29a;
+}
+
+.auth-visual::before,
+.auth-visual::after,
+.auth-visual__glow,
+.auth-visual__grid {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+}
+
+.auth-visual::before {
+  border: 1px solid rgb(204 177 126 / 9%);
+  border-radius: 50%;
+  height: 72%;
+  left: 2%;
+  top: 12%;
+  transform: rotate(-18deg) skewX(-12deg);
+  width: 92%;
+}
+
+.auth-visual::after {
+  border: 1px solid rgb(204 177 126 / 6%);
+  border-radius: 50%;
+  height: 52%;
+  left: 19%;
+  top: 25%;
+  transform: rotate(24deg) skewX(-15deg);
+  width: 68%;
+}
+
+.auth-visual__glow {
+  background: radial-gradient(ellipse at 68% 52%, rgb(188 145 75 / 12%), transparent 58%);
+  filter: blur(8px);
+  height: 70%;
+  left: 16%;
+  top: 8%;
+  width: 86%;
+}
+
+.auth-visual__grid {
+  background-image: linear-gradient(rgb(201 219 255 / 9%) 1px, transparent 1px), linear-gradient(90deg, rgb(201 219 255 / 9%) 1px, transparent 1px);
+  background-size: 42px 42px;
+  inset: 0;
+  mask-image: linear-gradient(90deg, #000, transparent 92%);
+  opacity: .15;
+}
+
+.auth-visual__content {
+  align-self: center;
+  max-width: 430px;
+  position: relative;
+  z-index: 2;
+}
+
+/* 只平移左侧视觉元素，不改变分栏尺寸和原有旋转效果。 */
+.auth-visual::before,
+.auth-visual::after,
+.auth-visual__glow,
+.auth-visual__grid,
+.auth-visual__content {
+  translate: var(--visual-offset-x) 0;
+}
+
+.auth-visual__eyebrow {
+  color: #c9b894;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .22em;
+}
+
+.auth-visual h2 {
+  font-size: 48px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  line-height: 1.12;
+  margin: 20px 0;
+}
+
+.auth-visual h2 em {
+  color: #d6c29d;
+  font-style: normal;
+}
+
+.auth-visual p {
+  color: #c1bdb3;
+  font-size: 15px;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.auth-visual__line {
+  background: linear-gradient(90deg, rgb(214 194 157 / 45%), transparent);
+  height: 1px;
+  margin-top: 32px;
+  width: min(260px, 80%);
 }
 
 .auth-card {
@@ -142,9 +384,50 @@ html[data-theme='dark'] body {
   border-radius: 16px;
   display: grid;
   gap: 14px;
-  max-width: 390px;
+  max-width: 420px;
   padding: 28px;
   width: 100%;
+}
+
+.auth-page:not(.auth-page--dialog) .auth-card {
+  box-shadow: 0 24px 70px rgb(15 30 65 / 15%);
+}
+
+@media (max-width: 820px) {
+  .auth-page:not(.auth-page--dialog) {
+    align-items: stretch;
+    background: linear-gradient(145deg, #111d38 0 45%, #f5f8fc 45% 100%);
+    flex-direction: column;
+    gap: 0;
+    justify-content: center;
+    overflow: auto;
+    padding: 0;
+  }
+
+  .auth-visual {
+    border-bottom: 0;
+    border-right: 0;
+    flex: 0 0 auto;
+    min-height: 280px;
+    padding: 24px 24px 30px;
+  }
+
+  .auth-form-panel {
+    flex: 0 0 auto;
+    padding: 24px;
+  }
+
+  .auth-visual h2 { font-size: clamp(34px, 9vw, 52px); margin: 12px 0; }
+  .auth-visual p { font-size: 13px; }
+  .auth-page:not(.auth-page--dialog) .auth-card { align-self: center; flex-basis: auto; }
+}
+
+@media (max-width: 480px) {
+  .auth-page:not(.auth-page--dialog) { padding: 16px; }
+  .auth-visual { min-height: 230px; padding: 16px 16px 24px; }
+  .auth-visual__eyebrow { font-size: 9px; }
+  .auth-visual h2 { font-size: 34px; }
+  .auth-card { padding: 22px; }
 }
 
 .auth-brand {
