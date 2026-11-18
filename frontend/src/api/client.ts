@@ -14,9 +14,10 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   const path = (config.url || "").split("?")[0];
   const paid = config.method !== "get" && (/^\/agent-runs\/(article-create|rewrite-candidate)$/.test(path) || /\/(visual-plan|visual-apply|analyze|generate|preview|chat)$/.test(path) || path === "/templates/extract");
-  if (!token && paid) {
+  const privateWrite = config.method !== "get" && /^\/(articles|templates|media|assistant)(\/|$)/.test(path);
+  if (!token && (paid || privateWrite)) {
     requestLogin();
-    throw new axios.CanceledError("登录后可使用 AI 功能");
+    throw new axios.CanceledError("登录后可创作并保存到个人账号");
   }
   if (!paid && useLocalAdapter(config)) config.adapter = localAdapter;
   return config;
@@ -25,7 +26,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(async response => {
   if (response.config.adapter === localAdapter || response.config.method !== "get") return response;
   const path = (response.config.url || "").split("?")[0];
-  if (["/articles", "/templates", "/media"].includes(path)) {
+  const guest = !localStorage.getItem("opw_access_token");
+  if (guest && ["/articles", "/templates", "/media"].includes(path)) {
     const kind = path.slice(1) as "articles" | "templates" | "media";
     const field = kind === "media" ? "assets" : kind;
     try {

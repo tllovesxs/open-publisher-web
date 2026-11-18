@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Menu, Plus } from "lucide-react";
 import { api } from "./api/client";
@@ -158,6 +158,13 @@ function SettingsLogin() {
   return <LoginPage onComplete={() => navigate("/settings", { replace: true })} />;
 }
 
+function AccountWorkspace({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoading />;
+  // Recreate task, editor and visual state whenever the authenticated owner changes.
+  return <ActiveRunProvider key={user?.id ?? "guest"}>{children}</ActiveRunProvider>;
+}
+
 export default function App() {
   // Keep public routes and login dialogs subscribed even outside the workspace.
   useThemeSetting();
@@ -165,7 +172,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <LoginPrompt />
-        <ActiveRunProvider>
+        <AccountWorkspace>
           <VisualPlanProvider>
             <PageBoundary resetOnNavigation={false}><Suspense fallback={<PageLoading />}><Routes>
               <Route path="/login" element={<LoginPage />} />
@@ -173,7 +180,7 @@ export default function App() {
               <Route path="/*" element={<Shell />} />
             </Routes></Suspense></PageBoundary>
           </VisualPlanProvider>
-        </ActiveRunProvider>
+        </AccountWorkspace>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { useActiveRun } from "../lib/activeRunContext";
 import { usePersistentState } from "../lib/usePersistentState";
 import { api } from "../api/client";
+import { isExample } from "../api/publicWorkspace";
 import { useAuth } from "../auth/AuthContext";
 import { allowPaidAction } from "../auth/loginPrompt";
 import { ToolbarSelect } from "../components/ui/ToolbarSelect";
@@ -78,6 +79,17 @@ const LENGTH_OPTIONS = [
   { id: "long", label: "长篇（5500-7000 字）" },
   { id: "custom", label: "自定义篇幅" },
 ];
+
+function articleBadge(article: Pick<ArticleState, "articleId">, isLoggedIn: boolean, activeRunArticleId?: string, runStatus?: string | null) {
+  if (isExample(article.articleId)) return "公共示例";
+  if (!isLoggedIn) return "本地草稿";
+  if (article.articleId === activeRunArticleId) {
+    if (runStatus === "running") return "生成中";
+    if (runStatus === "failed") return "生成失败";
+    if (runStatus === "stopped") return "已停止";
+  }
+  return "文章";
+}
 
 export default function ArticlesPage() {
   const { user } = useAuth();
@@ -670,7 +682,7 @@ export default function ArticlesPage() {
               }}
               type="button"
             >
-              <span className="article-status article-status--draft">{article.articleId === activeRun?.articleId ? runStatus === "running" ? <><LoaderCircle className="spin" size={11} /> 生成中</> : runStatus === "failed" ? "生成失败" : runStatus === "stopped" ? "已停止" : "文章" : "文章"}</span>
+              <span className="article-status article-status--draft">{articleBadge(article, Boolean(user), activeRun?.articleId, runStatus)}</span>
               <strong>{article.title}</strong>
               <span className="article-list-item__meta">
                 <span>
@@ -709,7 +721,7 @@ export default function ArticlesPage() {
               </>
             ) : selected ? (
               <>
-                <span className="article-status article-status--draft">文章</span>
+                <span className="article-status article-status--draft">{articleBadge(selected, Boolean(user), activeRun?.articleId, runStatus)}</span>
                 <strong>{selected.title}</strong>
               </>
             ) : (

@@ -50,13 +50,14 @@ const storageKey = "gaoliu.active-article-run";
 
 const ActiveRunContext = createContext<ActiveRunContextValue | null>(null);
 
-function readStoredRun(ownerUserId: string | null | undefined): ActiveRun | null {
+export function readStoredRun(ownerUserId: string | null | undefined): ActiveRun | null {
+  if (!ownerUserId) return null;
   try {
-    const raw = sessionStorage.getItem(storageKey);
+    const raw = sessionStorage.getItem(`${storageKey}:${ownerUserId}`) ?? sessionStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredActiveRun;
     if (!parsed?.runId || !parsed?.articleId) return null;
-    if (ownerUserId && parsed.ownerUserId && parsed.ownerUserId !== ownerUserId) return null;
+    if (parsed.ownerUserId !== ownerUserId) return null;
     return { runId: parsed.runId, articleId: parsed.articleId, title: parsed.title || "文章", visualPlan: parsed.visualPlan ?? null };
   } catch {
     return null;
@@ -117,12 +118,14 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   }, [activeRun, closeStream, user]);
 
   useEffect(() => {
+    if (!user) return;
+    const userStorageKey = `${storageKey}:${user.id}`;
     if (!activeRun) {
-      sessionStorage.removeItem(storageKey);
+      sessionStorage.removeItem(userStorageKey);
       return;
     }
     const stored: StoredActiveRun = { ...activeRun, ownerUserId: user?.id ?? null };
-    sessionStorage.setItem(storageKey, JSON.stringify(stored));
+    sessionStorage.setItem(userStorageKey, JSON.stringify(stored));
   }, [activeRun, user?.id]);
 
   const startRun = useCallback(async (

@@ -16,6 +16,7 @@ function read(kind: string): Row[] {
 function write(kind: string, rows: Row[]) { localStorage.setItem(key(kind), JSON.stringify(rows)); }
 export function localMediaSource(id: string): string | null {
   if (id === "example-writing-workflow") return "/examples-writing.svg";
+  if (!localStorage.getItem("opw_access_token")) return null;
   return read("media").find(row => row.id === id)?.source || null;
 }
 
@@ -39,6 +40,9 @@ export async function examples(kind: Kind): Promise<Row[]> {
 }
 
 export async function localRows(kind: Kind): Promise<Row[]> {
+  // Anonymous storage from older builds has no verified owner. Keep it on disk,
+  // but never expose it through the public workspace.
+  if (!localStorage.getItem("opw_access_token")) return examples(kind);
   const saved = read(kind);
   const ids = new Set(saved.map(row => row.articleId || row.id));
   return [...saved, ...(await examples(kind)).filter(row => !ids.has(row.articleId || row.id))];
@@ -49,6 +53,9 @@ export const localAdapter: AxiosAdapter = async config => {
   const parts = url.pathname.replace(/^\/api/, "").split("/").filter(Boolean);
   const [kind, id, action, revisionId, restore] = parts;
   const method = config.method || "get";
+  if (!localStorage.getItem("opw_access_token") && method !== "get") {
+    throw new Error("登录后可保存个人内容");
+  }
   const body: Row = typeof config.data === "string" ? JSON.parse(config.data || "{}") : config.data || {};
   let data: any;
   if (["articles", "templates", "media"].includes(kind)) {
@@ -104,7 +111,6 @@ export function useLocalAdapter(config: InternalAxiosRequestConfig): boolean {
   const guest = !localStorage.getItem("opw_access_token");
   if (config.method === "get" && path === "/templates/public") return false;
   const exampleRead = config.method === "get" && /^\/(articles|templates|media)\/example-/.test(path);
-  const body = typeof config.data === "string" ? JSON.parse(config.data || "{}") : config.data;
-  if (exampleRead || (path === "/articles" && isExample(body?.articleId || ""))) return true;
+  if (exampleRead) return true;
   return guest && (/^\/(articles|templates|media)(\/|$)/.test(path) || /^\/assistant\/sessions(?:\/[^/]+)?$/.test(path) || path === "/settings/preferences");
 }
