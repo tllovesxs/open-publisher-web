@@ -19,6 +19,7 @@ import { PillSelect } from "../components/PillSelect";
 import { appendReferences, readPromptImage, readReferenceFiles } from "../lib/fileImport";
 import { CreditBadge } from "../components/ui/CreditBadge";
 import { refreshCreditStatus } from "../lib/creditStatus";
+import "./creation-pickers.css";
 
 
 // 蓝本 CreatePage 的 Web 迁移（团队自有代码，1:1 结构与类名）。
@@ -150,11 +151,32 @@ export default function CreatePage() {
 
   useEffect(() => {
     if (!picker) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const dialog = document.querySelector<HTMLElement>(".creation-picker__dialog");
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
+    ) ?? []).filter((element) => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPicker(null);
+      if (event.key === "Tab") {
+        const elements = focusable();
+        const first = elements[0];
+        const last = elements[elements.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
   }, [picker]);
 
 
@@ -466,11 +488,11 @@ export default function CreatePage() {
         {picker === "template" && (
           <section aria-label="选择写作模板" aria-modal="true" className="creation-picker__dialog" role="dialog">
             <header>
-              <div><span className="page-kicker">写作模板</span><h2>选择文章结构</h2></div>
+              <div><h2>选择文章结构</h2><p className="creation-picker__subtitle">让内容有章可循，也可以自由发挥。</p></div>
               <button aria-label="关闭" className="icon-button" onClick={() => setPicker(null)} type="button"><X size={18} /></button>
             </header>
             <div className="creation-picker__grid">
-              <button aria-pressed={!selectedTemplate} className={!selectedTemplate ? "is-selected" : ""} onClick={() => { setSelectedTemplateId(null); setPicker(null); }} type="button"><strong>自由结构</strong><span>根据主题自动组织文章，不套用模板。</span>{!selectedTemplate && <Check size={16} />}</button>
+              <button aria-pressed={!selectedTemplate} className={`creation-picker__free${!selectedTemplate ? " is-selected" : ""}`} onClick={() => { setSelectedTemplateId(null); setPicker(null); }} type="button"><strong>自由结构</strong><span>根据主题自动组织文章，不套用模板。</span>{!selectedTemplate && <Check size={16} />}</button>
               {templates.map((template) => (
                 <button
                   aria-pressed={selectedTemplate?.id === template.id}
@@ -493,14 +515,14 @@ export default function CreatePage() {
                 </button>
               ))}
             </div>
-            <footer><button className="button button--primary" onClick={() => setPicker(null)} type="button">完成选择</button></footer>
+            <footer><p className="creation-picker__summary">当前结构<strong>{selectedTemplate?.name || "自由结构"}</strong></p><button className="button button--primary" onClick={() => setPicker(null)} type="button">完成选择</button></footer>
           </section>
         )}
 
         {picker === "media" && (
           <section aria-label="选择图片素材" aria-modal="true" className="creation-picker__dialog" role="dialog">
             <header>
-              <div><span className="page-kicker">图片参考</span><h2>选择素材库图片</h2></div>
+              <div><h2>选择素材库图片</h2><p className="creation-picker__subtitle">为这篇文章选择图片参考，可多选。</p></div>
               <button aria-label="关闭" className="icon-button" onClick={() => setPicker(null)} type="button"><X size={18} /></button>
             </header>
             <div className="creation-picker__media">
@@ -519,21 +541,24 @@ export default function CreatePage() {
                           : [...current, asset.id])}
                       type="button"
                     >
-                      <img alt="" src={`/api/media/${asset.id}/raw`} />
+                      <span className="creation-picker__thumbnail">
+                        <img alt="" onError={(event) => { event.currentTarget.hidden = true; }} src={`/api/media/${asset.id}/raw`} />
+                        <ImagePlus aria-label="图片暂不可用" size={22} />
+                      </span>
                       <span><strong>{asset.name}</strong><small>{asset.alt || "未填写图片描述"}</small></span>
                       {isSelected && <Check size={16} />}
                     </button>
                   );
                 })}
             </div>
-            <footer><button className="button button--primary" onClick={() => setPicker(null)} type="button">完成选择</button></footer>
+            <footer><p aria-live="polite" className="creation-picker__summary">已选图片<strong>{selectedMediaIds.length} 张</strong></p><button className="button button--primary" onClick={() => setPicker(null)} type="button">完成选择</button></footer>
           </section>
         )}
 
         {picker === "image" && (
           <section aria-label="配图设置" aria-modal="true" className="creation-picker__dialog creation-picker__dialog--settings" role="dialog">
             <header>
-              <div><span className="page-kicker">配图设置</span><h2>决定图片如何补足正文</h2></div>
+              <div><h2>配图设置</h2><p className="creation-picker__subtitle">决定图片如何补足正文。</p></div>
               <button aria-label="关闭" className="icon-button" onClick={() => setPicker(null)} type="button"><X size={18} /></button>
             </header>
             <div className="creation-settings-form">
@@ -603,7 +628,7 @@ export default function CreatePage() {
         {picker === "details" && (
           <section aria-label="创作资料" aria-modal="true" className="creation-picker__dialog creation-picker__dialog--settings" role="dialog">
             <header>
-              <div><span className="page-kicker">创作资料</span><h2>标题与参考内容</h2></div>
+              <div><h2>标题与参考内容</h2><p className="creation-picker__subtitle">为本次创作补充资料，标题可留空。</p></div>
               <button aria-label="关闭" className="icon-button" onClick={() => setPicker(null)} type="button"><X size={18} /></button>
             </header>
             <div className="creation-settings-form">
