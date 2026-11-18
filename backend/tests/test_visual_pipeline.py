@@ -442,3 +442,111 @@ def test_selected_material_match_threshold_and_dedup(factory):
     assert sum(p["source"] == "existing_asset" for p in plan["placements"]) == 1
     assert plan["placements"][0]["assetId"] == "matching"
     assert plan["placements"][1]["source"] == "generate"
+
+
+@pytest.mark.parametrize("threshold,expected", [(40, "existing_asset"), (80, "generate")])
+def test_semantic_asset_score_survives_low_literal_overlap(factory, monkeypatch, threshold, expected):
+    from app.agents import llm_client
+    from app.services.visual_service import _similarity
+
+    paragraph = "自由行可以按自己的节奏安排路线，选择喜欢的目的地，体验当地生活。"
+    description = "背包客在群山之间徒步，帐篷扎在湖畔，适合户外出游主题。"
+    assert _similarity(paragraph, description) < 400
+    _add_asset(factory, asset_id="travel-photo", alt=description)
+
+    class Planner:
+        api_key_configured = True
+        model = "semantic-planner"
+
+        def complete_json(self, system, user, **kwargs):
+            assert "assetMatchScore" in user
+            assert "photographs" in system
+            return {"placements": [{
+                "anchorHeading": "自由行", "anchorExcerpt": paragraph[:20],
+                "visualType": "scene", "visualContent": "独自探索山野的旅行者",
+                "source": "existing_asset", "assetId": "travel-photo",
+                "assetMatchScore": 760,
+            }]}
+
+    monkeypatch.setattr(llm_client, "LLMClient", Planner)
+    with factory() as db:
+        plan = VisualService(db).plan(
+            markdown=f"## 自由行\n\n{paragraph}", target_count=1,
+            asset_ids=["travel-photo"], material_match_threshold=threshold,
+        )
+    placement = plan["placements"][0]
+    assert placement["source"] == expected
+    assert placement["candidates"][0]["score"] == 760
+    assert placement["assetId"] == ("travel-photo" if expected == "existing_asset" else None)
+
+
+@pytest.mark.parametrize("score", [None, True, "900", 900.0, -1, 1001])
+def test_invalid_semantic_scores_do_not_bypass_threshold(factory, monkeypatch, score):
+    from app.agents import llm_client
+    _add_asset(factory, asset_id="snow", alt="雪山滑雪冰川")
+
+    class Planner:
+        api_key_configured = True
+        model = "semantic-planner"
+
+        def complete_json(self, *args, **kwargs):
+            return {"placements": [{
+                "anchorHeading": "产品架构", "anchorExcerpt": "系统由三个服务组成",
+                "source": "existing_asset", "assetId": "snow", "assetMatchScore": score,
+            }]}
+
+    monkeypatch.setattr(llm_client, "LLMClient", Planner)
+    with factory() as db:
+        plan = VisualService(db).plan(
+            markdown=MARKDOWN, target_count=1, asset_ids=["snow"], material_match_threshold=40,
+        )
+    assert plan["placements"][0]["source"] == "generate"
+
+
+def test_semantic_choice_outside_lexical_top_five_and_no_duplicate_use(factory, monkeypatch):
+    from app.agents import llm_client
+    for index in range(6):
+        _add_asset(factory, asset_id=f"literal-{index}", alt="自由行的路线安排与目的地选择")
+    _add_asset(factory, asset_id="photo", alt="背包客在群山之间徒步，帐篷扎在湖畔")
+
+    class Planner:
+        api_key_configured = True
+        model = "semantic-planner"
+
+        def complete_json(self, *args, **kwargs):
+            return {"placements": [{
+                "anchorHeading": heading, "anchorExcerpt": excerpt,
+                "visualContent": "山野旅行者", "source": "existing_asset",
+                "assetId": "photo", "assetMatchScore": 950,
+            } for heading, excerpt in [("自由行", "自由行的路线安排"), ("出发", "行程准备完毕")]]}
+
+    monkeypatch.setattr(llm_client, "LLMClient", Planner)
+    with factory() as db:
+        plan = VisualService(db).plan(
+            markdown="## 自由行\n\n自由行的路线安排与目的地选择。\n\n## 出发\n\n行程准备完毕，开始探索。",
+            target_count=2, asset_ids=[*(f"literal-{i}" for i in range(6)), "photo"],
+            material_match_threshold=90,
+        )
+    assert plan["placements"][0]["assetId"] == "photo"
+    assert sum(p["assetId"] == "photo" for p in plan["placements"]) == 1
+    assert any(c["assetId"] == "photo" and c["score"] == 950 for c in plan["placements"][0]["candidates"])
+
+
+def test_semantic_score_cannot_select_unavailable_asset(factory, monkeypatch):
+    from app.agents import llm_client
+
+    class Planner:
+        api_key_configured = True
+        model = "semantic-planner"
+
+        def complete_json(self, *args, **kwargs):
+            return {"placements": [{
+                "anchorHeading": "产品架构", "anchorExcerpt": "系统由三个服务组成",
+                "source": "existing_asset", "assetId": "not-selected", "assetMatchScore": 1000,
+            }]}
+
+    monkeypatch.setattr(llm_client, "LLMClient", Planner)
+    with factory() as db:
+        plan = VisualService(db).plan(markdown=MARKDOWN, target_count=1)
+    assert plan["placements"][0]["source"] == "generate"
+    assert not plan["placements"][0]["candidates"]
