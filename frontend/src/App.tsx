@@ -9,7 +9,6 @@ import { useThemeSetting } from "./lib/theme";
 import { VisualPlanProvider } from "./components/article/VisualPlanProvider";
 import { AppNavigation, type NavKey } from "./components/AppNavigation";
 import LoginPrompt from "./auth/LoginDialog";
-import { requestLogin } from "./auth/loginPrompt";
 import LoginPage from "./pages/LoginPage";
 import "./blueprint.css";
 
@@ -62,7 +61,8 @@ function Shell() {
   const handleNavigate = useCallback(
     (next: NavKey) => {
       if (!user && next === "settings") {
-        requestLogin(() => navigate("/settings"));
+        // 未登录直接进入独立登录页（带背景），登录后回到设置页。
+        navigate("/login");
         setMobileNavOpen(false);
         return;
       }
@@ -153,9 +153,9 @@ function Shell() {
 }
 
 function SettingsLogin() {
+  // 直接访问 /settings 且未登录：展示带背景的独立登录页，登录后回到设置页。
   const navigate = useNavigate();
-  useEffect(() => { navigate("/", { replace: true }); requestLogin(() => navigate("/settings")); }, [navigate]);
-  return <PageLoading />;
+  return <LoginPage onComplete={() => navigate("/settings", { replace: true })} />;
 }
 
 export default function App() {
